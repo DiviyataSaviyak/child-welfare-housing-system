@@ -30,3 +30,10 @@ test("/admin opens the users page", async ({ page }) => {
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/admin\/users$/);
 });
+
+test("/health answers 200 while the app reaches its database (OPS-3)", async ({ request }) => {
+  const response = await request.get("/health");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["cache-control"]).toContain("no-store");
+  expect(await response.json()).toEqual({ ok: true });
+});
