@@ -24,7 +24,7 @@ Phase 7 was built one task at a time: 7.1 (the load-test data script), 7.2 (the 
 
 Phase 8 (the sheet import) was built one task at a time, on the branch `phase-8-import`: 8.1 (the made-up sample sheet), 8.2 (the import script), 8.3 (the import report), 8.4 (the DS office filling in imported cases) and 8.5 (Head Office confirming them). It was removed on 6 Oct 2026, because the sheet is still being updated; see "Sheet import (removed)" below.
 
-The stack is set in `docs/SPEC.md`: Next.js 16 (App Router, TypeScript), PostgreSQL + Prisma 7, Better Auth, next-intl (Sinhala, Tamil and English), Zod, Tailwind 4 + shadcn/ui (Radix), ExcelJS and sharp. It runs self-hosted with Docker Compose on a server in Sri Lanka. Every permission check lives in the server-side data-access layer (`src/server/`), never in middleware or the UI alone.
+The stack is set in `docs/SPEC.md`: Next.js 16 (App Router, TypeScript), PostgreSQL + Prisma 7, Better Auth, next-intl (Sinhala, Tamil and English), Zod, Tailwind 4 + shadcn/ui (Radix), ExcelJS and sharp. It runs with Docker Compose on one Amazon EC2 server, behind Caddy (Phase 9, redesigned 9 Oct 2026). Every permission check lives in the server-side data-access layer (`src/server/`), never in middleware or the UI alone.
 
 ## Commands
 
@@ -238,10 +238,11 @@ These may not be in `docs/PRD.md` yet. Once the PRD is approved, it overrides th
 - **Installment status:** Not started → Processing (with an expected date) → Released (with the actual date).
 - **Documents (28 Sep):** a new case has one optional upload, "වෙනත් ලේඛන" (other documents). No document is required, so the field research report and GN certificate are not separate uploads.
 - **Kinds of help (28 Sep):** only a new house or the renovation of an existing house. Land cases have not started, so leave them out of the system for now. Don't design for them.
+- **Hosting (9 Oct):** one Amazon EC2 server, because officers sign in from DS offices across the country and there is no Ministry server or database for the system. Every push to `main` that passes CI deploys to it through GitHub Actions. Keep it simple: one server with Docker Compose, a setup script and plain shell scripts; no clusters and no configuration tools such as Ansible.
 - **Still open with the Ministry:**
   - siblings (one case per family or one per child)
   - renovation stages
-  - hosting
+  - agreement to keep the data on AWS, outside Sri Lanka (the Personal Data Protection Act), before real data goes in
   - data retention
 
 ## Source data (the old sheet)

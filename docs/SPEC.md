@@ -1,6 +1,6 @@
 # Diviyata Sawiyak — Software Specification
 
-2026-09-28, updated 2026-10-07 · Janindu Pramod
+2026-09-28, updated 2026-10-09 · Janindu Pramod
 
 > **Status:** draft. This SPEC turns the [PRD](PRD.md) into requirements precise enough to build and test against. The [clickable prototype](https://claude.ai/artifact/DQarnsyMfCao1y6SmpMDbT) shows the screens. The PRD's open questions are deferred: [section 13](#13-deferred-questions-and-the-defaults-used) gives the default this SPEC uses for each until the Ministry answers.
 
@@ -31,12 +31,13 @@ It does not cover anything under "Later" or "Out of scope" in the PRD.
 | Excel | ExcelJS |
 | Images | sharp |
 | Tests | Vitest for unit and database tests, Playwright for end-to-end tests |
-| Runtime | Docker Compose on a Linux server in Sri Lanka: `app` (Next.js standalone build), `db` (PostgreSQL), `proxy` (Nginx with TLS) |
+| Runtime | Docker Compose on one Amazon EC2 server running Ubuntu 24.04 LTS (section 11): `app` (Next.js standalone build), `db` (PostgreSQL), `proxy` (Caddy, which gets and renews its own TLS certificate) |
+| Delivery | GitHub Actions: the checks on every change, and on `main` the images (kept in GitHub's container registry) and the deploy over SSH |
 
 Rules for the stack:
 
 - **STK-1** Every dependency shall be pinned to an exact version, and the lockfile committed. Upgrades are made on purpose, one at a time, never automatically.
-- **STK-2** The system shall not use any third-party hosted service that receives or stores its data: no Vercel, Supabase, Firebase, Clerk, hosted analytics or runtime Google Fonts.
+- **STK-2** The system shall not use any third-party hosted service that receives or stores its data, other than its host, Amazon Web Services (the EC2 server and the S3 backup bucket, section 11): no Vercel, Supabase, Firebase, Clerk, hosted analytics or runtime Google Fonts.
 
 ## 3. Architecture
 
@@ -44,7 +45,7 @@ Rules for the stack:
  Browser (office PC)
       │ HTTPS
       ▼
- Nginx (TLS) ──► Next.js app
+ Caddy (TLS) ──► Next.js app
                    ├─ pages (Server Components) ──┐
                    ├─ Server Actions ─────────────┼─► data-access layer (role + office checks) ─► Prisma ─► PostgreSQL
                    └─ /files/[id] route ──────────┘                                            └─► /data/files (private)
@@ -369,7 +370,7 @@ Only the DS office starts and pays installments (section 4). Each change is refu
 
 - **SEC-1** The system shall be reachable only over HTTPS (TLS 1.2 or later) with HSTS. Plain HTTP redirects to HTTPS.
 - **SEC-2** Every Server Action and route handler shall check the role and office in the data-access layer. Tests shall call each one with each role.
-- **SEC-3** The database shall accept connections only from the app container. The app's database account shall not be able to change the schema.
+- **SEC-3** The database shall accept connections only from the containers on the server; it publishes no port. The app's database account shall not be able to change the schema, or update or delete audit rows. Migrations run with a separate owner account.
 - **SEC-4** Sign-in shall allow at most 10 attempts per minute from one IP address. An unused temporary password expires after 7 days.
 - **SEC-5** Responses shall carry these security headers:
   - a Content Security Policy that allows only this site, with no third-party scripts or fonts
@@ -382,11 +383,12 @@ Only the DS office starts and pays installments (section 4). Each change is refu
   - A file's type is checked from its contents, not its name.
   - `/files/[id]` applies the same permission check as the case the file belongs to.
 - **SEC-8** Names, NICs, addresses and phone numbers shall never appear in application logs, error messages or URLs. Logs use IDs only.
-- **SEC-9** Secrets such as the database password and the auth secret shall live in environment variables on the server, never in the repository.
+- **SEC-9** Secrets such as the database passwords, the auth secret and the backup password shall live only in the server's `.env` file, which only the deploy account and root can read, never in the repository. GitHub holds only the SSH key it deploys with.
 - **SEC-10** Backups:
-  - The database and files are backed up every day, encrypted, to a second location in Sri Lanka.
+  - The database and files are backed up every night, encrypted on the server, to an S3 bucket in the server's AWS region. Only the server's role can write to the bucket, and it is never public.
   - Backups are kept for 30 days.
-  - A restore is tested every month.
+  - A restore is tested every month, by the server itself, into a scratch database; a failed test raises an alert (OPS-4).
+  - The backup password is also kept off the server, by the Ministry. Without it the backups can't be read.
 - **SEC-11** Real sheet data shall never go into the repository, tests or fixtures. Tests use made-up cases.
 - **SEC-12** CI shall run `npm audit`. Security fixes are applied within 14 days, or within 3 days for critical ones.
 
@@ -396,15 +398,17 @@ Only the DS office starts and pays installments (section 4). Each change is refu
 - **PRF-2** 95% of pages shall be answered by the server within 1 second, and a page shall be usable within 3 seconds on a 4 Mbps office connection.
 - **PRF-3** The Head Office dashboard shall load within 2 seconds with 5,000 cases.
 - **PRF-4** Exporting every case to Excel shall take under 60 seconds.
-- **PRF-5** The starting server shall have 2 vCPU, 4 GB RAM and a 100 GB disk.
+- **PRF-5** The starting server shall have 2 vCPU, 4 GB RAM and a 100 GB disk: an EC2 `t3.medium` with a 100 GB gp3 volume, or larger.
 - **PRF-6** The system shall be available 99% of office hours (08:30–16:30, Monday to Friday) each month. Planned maintenance happens outside those hours.
 
 ## 11. Hosting and operations
 
-- **OPS-1** There shall be three environments: local development, staging (made-up data only) and production.
-- **OPS-2** Production runs with Docker Compose. Database data and files are kept on named volumes on the server.
-- **OPS-3** A release is a tagged image built in CI. Database migrations run as part of the deploy. If a deploy fails, the previous image is restored, and the database too if a migration had run.
-- **OPS-4** An uptime check shall run every 5 minutes. An alert fires when the disk is 80% full or the nightly backup fails.
+Decided on 9 Oct 2026 (PRD question 4): one server in the cloud, because officers sign in from DS offices across the country and the Ministry has no server for the system. It is kept simple: no cluster, no load balancer and no configuration tool such as Ansible.
+
+- **OPS-1** There shall be two environments: local development, and the server. Until launch the server runs as staging, with made-up data only (`APP_ENV=staging`). At launch its data and backups are removed and it becomes production. CI (GitHub Actions) runs every check on each change before it can reach the server: lint, formatting, types, the string check, unit, database and end-to-end tests, and the dependency audit.
+- **OPS-2** The server is one Amazon EC2 instance running Ubuntu 24.04 LTS, in the AWS region nearest Sri Lanka (Mumbai, `ap-south-1`). It has an Elastic IP and a domain name, and its security group lets in only SSH, HTTP and HTTPS. It runs Docker Compose, and keeps the database and files on named volumes. A setup script prepares a fresh server, and running it again changes nothing that is already in place.
+- **OPS-3** Every push to `main` that passes CI is deployed with no manual step. CI builds the release as two images, the app and its tools, tagged with the commit and kept in GitHub's container registry. The deploy backs up the database, runs the migrations, swaps the app and checks its health. If the app doesn't answer, the previous image is restored, and the database too if a migration had run.
+- **OPS-4** Every 5 minutes the server checks that its site answers over HTTPS and that its disk is under 80% full, and reports to an alert service; the nightly backup and the monthly restore test report too. The service emails Head Office's contact when a check fails or a report doesn't arrive. It receives no case data.
 
 ## 12. Acceptance criteria
 
@@ -440,6 +444,7 @@ Version 1 is accepted when every check below passes on staging with made-up data
 | AC-26 | A letter for two cases releases both, with one letter row and each case's own release and installments; one case not `VERIFIED`, or of another district, releases neither. Correcting the letter from one case's page changes it for both. | REL-2–4 |
 | AC-27 | On the sign-in page, choosing தமிழ் or English shows the page in that language and keeps it after a reload. A DS officer working in Tamil sees the menu, their office and district names and the money in Tamil; Head Office working in English downloads an Excel file with English headers and file name. | UI-9, EXP-1 |
 | AC-28 | The admin, working in Sinhala, adds a DS office with its Sinhala and English names and its code, leaving the Tamil name blank. The lists screen shows only the Sinhala name; in English it shows the typed English name, and in Tamil the name the system wrote in Tamil letters. A stage needs only its Sinhala name. | UI-9, LST-2, LST-4 |
+| AC-29 | A commit pushed to `main` that passes CI runs on the server with no manual step, and a page left open from the old version reloads on its next move. A release whose app fails its health check is undone: the previous version runs again, and the database is as it was before the deploy. | OPS-3 |
 
 ## 13. Deferred questions and the defaults used
 
@@ -449,7 +454,7 @@ On 28 Sep the open questions were set aside for later. Until the Ministry answer
 | --- | --- | --- |
 | 1. Siblings | Each child is a separate case. A shared NIC only raises a warning. | CASE-6 |
 | 3. Renovation stages | The admin defines the list. Until then, renovation cases take note-only updates. | LST-4, STG-4 |
-| 4. Hosting | Any Linux server in Sri Lanka that runs Docker. | Section 11 |
+| 4. Hosting | Answered 9 Oct 2026: one Amazon EC2 server. The Ministry must still agree that the data may be kept outside Sri Lanka. No longer a default. | Section 11 |
 | 5. How long records are kept | Everything is kept; nothing is deleted automatically. | Section 5 |
 | 6. Money on a stopped case | The balance left with the DS is shown. The system has no refund process. | CLS-2 |
 | 7. Replacing a beneficiary | The new person is a new case. The old case is rejected or stopped with a reason that names the new case number. | CHK-3, CLS-2 |

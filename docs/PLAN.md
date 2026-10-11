@@ -25,7 +25,7 @@
 | 6. Installments and progress | Installments, stages, photos, stop and reopen, history | 5 | L |
 | 7. Dashboard and exports | Head Office dashboard, Excel exports, notifications | 6 | M |
 | 8. Sheet import | Built, then removed on 2026-10-06 | 6 | — |
-| 9. Go-live | Production server, backups, security and performance checks, training | 7 | M |
+| 9. Go-live | AWS EC2 server with automatic deploys from GitHub, backups, alerts, security and performance checks, training | 7 | M |
 
 Sizes are relative: S is a few days, M about one to two weeks, and L about two to three weeks of one developer's time.
 
@@ -46,10 +46,11 @@ src/
 messages/si.json        every screen string
 prisma/                 schema.prisma, migrations/, seed.ts
 data/                   seed lists (places and stages only, no personal data)
-scripts/                seed-load.ts, backup.sh
+scripts/                seed-load.ts, seed-demo.ts, create-admin.ts
 tests/e2e/              Playwright tests
-docker/                 Dockerfile, nginx.conf
-docker-compose.yml, docker-compose.dev.yml
+docker/                 Dockerfile (the app and tools images)
+deploy/                 the server: compose.yml, caddy/Caddyfile, server-setup.sh, scripts/ (deploy, backup, restore, monitor)
+docker-compose.dev.yml  the development database
 ```
 
 ## Phase 1 — Foundation
@@ -201,23 +202,31 @@ docker-compose.yml, docker-compose.dev.yml
 
 ## Phase 9 — Go-live
 
-**Goal:** the system runs on the server in Sri Lanka, is backed up, and the offices are ready to use it.
+**Redesigned on 2026-10-09.** The system runs on one Amazon EC2 server instead of a server in Sri Lanka (PRD question 4). Officers sign in from DS offices across the country, and the Ministry has no server or database of its own for the system. The phase keeps to one server with Docker Compose, a setup script and GitHub Actions. There is no cluster and no configuration tool such as Ansible.
+
+**Goal:** every change pushed to `main` that passes CI reaches the server by itself. The server is backed up and watched, and the offices are ready to use it.
 
 | # | Task | SPEC | Files |
 | --- | --- | --- | --- |
-| 9.1 | Production images and Compose: Next.js standalone, PostgreSQL, Nginx with TLS and HSTS; Nginx's `client_max_body_size` at least 16 MB for uploads (photos of up to 15 MB); `FILES_DIR` on a named volume | OPS-2, SEC-1 | `docker/Dockerfile`, `docker/nginx.conf`, `docker-compose.yml` |
-| 9.2 | Staging server with made-up data; deploy from a tagged build with migrations; rollback steps | OPS-1, OPS-3 | `.github/workflows/deploy.yml`, `docs/RUNBOOK.md` |
-| 9.3 | Nightly encrypted backup of the database and files to a second location in Sri Lanka; a restore test | SEC-10 | `scripts/backup.sh`, `docs/RUNBOOK.md` |
-| 9.4 | Uptime, disk and backup alerts | OPS-4 | server configuration |
-| 9.5 | Security pass: a test calling every action with every role, headers, CSP, `npm audit`, secrets only in the environment | SEC-2–9 | `tests/security/*` |
-| 9.6 | Performance and accessibility pass on staging | PRF-2–4, UI-6 | — |
-| 9.7 | Full list of DS offices with codes loaded, and their Tamil names checked with the Ministry; the Tamil and English screen text checked by Tamil- and English-speaking officers; admin creates the first accounts | LST-1, UI-9 | `data/places.json`, `messages/ta.json`, `messages/en.json` |
-| 9.8 | Short Sinhala guides for DS officers and Head Office, plus a user test with a few officers | — | `docs/guides/*` |
-| 9.9 | Production launch | — | — |
+| 9.1 | Production images from one Dockerfile. `app` is the Next.js standalone server, run as a non-root user, with a health check. `tools` is the project with all its dependencies, for migrations, the lists seed and scripts. The build sets `APP_ENV=production`, because the security headers are fixed at build time. It also sets the commit as `NEXT_DEPLOYMENT_ID`, so a page left open across a deploy reloads instead of failing. A `/health` route answers 200 when the app reaches its database | OPS-2, OPS-3 | `docker/Dockerfile`, `.dockerignore`, `src/app/health/route.ts`, `src/server/health.ts` |
+| 9.2 | The stack in Compose. `proxy` is Caddy rather than Nginx, because it gets and renews its Let's Encrypt certificate by itself. It sends HTTP to HTTPS, allows TLS 1.2 or later and request bodies up to 20 MB, and sets `X-Forwarded-For` to the real client address. Beside it run `app`, `db` (PostgreSQL 17, with no published port) and `tools`, with uploads and the database on named volumes. Two database accounts: the owner runs migrations, and the app's `diviyata_app` can't change the schema or the audit rows | SEC-1, SEC-3, SEC-4, OPS-2 | `deploy/compose.yml`, `deploy/caddy/Caddyfile`, `deploy/scripts/db-grants.sql` |
+| 9.3 | Server setup, run once on a fresh Ubuntu 24.04 server and safe to run again. It installs Docker Engine and Compose from Docker's own repository and turns on automatic security updates, with a reboot at 03:30 when one needs it. It sets the time zone to Asia/Colombo, adds a swap file, limits Docker's logs and allows SSH with keys only. It makes a `deploy` user with its own SSH key for GitHub Actions, and `/opt/diviyata` with an `.env` of generated secrets and the cron jobs | OPS-2, SEC-9 | `deploy/server-setup.sh`, `deploy/env.example`, `deploy/cron` |
+| 9.4 | Automatic deploys. `ci.yml` becomes a reusable workflow, which `deploy.yml` runs on each push to `main`. When it passes, `deploy.yml` builds both images and pushes them to GitHub's container registry, tagged with the commit. It then copies the server files over SSH and runs `deploy.sh`, which backs up the database, runs the migrations, the lists seed and the grants, swaps the app and waits for its health check. If anything fails, the previous image comes back, and the database too if a migration had run. `rollback.sh` goes back to the previous release by hand | OPS-1, OPS-3 | `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `deploy/scripts/deploy.sh`, `deploy/scripts/rollback.sh` |
+| 9.5 | The first admin account. Sample accounts never exist outside development and tests, so a script creates an admin with a temporary password, shown once, which they change at first sign-in. Its audit record names the system as the one who acted | ADM-2, AUTH-3 | `scripts/create-admin.ts`, `deploy/scripts/create-admin.sh`, `src/server/users/commands.ts` |
+| 9.6 | Nightly backup of the database and the uploaded files with restic: encrypted on the server, sent to an S3 bucket and kept for 30 days. A script for a full restore, and a monthly restore test into a scratch database that runs by itself | SEC-10 | `deploy/scripts/backup.sh`, `deploy/scripts/restore.sh` |
+| 9.7 | Alerts. Every 5 minutes the server checks its own site through HTTPS and its disk, and pings an alert service (healthchecks.io). The backup and the restore test ping it too. The service sends an email when a check fails or the pings stop | OPS-4 | `deploy/scripts/monitor.sh`, `deploy/cron` |
+| 9.8 | Runbook: the AWS steps (instance, Elastic IP, security group, domain, S3 bucket and its role), the server setup, the GitHub settings and the first deploy. Then everyday commands, rollback, restore, moving to a new server and launch day | OPS-1–4 | `docs/RUNBOOK.md`, `README.md` |
+| 9.9 | Security pass: a test calling every action with every role, headers, CSP, `npm audit`, secrets only in the server's `.env` | SEC-2–9 | `tests/security/*` |
+| 9.10 | Performance and accessibility pass on the server, with load-test data, before launch | PRF-2–4, UI-6 | — |
+| 9.11 | Full list of DS offices with codes loaded, and their Tamil names checked with the Ministry; the Tamil and English screen text checked by Tamil- and English-speaking officers | LST-1, UI-9 | `data/places.json`, `messages/ta.json`, `messages/en.json` |
+| 9.12 | Short Sinhala guides for DS officers and Head Office, plus a user test with a few officers | — | `docs/guides/*` |
+| 9.13 | Launch. The server's made-up data and its backups are removed, and `APP_ENV` becomes `production`. The first admin is created and creates the office accounts | OPS-1 | `docs/RUNBOOK.md` |
+
+**Tests:** the `/health` route in the end-to-end tests; the first-admin script in a database test; ShellCheck on the server scripts and actionlint on the workflows, both in CI. On a local copy of the stack: a deploy, a deploy that fails its health check and rolls back (with and without a migration), and a backup with its restore. On the server: AC-22 and AC-29.
 
 **Done when:**
-- AC-20 and AC-22 pass.
-- Every other acceptance check passes again on staging.
+- AC-20, AC-22 and AC-29 pass.
+- Every other acceptance check passes again on the server, with made-up data, before launch.
 - DS offices have signed in.
 
 ## Waiting on others
@@ -226,7 +235,9 @@ These don't block Phases 1–8. Each one is needed by the phase shown.
 
 | Item | Needed by | From |
 | --- | --- | --- |
-| Where the server runs (PRD question 4) | Phase 9 | Ministry / ICTA |
+| Agreement that the data may be kept on AWS, outside Sri Lanka (Personal Data Protection Act) | Phase 9, before real data goes in | Ministry |
+| A domain name for the system, pointed at the server's Elastic IP | Phase 9 (a temporary address until then) | Ministry / ICTA |
+| The S3 bucket for backups and the server's role, in the AWS account | Phase 9 | Whoever holds the AWS account |
 | The full list of DS offices with Sinhala names | Phase 9 (sample list until then) | Ministry |
 | Renovation stages (PRD question 3) | Any time; the admin adds them | Ministry |
 | How the sheet's cases come into the system, now that the import is removed | Phase 9 | Ministry / Head Office |
