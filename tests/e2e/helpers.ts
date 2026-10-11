@@ -28,7 +28,7 @@ export function randomLetters(count: number): string {
 }
 
 /**
- * Gives the page its own client address. In production Nginx passes the real one; here it keeps
+ * Gives the page its own client address. In production Caddy passes the real one; here it keeps
  * each test's sign-ins apart, so the 10-per-minute limit (SEC-4) doesn't block a busy test run.
  */
 async function giveOwnAddress(page: Page) {

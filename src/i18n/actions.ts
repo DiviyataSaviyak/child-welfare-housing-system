@@ -14,7 +14,8 @@ export async function chooseLanguage(locale: string): Promise<void> {
     path: "/",
     maxAge: LOCALE_COOKIE_MAX_AGE,
     sameSite: "lax",
-    secure: process.env.APP_ENV === "production",
+    // The server is reached over HTTPS while it is staging too, not only in production.
+    secure: process.env.BETTER_AUTH_URL?.startsWith("https://") ?? false,
   });
   // Layouts hold the menu and the header, and don't render again on their own.
   revalidatePath("/", "layout");
