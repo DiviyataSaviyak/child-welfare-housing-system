@@ -1,6 +1,6 @@
 # Diviyata Sawiyak — Product Requirements Document
 
-2026-09-28, updated 2026-10-07 · Janindu Pramod
+2026-09-28, updated 2026-10-09 · Janindu Pramod
 
 > **Status:** draft, awaiting approval. This file mirrors the [review copy](https://claude.ai/code/artifact/9b67ede5-1f80-41e8-96be-0af36e03eda2) of the PRD.
 
@@ -251,17 +251,17 @@ The system holds children's personal data, and it must be easy for non-technical
 - **Ease of use.** Each screen does one main task, in plain words, using the sheet's own terms such as නිවාසගත and පළමු වාරිකය.
 - **Personal data.** Cases hold the names, NICs, addresses and phone numbers of children and vulnerable families. Handling must meet the [Personal Data Protection Act, No. 9 of 2022](https://www.dpa.gov.lk/Background.php): each role sees only what it needs, and every change is logged.
 - **Real data stays out of the code.** The sheet is never copied into the code repository, and tests use made-up cases.
-- **Hosting, storage and backups.** The system, its database, and its photos and documents stay on a server in Sri Lanka, such as the Lanka Government Cloud or a Ministry server; which one is still open (question 4). Files are private and open only after a login and permission check. The database and files are backed up daily, encrypted, to a second place in Sri Lanka. How long records are kept is still open (question 5).
+- **Hosting, storage and backups.** The system, its database, and its photos and documents run on one Amazon Web Services (AWS) EC2 server in the cloud (9 Oct 2026, answering question 4). Officers sign in from DS offices across the country, and the Ministry has no server or database of its own for the system. AWS has no region in Sri Lanka; the nearest is Mumbai, in India. The Personal Data Protection Act limits keeping personal data outside Sri Lanka, especially for a public authority, so the Ministry must agree to this before real data goes in. Files are private and open only after a login and permission check. The database and files are backed up every night, encrypted, to separate AWS storage (S3). How long records are kept is still open (question 5).
 
 ## Open questions for the Ministry
 
-These were set aside on 28 Sep, to be answered later. Until then the [SPEC](SPEC.md#13-deferred-questions-and-the-defaults-used) uses a default for each. Questions 2, 10 and 11 were settled on 28 Sep and removed: land cases stay out of the system, and no documents are required. The other numbers stay the same, because the prototype's notes use them. Question 12 was added on 28 Sep. Question 8 was answered on 7 Oct: the screens come in Sinhala, Tamil and English.
+These were set aside on 28 Sep, to be answered later. Until then the [SPEC](SPEC.md#13-deferred-questions-and-the-defaults-used) uses a default for each. Questions 2, 10 and 11 were settled on 28 Sep and removed: land cases stay out of the system, and no documents are required. The other numbers stay the same, because the prototype's notes use them. Question 12 was added on 28 Sep. Question 8 was answered on 7 Oct: the screens come in Sinhala, Tamil and English. Question 4 was answered on 9 Oct: the system runs on one AWS EC2 server.
 
 | # | Question | Why it matters |
 | --- | --- | --- |
 | 1 | Siblings: one case per family, or one per child? | 9 guardians already have 2 or 3 children listed. This decides whether a family can receive Rs. 2M more than once. |
 | 3 | What are the renovation stages? | Foundation, walls and roof may not fit repair work. |
-| 4 | Where will the system be hosted? | This decides cost, security and who runs it. |
+| 4 | Where will the system be hosted? **Answered 9 Oct 2026: on one AWS EC2 server.** | This decides cost, security and who runs it. The Ministry must still agree that the data may be kept outside Sri Lanka. |
 | 5 | How long are records kept? | Rejected, stopped and completed cases hold personal data. |
 | 6 | What happens to the money on a stopped case? | One sheet case is already marked as a project that cannot be carried out. |
 | 7 | How is a beneficiary replaced? | The sheet has "another name submitted for approval". It could be a new case or an edit. |

@@ -19,12 +19,15 @@ Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists
 - the DS home's money panel and its full to-do panel
 - Head Office's dashboard, the Excel exports of the case lists, and a load-test data script
 - tests and CI
+- the server's files (Phase 9's code tasks): the two production images, the Compose stack behind Caddy, the server setup, automatic deploys from `main` with rollback, the first-admin script, backups, alerts, the runbook, the security tests and the officers' guides
 
 Phase 7 was built one task at a time: 7.1 (the load-test data script), 7.2 (the Head Office dashboard), 7.3 (the Excel export of the case lists), 7.4 (an export in the old sheet's layout, since removed) and 7.5 (the notifications beside the dashboard).
 
 Phase 8 (the sheet import) was built one task at a time, on the branch `phase-8-import`: 8.1 (the made-up sample sheet), 8.2 (the import script), 8.3 (the import report), 8.4 (the DS office filling in imported cases) and 8.5 (Head Office confirming them). It was removed on 6 Oct 2026, because the sheet is still being updated; see "Sheet import (removed)" below.
 
-The stack is set in `docs/SPEC.md`: Next.js 16 (App Router, TypeScript), PostgreSQL + Prisma 7, Better Auth, next-intl (Sinhala, Tamil and English), Zod, Tailwind 4 + shadcn/ui (Radix), ExcelJS and sharp. It runs self-hosted with Docker Compose on a server in Sri Lanka. Every permission check lives in the server-side data-access layer (`src/server/`), never in middleware or the UI alone.
+Phase 9 (go-live, redesigned 9 Oct 2026 for one AWS EC2 server) has its code tasks built on the branch `phase-9-go-live`: 9.1 to 9.9 and the guides of 9.12. What is left needs the server or people: the AWS account and the first deploy (runbook), the performance and accessibility pass (9.10), the full DS office list and the language checks (9.11), the user test (9.12) and launch (9.13).
+
+The stack is set in `docs/SPEC.md`: Next.js 16 (App Router, TypeScript), PostgreSQL + Prisma 7, Better Auth, next-intl (Sinhala, Tamil and English), Zod, Tailwind 4 + shadcn/ui (Radix), ExcelJS and sharp. It runs with Docker Compose on one Amazon EC2 server, behind Caddy (Phase 9, redesigned 9 Oct 2026). Every permission check lives in the server-side data-access layer (`src/server/`), never in middleware or the UI alone.
 
 ## Commands
 
@@ -42,6 +45,8 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 | Change the database schema | edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <change>` and `npx prisma generate` (Prisma 7's `migrate dev` no longer regenerates the client). When `migrate dev` stops to ask about a change (for example a new unique column), write the SQL with `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` into a new `prisma/migrations/<timestamp>_<change>/migration.sql` and apply it with `npx prisma migrate deploy` |
 | Put the sample accounts back to their start state | `npx tsx prisma/seed-users.ts --reset` (the end-to-end tests do this themselves) |
 | Add 5,000 made-up cases for load tests, or remove them | `npm run db:seed-load` (`-- --count 500`, `-- --seed 7`), `npm run db:seed-load -- --remove`. Remove them before running the end-to-end tests |
+| Build the server's images locally | `docker build -f docker/Dockerfile --target app .` (or `--target tools`) |
+| Check the server scripts and workflows (as CI does) | `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.10.0 deploy/server-setup.sh deploy/scripts/*.sh`, `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12` |
 | Add demo cases (15 per DS office with an officer, with their history), or remove them | `npm run db:seed-demo` (`-- --per-office 30`, `-- --seed 7`), `npm run db:seed-demo -- --remove`. Remove them before running the end-to-end tests |
 
 ## Things to know when coding
@@ -61,7 +66,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **Limit case queries with `officeFilter(viewer)`** from `src/server/permissions.ts`. A DS officer sees only their own office, Head Office sees every office, and an admin sees none.
 - **Every change calls `writeAudit(tx, …)`** (`src/server/audit.ts`) in the same `db.$transaction` as the change. A database trigger refuses any update or delete of `audit_log`.
 - **Better Auth's HTTP endpoints are deliberately not mounted.** Sign-in, sign-out and password changes are Server Actions in `src/app/(auth)/actions.ts`. They pass through our lockout (`src/server/auth/lockout.ts`) and the per-IP rate limit.
-- **The rate limit trusts `X-Forwarded-For`.** In production, Nginx must overwrite that header with the real client address (Phase 9). The end-to-end tests give each page its own address.
+- **The rate limit trusts `X-Forwarded-For`.** On the server, Caddy overwrites that header with the real client address (`deploy/caddy/Caddyfile`). The end-to-end tests give each page its own address.
 - **The session ends after 30 minutes idle or 12 hours in total.** The idle time is our `session.last_active_at`, checked in `getContext()`.
 - **`src/proxy.ts` has only two jobs:** a quick redirect of signed-out visitors, and a fresh CSP nonce on every page. Because of the nonce, the root layout makes every page render per request.
 - **Sample accounts** exist in development and tests only, never in staging or production:
@@ -100,7 +105,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **A new case's id is made when its form page renders**, so a form sent twice finds the saved case and changes nothing (ERR-8). Every later save sends the `version` it opened with; a stale one is refused with `conflict` (CASE-10, ERR-3).
 - **Case numbers come from `case_number_counter`.** The row for an office and year stays locked until the submit commits, so parallel submits take turns. Two first submits of a year can still meet on its insert; `saveCase` tries again.
 - **Uploads are one Server Action request per file**, sent as soon as it is chosen (at most 10 MB). The file row's `case_id` stays empty until the case form is saved, which attaches only the actor's own unattached uploads. An upload never saved with a case is removed after a day.
-- **Body limits are 16 MB** (`serverActions.bodySizeLimit` and `proxyClientMaxBodySize` in `next.config.ts`), for photos of up to 15 MB (Phase 6). Above its limit the proxy silently cuts a request body short. Nginx will need `client_max_body_size` of at least 16 MB (Phase 9).
+- **Body limits are 16 MB** (`serverActions.bodySizeLimit` and `proxyClientMaxBodySize` in `next.config.ts`), for photos of up to 15 MB (Phase 6). Above its limit the proxy silently cuts a request body short. Caddy on the server allows 20 MB (`request_body` in `deploy/caddy/Caddyfile`).
 - **Files live under `FILES_DIR`** (default `data/files`, which git ignores), named by a random UUID in two-character sub-folders. `/files/[id]` applies the case's office rules. The proxy leaves its CSP off `/files/` responses, because the page policy (`object-src 'none'`) could stop the browser's PDF viewer.
 - **One case form for both roles.** `src/components/forms/case-form.tsx` builds its own `FormData` instead of using `<form action>`, so typed values and chosen files survive a refused save. Each role's `actions.ts` checks its own role, then calls `src/server/cases/form-actions.ts`.
 - **Client components may import types from `src/server/`**, never values.
@@ -201,6 +206,19 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **End-to-end tests:** `screenText` leaves out text marked with another `lang`, such as the picker's names. `chooseLanguage(page, "தமிழ்")` in `tests/e2e/helpers.ts` switches a page's language; `tests/e2e/languages.spec.ts` covers AC-27.
 - **Lengths:** Tamil labels run longer than Sinhala ones. The header keeps the name, office and buttons on one line; the dashboard's table scrolls rather than being cut off.
 
+### The server (Phase 9)
+
+- **`docs/RUNBOOK.md` is the operator's manual**: the AWS steps, the server setup, GitHub's settings, everyday commands, rollback, restore, moving servers and launch day. Keep it in step with the scripts.
+- **One Dockerfile, two images** (`docker/Dockerfile`): `app` is the standalone server, run as `node`, with a `HEALTHCHECK` on `/health`; `tools` is the whole project for migrations, the lists seed and the scripts. The build sets `APP_ENV=production`, because `next.config.ts` fixes the headers (HSTS) at build time, and `NEXT_DEPLOYMENT_ID` to the commit, so an open page reloads after a deploy (AC-29). Build-only placeholders let the server code load; the real secrets come from the server's `.env`. OpenSSL is installed before `npm ci`, because Prisma picks its migration engine by the OpenSSL it finds and can't fetch another as `node`. `outputFileTracingExcludes` in `next.config.ts` keeps tests, scripts and notes out of the standalone output.
+- **`/health`** (`src/app/health/route.ts`, `src/server/health.ts`) answers `{ ok }` with 200 or 503 and nothing else. It is public, like the sign-in page.
+- **The stack** is `deploy/compose.yml` (project name `diviyata`): Caddy (`deploy/caddy/Caddyfile`: certificate, HTTP to HTTPS, TLS 1.2+, 20 MB bodies, `X-Forwarded-For` overwritten, a maintenance page while the app is down), the app, PostgreSQL with no published port, and `tools` under a profile. Images are pinned; a new version is a pull request.
+- **Two database accounts (SEC-3).** The owner `diviyata` runs migrations, the seed and `deploy/scripts/db-grants.sql`; the app connects as `diviyata_app`, which may only read and write rows, add audit rows, and not read `_prisma_migrations`. The grants run on every deploy, so a new table is covered. If the app ever needs another privilege (a raw `TRUNCATE`, say), add it there.
+- **Server scripts** are bash in `deploy/scripts/`, sharing `lib.sh` (`compose`, `db_dump`, `db_restore`, `ping_alert`). They must pass ShellCheck (`.shellcheckrc`) and keep LF line endings. `deploy.sh` stops the app only when the release brings migrations, and on failure puts back the release files, the database (if a migration ran) and the previous app. `load_env` exports `.env` but only reads `release.env`: an exported `APP_IMAGE` would beat the env files, and Compose would keep the old app (found by the local test). On 11 Oct 2026 the scripts were run against Docker Desktop with a stand-in server container (not kept in the repo): a first deploy, a deploy with a migration, a failed deploy with and without a migration, a rollback, a backup, the restore test, a full restore and the monitor all passed.
+- **`ci.yml` is reusable**: pushes to `main` run it through `deploy.yml`, which deploys only when it passes, and only once `DEPLOY_HOST` is set. Its `server-files` job runs ShellCheck, actionlint, `compose config` and `caddy validate`.
+- **The first admin** comes from `scripts/create-admin.ts` (`deploy/scripts/create-admin.sh` on the server): `createAccount` with a null actor, so the history says the system made it. It refuses while an active admin exists, unless `--another`.
+- **Security tests (9.9)** are in `tests/security/`: `access.test.ts` calls every Server Action and route handler as every kind of visitor, with the real `requireRole` and a made-up session, and fails when a new action or route has no rule in its `RULES`; `secrets.test.ts` scans tracked files; `headers.spec.ts` (Playwright, which now also runs `tests/security/*.spec.ts`) reads the headers of the running app.
+- **The officers' guides** are Sinhala Markdown in `docs/guides/`, quoting the screens' own labels from `messages/si.json`. Update them when a label they quote changes.
+
 ### Sheet import (removed)
 
 - **Phase 8's import was taken out on 6 Oct 2026**, while the sheet is still being updated: the sample sheet and import scripts, `src/server/import/`, the DS office's fill-in page and "details missing" tab, Head Office's `/ho/imported` screen and the confirmation on the case page. The migration `20261006090000_remove_sheet_import` drops `case.sheet_key`, `sheet_row`, `sheet_serial` and `sheet_notes`, the `IMPORTED` status and the `CONFIRM_IMPORT` decision. It stops, changing nothing, if a case or decision still holds one of them.
@@ -238,10 +256,11 @@ These may not be in `docs/PRD.md` yet. Once the PRD is approved, it overrides th
 - **Installment status:** Not started → Processing (with an expected date) → Released (with the actual date).
 - **Documents (28 Sep):** a new case has one optional upload, "වෙනත් ලේඛන" (other documents). No document is required, so the field research report and GN certificate are not separate uploads.
 - **Kinds of help (28 Sep):** only a new house or the renovation of an existing house. Land cases have not started, so leave them out of the system for now. Don't design for them.
+- **Hosting (9 Oct):** one Amazon EC2 server, because officers sign in from DS offices across the country and there is no Ministry server or database for the system. Every push to `main` that passes CI deploys to it through GitHub Actions. Keep it simple: one server with Docker Compose, a setup script and plain shell scripts; no clusters and no configuration tools such as Ansible.
 - **Still open with the Ministry:**
   - siblings (one case per family or one per child)
   - renovation stages
-  - hosting
+  - agreement to keep the data on AWS, outside Sri Lanka (the Personal Data Protection Act), before real data goes in
   - data retention
 
 ## Source data (the old sheet)

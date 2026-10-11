@@ -7,6 +7,8 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const nextConfig: NextConfig = {
   // Standalone output is what the production Docker image runs (OPS-2).
   output: "standalone",
+  // The tracer copies the project's files beside the server; tests, scripts and notes don't belong there.
+  outputFileTracingExcludes: { "*": ["./tests/**", "./scripts/**", "./docker/**", "./*.md"] },
   poweredByHeader: false,
   // ExcelJS is large and runs only on the server. Node loads it from node_modules instead of the
   // bundler compiling it, which in development held up every other page while it compiled.

@@ -26,8 +26,8 @@ export function createRateLimiter({ limit, windowMs }: { limit: number; windowMs
 export const signInLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
 /**
- * The client's IP address. In production Nginx sets X-Forwarded-For to the real address (Phase 9),
- * so the first entry is trusted; without it every request counts as "unknown".
+ * The client's IP address. On the server Caddy overwrites X-Forwarded-For with the real address
+ * (deploy/caddy/Caddyfile), so the first entry is trusted; without it every request counts as "unknown".
  */
 export function clientIp(headers: Headers): string {
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();

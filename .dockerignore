@@ -1,0 +1,19 @@
+# What never goes into an image: secrets, real data, uploads, builds and git.
+.git
+.github
+.env
+.env.*
+node_modules
+.next
+src/generated
+data/files
+test-results
+playwright-report
+coverage
+*.log
+*.tsbuildinfo
+
+# Not needed to build or run the system.
+docs
+deploy
+.claude

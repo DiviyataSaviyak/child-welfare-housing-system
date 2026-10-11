@@ -1,0 +1,38 @@
+# The proxy in front of the app (SEC-1). SITE_ADDRESS is the server's domain name; Caddy gets its
+# certificate from Let's Encrypt, renews it, and answers plain HTTP with a redirect to HTTPS.
+# Set to "localhost" (a local copy of the stack), Caddy uses its own certificate instead.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	tls {
+		protocols tls1.2 tls1.3
+	}
+
+	# Photos of up to 15 MB and documents of up to 10 MB, one per request, with room for the form.
+	# The app's own limit is 16 MB (next.config.ts).
+	request_body {
+		max_size 20MB
+	}
+
+	encode zstd gzip
+
+	reverse_proxy app:3000 {
+		# The client's real address, never one the client sent: the sign-in rate limit reads the
+		# first entry (SEC-4, src/server/auth/rate-limit.ts).
+		header_up X-Forwarded-For {remote_host}
+		header_up -X-Real-IP
+	}
+
+	# While the app is being swapped or restored, a short page in the three languages.
+	handle_errors 502 503 504 {
+		root * /srv
+		rewrite * /maintenance.html
+		file_server {
+			status 503
+		}
+	}
+
+	log
+}
