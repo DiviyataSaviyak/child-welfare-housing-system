@@ -27,7 +27,7 @@ Then open http://localhost:3000. `CLAUDE.md` lists every command, including the 
 
 ## The server
 
-The system runs with Docker Compose on one Amazon EC2 server. Every push to `main` that passes CI is built into two images and deployed there by GitHub Actions; the server backs itself up every night and reports to an alert service. The [runbook](docs/RUNBOOK.md) covers the first setup, everyday commands, rollback, restore and launch day. The server's files are in `deploy/`, and the images are built from `docker/Dockerfile`.
+The system runs with Docker Compose on one Amazon EC2 server. Every push to `main` that passes CI is built into two images and deployed there by GitHub Actions; the server backs itself up every night and reports to an alert service. **To run it, start with [`deploy/README.md`](deploy/README.md):** one command, `bash deploy/ops.sh`, does the setup, launch day, status, logs, rollback, backups and restores from your own computer. The [runbook](docs/RUNBOOK.md) explains what happens underneath. The images are built from `docker/Dockerfile`.
 
 ## Guides
 

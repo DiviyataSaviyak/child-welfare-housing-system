@@ -55,3 +55,6 @@ next-env.d.ts
 
 # uploaded files never belong in git (SEC-11)
 /data/files/
+
+# deploy/ops.sh's settings (deploy/settings.example.env)
+/deploy/settings.env

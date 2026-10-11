@@ -33,6 +33,17 @@ The server scripts live in the repository's `deploy/` folder and are copied to `
 
 Do these once, in this order. Until the domain name arrives, a temporary address works the same way (PLAN, "Waiting on others").
 
+**The short way.** After the AWS steps (step 1), `deploy/ops.sh` does steps 2 to 6 from your own computer, in Git Bash, with the GitHub CLI signed in (`gh auth login`). [`deploy/README.md`](../deploy/README.md) lists all its commands, for every day as well:
+
+```bash
+cp deploy/settings.example.env deploy/settings.env   # then fill it in
+bash deploy/ops.sh setup          # healthchecks.io, the server, GitHub, the first deploy, a backup, the admin
+bash deploy/ops.sh create-admin   # the first admin, if setup didn't make one
+bash deploy/ops.sh launch         # launch day (9.13), once the Ministry has agreed
+```
+
+`setup` is safe to run again. With `DOMAIN` empty it uses `<elastic-ip-with-dashes>.sslip.io`, which needs no DNS. It passes the deploy key from the server straight to GitHub, so the key never lands on your computer, and it shows `RESTIC_PASSWORD` at the end, for paper or the Ministry's password safe. The steps below are what the scripts do, for doing them by hand.
+
 ### 1. AWS
 
 All in the Mumbai region, `ap-south-1` (OPS-2).
@@ -74,9 +85,9 @@ Keep each check's ping URL for the next step. The service receives only short st
 From a checkout of the repository on your own computer:
 
 ```bash
-scp -r deploy ubuntu@<elastic ip>:
+scp -r deploy/server ubuntu@<elastic ip>:diviyata-setup
 ssh ubuntu@<elastic ip>
-sudo bash deploy/server-setup.sh --domain <domain> --email <ops email> \
+sudo bash diviyata-setup/server-setup.sh --domain <domain> --email <ops email> \
   --backups s3:s3.ap-south-1.amazonaws.com/<bucket>/diviyata
 ```
 
@@ -92,13 +103,13 @@ Write `RESTIC_PASSWORD` on paper or in the Ministry's password safe, and keep it
 
 In the repository's **Settings**:
 
-1. **Environments → New environment** `production`:
-   - variable `DEPLOY_HOST`: the domain name (the same name the known-hosts line starts with)
+1. **Secrets and variables → Actions → Variables → New repository variable** `DEPLOY_HOST`: the domain name (the same name the known-hosts line starts with). It must be a repository variable, not the environment's: the deploy job checks it before it enters the environment, and skips itself, green, when it sees none.
+2. **Environments → New environment** `production`:
    - secret `DEPLOY_SSH_KEY`: the output of `sudo cat /home/deploy/.ssh/github-actions` on the server, then remove it there with `sudo shred -u /home/deploy/.ssh/github-actions`
    - secret `DEPLOY_KNOWN_HOSTS`: the line `server-setup.sh` printed
    - optionally, required reviewers, if a person should approve each deploy
-2. **Branches → Branch protection** for `main`: require a pull request, and the `CI` checks (`server-files` and `check`) to pass.
-3. **Actions → General → Workflow permissions**: read repository contents (the workflows ask for `packages: write` themselves).
+3. **Branches → Branch protection** for `main`: require a pull request, and the `CI` checks (`server-files` and `check`) to pass.
+4. **Actions → General → Workflow permissions**: read repository contents (the workflows ask for `packages: write` themselves).
 
 The images go to `ghcr.io/<owner>/diviyata-app` and `diviyata-tools`. They stay private; the deploy job's own token lets the server pull them.
 
@@ -134,7 +145,7 @@ The app's log holds ids, never names, NICs, addresses or phone numbers (SEC-8).
 
 ### How a deploy works (OPS-3)
 
-`deploy.yml` runs `ci.yml`, builds the app and tools images tagged with the commit, copies `deploy/compose.yml`, `deploy/caddy/` and `deploy/scripts/` to the server, and runs `scripts/deploy.sh <app image> <tools image>` there. `deploy.sh`:
+`deploy.yml` runs `ci.yml`, builds the app and tools images tagged with the commit, copies `deploy/server/compose.yml`, `deploy/server/caddy/` and `deploy/server/scripts/` to the server, and runs `scripts/deploy.sh <app image> <tools image>` there. `deploy.sh`:
 
 1. pulls the images and backs up the database into `backups/` (the newest 5 are kept)
 2. if the release brings migrations, stops the app (Caddy shows a maintenance page in three languages) and runs them
@@ -196,7 +207,7 @@ All of them are in `/opt/diviyata/.env` (SEC-9). GitHub holds only the deploy ke
 
 - **Ubuntu's security updates** install by themselves, rebooting at 03:30 when needed. Once a month, outside office hours: `sudo apt update && sudo apt upgrade`, which also updates Docker.
 - **The app's dependencies** come through pull requests (STK-1); CI runs `npm audit` (SEC-12).
-- **PostgreSQL, Caddy and Node** are pinned in `deploy/compose.yml` and `docker/Dockerfile`. A new minor version is a pull request changing the tag. A new PostgreSQL major version needs a dump and restore: plan it with a backup.
+- **PostgreSQL, Caddy and Node** are pinned in `deploy/server/compose.yml` and `docker/Dockerfile`. A new minor version is a pull request changing the tag. A new PostgreSQL major version needs a dump and restore: plan it with a backup.
 
 ## Before launch (tasks 9.10 to 9.13)
 

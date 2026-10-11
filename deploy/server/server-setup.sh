@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Prepares a fresh Ubuntu 24.04 server for the system (OPS-2, SEC-9). Run it once as root, from the
-# repository's deploy/ folder copied to the server (docs/RUNBOOK.md, "Set up the server"):
+# Prepares a fresh Ubuntu 24.04 server for the system (OPS-2, SEC-9). "ops setup" (deploy/ops.sh)
+# copies the repository's deploy/server/ folder to the server as ~/diviyata-setup and runs it there,
+# as root; by hand (docs/RUNBOOK.md, "The server"):
 #
-#   sudo bash deploy/server-setup.sh --domain diviyata.example.lk --email ops@example.lk \
+#   sudo bash diviyata-setup/server-setup.sh --domain diviyata.example.lk --email ops@example.lk \
 #     --backups s3:s3.ap-south-1.amazonaws.com/<bucket>/diviyata
+#
+# Optional: --hc-monitor, --hc-backup and --hc-restore set the healthchecks.io ping URLs, and --quiet
+# leaves out the closing notes on GitHub ("ops setup" does that part itself).
 #
 # Running it again changes nothing that is already in place, and never overwrites a value in .env;
 # a flag given again replaces only its own value. It:
@@ -20,12 +24,16 @@ SOURCE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 DEPLOY_USER=deploy
 DEPLOY_KEY=/home/$DEPLOY_USER/.ssh/github-actions
 
-domain="" email="" backups=""
+domain="" email="" backups="" hc_monitor="" hc_backup="" hc_restore="" quiet=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) domain=$2 && shift 2 ;;
     --email) email=$2 && shift 2 ;;
     --backups) backups=$2 && shift 2 ;;
+    --hc-monitor) hc_monitor=$2 && shift 2 ;;
+    --hc-backup) hc_backup=$2 && shift 2 ;;
+    --hc-restore) hc_restore=$2 && shift 2 ;;
+    --quiet) quiet=1 && shift ;;
     *) echo "unknown option: $1" >&2 && exit 1 ;;
   esac
 done
@@ -164,6 +172,9 @@ secret() { openssl rand -hex 32; }
 [ -z "$domain" ] || set_env SITE_DOMAIN "$domain" 1
 [ -z "$email" ] || set_env ACME_EMAIL "$email" 1
 [ -z "$backups" ] || set_env RESTIC_REPOSITORY "$backups" 1
+[ -z "$hc_monitor" ] || set_env HC_MONITOR_URL "$hc_monitor" 1
+[ -z "$hc_backup" ] || set_env HC_BACKUP_URL "$hc_backup" 1
+[ -z "$hc_restore" ] || set_env HC_RESTORE_URL "$hc_restore" 1
 set_env APP_ENV staging
 set_env DB_OWNER_PASSWORD "$(secret)"
 set_env APP_DB_PASSWORD "$(secret)"
@@ -182,10 +193,11 @@ if [ -n "$missing" ]; then
   echo "Still empty in $env_file: $missing"
   echo "Set them with this script's flags, or edit the file: sudo -u $DEPLOY_USER nano $env_file"
 fi
+[ "$quiet" = 0 ] || exit 0
 cat <<EOF
 
 GitHub (Settings > Environments > production), from docs/RUNBOOK.md:
-  variable DEPLOY_HOST          $host
+  variable DEPLOY_HOST          $host   (a repository variable: Settings > Secrets and variables > Actions)
   secret   DEPLOY_SSH_KEY       the private key: sudo cat $DEPLOY_KEY
                                  (then remove it from the server: sudo shred -u $DEPLOY_KEY)
   secret   DEPLOY_KNOWN_HOSTS   $host $host_key

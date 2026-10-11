@@ -2,10 +2,12 @@ name: Deploy
 
 # OPS-3: every push to main that passes CI reaches the server with no manual step.
 # 1. ci.yml's checks.  2. The two images, pushed to GitHub's container registry, tagged with the
-# commit.  3. The server's files copied over SSH, and deploy/scripts/deploy.sh run there.
+# commit.  3. The server's files copied over SSH, and deploy/server/scripts/deploy.sh run there.
 #
-# Settings (docs/RUNBOOK.md, "GitHub"), in the "production" environment:
+# Settings (docs/RUNBOOK.md, "GitHub"). A repository variable, because the deploy job's "if" is read
+# before the job enters its environment, when the environment's variables aren't visible yet:
 #   variable DEPLOY_HOST          the server's domain name or Elastic IP
+# and in the "production" environment:
 #   secret   DEPLOY_SSH_KEY       the deploy user's private key, from server-setup.sh
 #   secret   DEPLOY_KNOWN_HOSTS   the server's host key line, from server-setup.sh
 # Until DEPLOY_HOST is set, the images are built and pushed but nothing is deployed.
@@ -109,7 +111,7 @@ jobs:
       # The stack's files only; .env, release.env and the backups on the server are never touched.
       - name: Copy the server files
         run: |
-          rsync -rlt --chmod=D750,F640 deploy/compose.yml deploy/caddy deploy/scripts server:/opt/diviyata/
+          rsync -rlt --chmod=D750,F640 deploy/server/compose.yml deploy/server/caddy deploy/server/scripts server:/opt/diviyata/
           ssh server 'chmod 750 /opt/diviyata/scripts/*.sh'
 
       # The server pulls with this job's own token, which expires when the job ends.

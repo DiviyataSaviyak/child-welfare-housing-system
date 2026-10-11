@@ -1,4 +1,4 @@
-# Local development database only. The server's stack is deploy/compose.yml (Phase 9).
+# Local development database only. The server's stack is deploy/server/compose.yml (Phase 9).
 services:
   db:
     image: postgres:17-alpine
