@@ -39,11 +39,12 @@ async function officeTaken(
 
 /**
  * ADM-2: creates an account with a generated username and a temporary password that must be
- * changed at first sign-in. The password is returned once and only its hash is stored.
+ * changed at first sign-in. The password is returned once and only its hash is stored. The actor
+ * is null for the first admin, whom the system creates (scripts/create-admin.ts).
  */
 export async function createAccount(
   db: PrismaClient,
-  actorId: string,
+  actorId: string | null,
   input: AccountInput,
 ): Promise<Result<Credentials>> {
   if (!(await officeUsable(db, input.dsOfficeId))) return { ok: false, error: "officeUnavailable" };
