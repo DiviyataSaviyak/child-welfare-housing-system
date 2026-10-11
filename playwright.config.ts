@@ -4,7 +4,9 @@ const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
-  testDir: "tests/e2e",
+  testDir: "tests",
+  // The end-to-end tests, and the security checks that need the running app (task 9.9).
+  testMatch: ["e2e/**/*.spec.ts", "security/**/*.spec.ts"],
   // Puts the sample accounts back to their starting state before every run.
   globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: true,
