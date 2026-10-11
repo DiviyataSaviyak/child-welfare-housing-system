@@ -25,6 +25,14 @@ npm run dev
 
 Then open http://localhost:3000. `CLAUDE.md` lists every command, including the tests.
 
+## The server
+
+The system runs with Docker Compose on one Amazon EC2 server. Every push to `main` that passes CI is built into two images and deployed there by GitHub Actions; the server backs itself up every night and reports to an alert service. The [runbook](docs/RUNBOOK.md) covers the first setup, everyday commands, rollback, restore and launch day. The server's files are in `deploy/`, and the images are built from `docker/Dockerfile`.
+
+## Guides
+
+Short Sinhala guides for the officers: [DS offices](docs/guides/ds-officer.md) and [Head Office](docs/guides/head-office.md).
+
 ## Data protection
 
 This system holds personal data about children and vulnerable families. Real data never goes into this repository, its tests or its fixtures. Use made-up people only.
