@@ -42,21 +42,29 @@ test("a wrong password shows the general message and keeps the username", async 
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("AC-4: five wrong passwords lock the account for 15 minutes, with the same message as an unknown username", async ({
+test("AC-4: each wrong password shows the attempts left, the fifth locks the account, and an unknown username reads the same", async ({
   page,
 }) => {
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
-    await signIn(page, "ds0199", `wrong-password-${attempt}`);
-    await expect(signInError(page)).toHaveText(TEXT.wrongSignIn);
-  }
+  const messages = async (username: string) => {
+    const seen: string[] = [];
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await signIn(page, username, `wrong-password-${attempt}`);
+      if (attempt < 5) await expect(signInError(page)).toHaveText(TEXT.attemptsLeft(5 - attempt));
+      else await expect(signInError(page)).toHaveText(TEXT.locked);
+      seen.push(await signInError(page).innerText());
+    }
+    return seen;
+  };
+
+  const known = await messages("ds0199");
 
   // Now even the right password is refused.
   await signIn(page, "ds0199");
   await expect(page).toHaveURL(/\/login/);
-  const lockedMessage = await signInError(page).innerText();
+  await expect(signInError(page)).toHaveText(TEXT.locked);
 
-  await signIn(page, "nobody-by-this-name", "whatever-password");
-  await expect(signInError(page)).toHaveText(lockedMessage);
+  const unknown = await messages(`nobody-${Date.now()}`);
+  expect(unknown).toEqual(known);
 });
 
 test("a temporary password must be replaced before anything else (AUTH-3)", async ({ page }) => {

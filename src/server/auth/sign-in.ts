@@ -6,10 +6,40 @@ import type { Context } from "../context";
 import { db } from "../db";
 import { logEvent } from "../log";
 import { normaliseUsername } from "./accounts";
-import { AFTER_SUCCESSFUL_SIGN_IN, afterFailedSignIn, isLocked, temporaryPasswordExpired } from "./lockout";
+import {
+  AFTER_SUCCESSFUL_SIGN_IN,
+  afterFailedSignIn,
+  attemptsLeft,
+  isLocked,
+  type LockState,
+  lockMinutesLeft,
+  temporaryPasswordExpired,
+} from "./lockout";
 import { isRole, type Role } from "./roles";
 
-export type SignInResult = { ok: true; role: Role; mustChangePassword: boolean } | { ok: false };
+export type SignInRefusal = { kind: "wrong"; attemptsLeft: number } | { kind: "locked"; minutesLeft: number };
+
+export type SignInResult =
+  { ok: true; role: Role; mustChangePassword: boolean } | { ok: false; refusal: SignInRefusal };
+
+/**
+ * Lock states for usernames that have no account, kept in memory like the rate limit. They count down and
+ * lock exactly as a real account does, so the messages never show whether a username exists (AUTH-2).
+ */
+const unknownNames = new Map<string, LockState>();
+
+function unknownNameState(accountName: string, now: Date): LockState {
+  if (unknownNames.size > 10_000) {
+    for (const [name, state] of unknownNames) if (!isLocked(state, now)) unknownNames.delete(name);
+  }
+  return unknownNames.get(accountName) ?? AFTER_SUCCESSFUL_SIGN_IN;
+}
+
+function refusalFor(state: LockState, now: Date): { ok: false; refusal: SignInRefusal } {
+  return isLocked(state, now)
+    ? { ok: false, refusal: { kind: "locked", minutesLeft: lockMinutesLeft(state, now) } }
+    : { ok: false, refusal: { kind: "wrong", attemptsLeft: attemptsLeft(state) } };
+}
 
 function errorCode(error: { body?: unknown }): string | null {
   const body = error.body as { code?: unknown } | undefined;
@@ -18,8 +48,9 @@ function errorCode(error: { body?: unknown }): string | null {
 
 /**
  * Checks a username and password (AUTH-1) and, if they are right, starts a session.
- * Every refusal looks the same to the person signing in, whether the username exists, the password
- * is wrong, the account is locked or disabled, or the temporary password has expired (AUTH-2).
+ * A refusal says how many tries are left before the 5th wrong one locks the account, or how long the lock
+ * has to run. It reads the same whether the username exists, the password is wrong, the account is
+ * disabled, or the temporary password has expired (AUTH-2): each of those counts as a wrong try.
  */
 export async function attemptSignIn(
   input: { username: string; password: string },
@@ -39,14 +70,52 @@ export async function attemptSignIn(
     },
   });
 
-  if (user && isLocked(user, now)) {
+  if (!user) {
+    const state = unknownNameState(accountName, now);
+    if (isLocked(state, now)) {
+      logEvent("sign_in_refused", { reason: "locked", userId: null });
+      return refusalFor(state, now);
+    }
+    try {
+      // Better Auth still checks the password, so an unknown name takes as long as a known one.
+      await auth.api.signInUsername({
+        body: { username: accountName, password: input.password },
+        headers: requestHeaders,
+      });
+    } catch (error) {
+      if (!isAPIError(error)) throw error;
+    }
+    const next = afterFailedSignIn(state, now);
+    unknownNames.set(accountName, next);
+    logEvent("sign_in_failed", { reason: "unknown_user" });
+    return refusalFor(next, now);
+  }
+
+  if (isLocked(user, now)) {
     logEvent("sign_in_refused", { reason: "locked", userId: user.id });
-    return { ok: false };
+    return refusalFor(user, now);
   }
-  if (user && temporaryPasswordExpired(user, now)) {
-    logEvent("sign_in_refused", { reason: "temporary_password_expired", userId: user.id });
-    return { ok: false };
-  }
+
+  /** Counts a wrong try against the account, locking it on the 5th. */
+  const refuse = async (reason: string) => {
+    const next = afterFailedSignIn(user, now);
+    await db.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: next });
+      if (next.lockedUntil) {
+        await writeAudit(tx, {
+          actorId: null,
+          action: "account_locked",
+          entityType: "user",
+          entityId: user.id,
+          after: { lockedUntil: next.lockedUntil.toISOString() },
+        });
+      }
+    });
+    logEvent("sign_in_failed", { reason, userId: user.id, locked: next.lockedUntil !== null });
+    return refusalFor(next, now);
+  };
+
+  if (temporaryPasswordExpired(user, now)) return refuse("temporary_password_expired");
 
   try {
     await auth.api.signInUsername({
@@ -55,29 +124,11 @@ export async function attemptSignIn(
     });
   } catch (error) {
     if (!isAPIError(error)) throw error;
-    if (user && error.statusCode === 401) {
-      const next = afterFailedSignIn(user, now);
-      await db.$transaction(async (tx) => {
-        await tx.user.update({ where: { id: user.id }, data: next });
-        if (next.lockedUntil) {
-          await writeAudit(tx, {
-            actorId: null,
-            action: "account_locked",
-            entityType: "user",
-            entityId: user.id,
-            after: { lockedUntil: next.lockedUntil.toISOString() },
-          });
-        }
-      });
-      logEvent("sign_in_failed", { userId: user.id, locked: next.lockedUntil !== null });
-    } else {
-      logEvent("sign_in_failed", { reason: user ? (errorCode(error) ?? String(error.statusCode)) : "unknown_user" });
-    }
-    return { ok: false };
+    return refuse(errorCode(error) ?? String(error.statusCode));
   }
 
-  // Better Auth accepted the password, so the user exists. A missing role is refused again by getContext().
-  if (!user || !isRole(user.role)) return { ok: false };
+  // A missing role is refused again by getContext().
+  if (!isRole(user.role)) return refusalFor(user, now);
 
   await db.user.update({ where: { id: user.id }, data: { ...AFTER_SUCCESSFUL_SIGN_IN, lastSignInAt: now } });
   logEvent("sign_in", { userId: user.id });

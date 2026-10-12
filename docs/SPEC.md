@@ -143,7 +143,7 @@ Values used across the system:
 ### 7.1 Sign-in (AUTH)
 
 - **AUTH-1** Users shall sign in with their username and password.
-- **AUTH-2** After 5 wrong passwords in a row, the account shall be locked for 15 minutes. The message shall be the same whether or not the username exists.
+- **AUTH-2** After 5 wrong passwords in a row, the account shall be locked for 15 minutes. After a wrong password the message shall say how many attempts are left; while locked, how many minutes remain. The messages shall be the same whether or not the username exists: an unknown username counts down and locks the same way.
 - **AUTH-3** An account with a temporary password shall go straight to a "set a new password" page and reach no other page until it is done. The new password shall have at least 8 characters and differ from the temporary one.
 - **AUTH-4** A session shall end after 30 minutes without activity, and always after 12 hours. Signing out shall end it at once.
 - **AUTH-5** A disabled account shall not be able to sign in. Its open sessions shall stop working on their next request.
@@ -419,7 +419,7 @@ Version 1 is accepted when every check below passes on staging with made-up data
 | AC-1 | A Homagama DS officer sees only Homagama cases. Opening a Kaduwela case's link shows "not found". | PRM-1, HOME-1 |
 | AC-2 | An admin can open the users and lists screens. Any case link, case list, file or export shows "not found". | PRM-2 |
 | AC-3 | The admin creates a DS officer, and a username and temporary password are shown once. At first sign-in the officer must set a new password before seeing anything else. | ADM-2, AUTH-3 |
-| AC-4 | After 5 wrong passwords, the account is locked for 15 minutes, with the same message as for an unknown username. | AUTH-2 |
+| AC-4 | Each wrong password shows the attempts left (4, 3, 2, 1); the 5th locks the account for 15 minutes. An unknown username shows the same messages. | AUTH-2 |
 | AC-5 | Submitting with required fields empty saves nothing. Each error shows in Sinhala next to its field and in the list above the button. | CASE-2, ERR-1 |
 | AC-6 | NIC `12345` is refused. `198800012345` and `880001234V` are accepted, and `880001234V` matches a case holding `198800001234`. | CASE-2, CASE-6 |
 | AC-7 | A duplicate NIC in the same DS shows the case number and name. One in another DS shows only the case number and DS. Submitting is still possible. | CASE-6 |

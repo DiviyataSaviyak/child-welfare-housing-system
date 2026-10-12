@@ -11,6 +11,8 @@ export const TEXT = {
   signOutButton: "ඉවත් වන්න",
   notFound: "මෙම පිටුව සොයාගත නොහැක",
   wrongSignIn: /පරිශීලක නාමය හෝ මුරපදය වැරදියි/,
+  attemptsLeft: (count: number) => new RegExp(`තවත් උත්සාහ ${count}ක් ඉතිරිව ඇත`),
+  locked: /ගිණුම අගුළු දමා ඇත/,
 };
 
 /** Marks the offices and stages the tests add, so tests/e2e/cleanup.ts can remove them. */

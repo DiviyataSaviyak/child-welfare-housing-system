@@ -9,7 +9,12 @@ import { requireSignedIn } from "@/server/context";
 import { logEvent } from "@/server/log";
 import { checkNewPassword, checkSignInForm, type NewPasswordError, type SignInFormError } from "@/lib/validation/auth";
 
-export type SignInState = { error: SignInFormError | null; username: string };
+export type SignInState = {
+  error: SignInFormError | "wrong" | "locked" | null;
+  username: string;
+  /** With "wrong": tries left before the account locks. With "locked": minutes until it opens. */
+  count?: number;
+};
 
 const text = (form: FormData, name: string) => {
   const value = form.get(name);
@@ -30,7 +35,12 @@ export async function signIn(_previous: SignInState, form: FormData): Promise<Si
   }
 
   const result = await attemptSignIn({ username, password }, requestHeaders);
-  if (!result.ok) return { error: "invalid", username };
+  if (!result.ok) {
+    const { refusal } = result;
+    return refusal.kind === "locked"
+      ? { error: "locked", username, count: refusal.minutesLeft }
+      : { error: "wrong", username, count: refusal.attemptsLeft };
+  }
 
   if (result.mustChangePassword) redirect("/change-password");
   redirect(safeReturnPath(text(form, "next"), result.role) ?? homeFor(result.role));

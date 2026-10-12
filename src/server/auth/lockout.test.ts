@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   AFTER_SUCCESSFUL_SIGN_IN,
   afterFailedSignIn,
+  attemptsLeft,
   isLocked,
+  lockMinutesLeft,
   type LockState,
   temporaryPasswordExpired,
 } from "./lockout";
@@ -29,6 +31,15 @@ describe("account lock (AUTH-2)", () => {
   it("starts counting again once a lock has run out", () => {
     const expired: LockState = { failedSignIns: 0, lockedUntil: minutes(-1) };
     expect(afterFailedSignIn(expired, now)).toEqual({ failedSignIns: 1, lockedUntil: null });
+  });
+
+  it("says how many wrong passwords are left, and how long a lock has to run", () => {
+    expect(attemptsLeft(fresh)).toBe(5);
+    expect(attemptsLeft(afterFailedSignIn(fresh, now))).toBe(4);
+    const locked: LockState = { failedSignIns: 0, lockedUntil: minutes(15) };
+    expect(lockMinutesLeft(locked, now)).toBe(15);
+    expect(lockMinutesLeft(locked, new Date(now.getTime() + 14 * 60_000 + 1))).toBe(1);
+    expect(lockMinutesLeft(fresh, now)).toBe(0);
   });
 
   it("clears the count after a correct password", () => {

@@ -37,7 +37,9 @@ export function SignInForm({ next }: { next: string }) {
         errorId="sign-in-error"
         required
       />
-      {state.error && <FormError id="sign-in-error" message={t(`errors.${state.error}`)} />}
+      {state.error && (
+        <FormError id="sign-in-error" message={t(`errors.${state.error}`, { count: state.count ?? 0 })} />
+      )}
       <Button
         type="submit"
         disabled={pending}

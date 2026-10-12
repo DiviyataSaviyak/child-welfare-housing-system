@@ -22,6 +22,17 @@ export function afterFailedSignIn(state: LockState, now: Date): LockState {
   return { failedSignIns, lockedUntil: null };
 }
 
+/** How many more wrong passwords this account may have before it is locked. */
+export function attemptsLeft(state: LockState): number {
+  return Math.max(MAX_FAILED_SIGN_INS - state.failedSignIns, 0);
+}
+
+/** Whole minutes until a lock runs out, rounded up. */
+export function lockMinutesLeft(state: LockState, now: Date): number {
+  if (!state.lockedUntil) return 0;
+  return Math.max(Math.ceil((state.lockedUntil.getTime() - now.getTime()) / 60_000), 0);
+}
+
 /** The lock state to save after a correct password. */
 export const AFTER_SUCCESSFUL_SIGN_IN: LockState = { failedSignIns: 0, lockedUntil: null };
 

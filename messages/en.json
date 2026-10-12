@@ -44,7 +44,9 @@
     "help": "If you have forgotten your password or have no account, contact the administrator at Head Office.",
     "errors": {
       "required": "Enter both your username and your password.",
-      "invalid": "The username or password is wrong, or the account is locked for now. Try again in 15 minutes, or contact the administrator.",
+      "invalid": "The username or password is wrong.",
+      "wrong": "The username or password is wrong. {count, plural, one {# attempt} other {# attempts}} left. After 5 wrong attempts the account is locked for 15 minutes.",
+      "locked": "The account is locked after 5 wrong attempts. Try again in {count, plural, one {# minute} other {# minutes}}, or contact the administrator.",
       "tooMany": "Too many attempts. Try again in a minute."
     }
   },
