@@ -32,9 +32,10 @@ export async function stopAction(_previous: ProgressState, form: FormData): Prom
   const actor = await requireRole("HO_OFFICER");
   const chosen = target(form);
   if (!chosen) return { error: "notFound", errors: {} };
-  const result = await stopCase(db, actor, chosen);
+  const askAnotherName = read(form, "anotherName") === "1";
+  const result = await stopCase(db, actor, { ...chosen, askAnotherName });
   if (!result.ok) return { error: result.error, errors: {} };
-  done(chosen.caseId, "stopped");
+  done(chosen.caseId, askAnotherName ? "stoppedAskName" : "stopped");
 }
 
 export async function reopenAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {

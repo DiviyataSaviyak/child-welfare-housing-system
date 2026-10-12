@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getLocale, getTranslations } from "next-intl/server";
-import { formValues, PageHeader } from "@/components/cases/page-header";
+import { formValues, PageHeader, replacementOptions } from "@/components/cases/page-header";
 import { CaseForm } from "@/components/forms/case-form";
+import { openRequests } from "@/server/cases/replacements";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
@@ -9,9 +10,13 @@ import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAct
 
 /** Head Office enters a case for any DS office, choosing the district, then the office (CASE-3). */
 export default async function HoNewCasePage() {
-  await requireRole("HO_OFFICER");
+  const viewer = await requireRole("HO_OFFICER");
   const locale = await getLocale();
-  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
+  const [t, districts, requests] = await Promise.all([
+    getTranslations("cases"),
+    districtsWithOffices(db, locale),
+    openRequests(db, viewer),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -24,6 +29,7 @@ export default async function HoNewCasePage() {
         office={{ kind: "choose", districts, districtId: null, dsOfficeId: null }}
         documents={[]}
         returnReason={null}
+        replacements={replacementOptions(t, requests)}
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,

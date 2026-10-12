@@ -6,6 +6,7 @@ import { localName, NAMES } from "@/lib/names";
 import { nicKey, normaliseNic } from "@/lib/nic";
 import { latestDay } from "@/lib/validation/release";
 import { canSeeOffice, officeFilter, type Viewer } from "../permissions";
+import { openRequests, REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
 
 export type CaseDetails = {
   id: string;
@@ -38,11 +39,26 @@ export type CaseDetails = {
   rejectReason: string | null;
   /** While the case is stopped: when, why, and the status it goes back to when reopened (CLS-2, CLS-3). */
   stop: { at: Date; reason: string | null; statusBefore: CaseStatus | null } | null;
+  /** Head Office asked for another name in this case's place when it rejected or stopped it (CASE-11). */
+  anotherNameRequested: boolean;
+  /** The case this one was entered in place of, with Head Office's decision on it (CASE-11). */
+  replaces: ReplacementRequest | null;
+  /** The case entered in this one's place (CASE-11). */
+  replacedBy: CaseLink | null;
   documents: { id: string; name: string }[];
   /** The Rs. 2,000,000 release, once recorded (REL-2). */
   release: ReleaseDetails | null;
   /** The four installments, made with the release (INS-1), in order. */
   installments: InstallmentDetails[];
+};
+
+/** Another case named on this one's page, with a link to it. */
+export type CaseLink = {
+  id: string;
+  caseNumber: string | null;
+  name: string | null;
+  childName: string | null;
+  status: CaseStatus;
 };
 
 export type ReleaseDetails = {
@@ -114,6 +130,11 @@ export async function getCase(
       verifiedAt: true,
       completedAt: true,
       statusBeforeStop: true,
+      anotherNameRequested: true,
+      replaces: { select: REQUEST_SELECT },
+      replacedBy: {
+        select: { id: true, caseNumber: true, name: true, childName: true, status: true, dsOfficeId: true },
+      },
       updatedAt: true,
       dsOffice: { select: { ...NAMES, active: true, district: { select: { id: true, ...NAMES } } } },
       files: {
@@ -162,7 +183,8 @@ export async function getCase(
     },
   });
   if (!found || !canSeeOffice(viewer, found.dsOfficeId)) return null;
-  const { dsOffice, files, decisions, release, installments, statusBeforeStop, ...fields } = found;
+  const { dsOffice, files, decisions, release, installments, statusBeforeStop, replaces, replacedBy, ...fields } =
+    found;
   const latest = decisions[0];
   const stopped = found.status === "STOPPED" && latest?.type === "STOP";
   return {
@@ -179,6 +201,18 @@ export async function getCase(
             at: stopped ? latest.at : fields.updatedAt,
             reason: stopped ? latest.reason : null,
             statusBefore: statusBeforeStop,
+          }
+        : null,
+    // Both cases are always of one office (CASE-11); the check keeps it that way for the viewer.
+    replaces: replaces && canSeeOffice(viewer, replaces.dsOfficeId) ? toRequest(replaces) : null,
+    replacedBy:
+      replacedBy && canSeeOffice(viewer, replacedBy.dsOfficeId)
+        ? {
+            id: replacedBy.id,
+            caseNumber: replacedBy.caseNumber,
+            name: replacedBy.name,
+            childName: replacedBy.childName,
+            status: replacedBy.status,
           }
         : null,
     documents: files.map((f) => ({ id: f.id, name: f.originalName })),
@@ -342,6 +376,13 @@ type TodoCase = { id: string; name: string | null; childName: string | null };
 
 export type TodoItem = TodoCase &
   (
+    | {
+        type: "replace";
+        caseNumber: string | null;
+        status: CaseStatus;
+        /** Head Office's reason for rejecting or stopping the case it asks to replace (CASE-11). */
+        reason: string | null;
+      }
     | { type: "returned"; /** Head Office's reason for sending the case back. */ reason: string | null }
     | { type: "draft"; updatedAt: Date }
     | { type: "due"; number: number; /** "YYYY-MM-DD" */ expectedOn: string; overdue: boolean }
@@ -354,8 +395,9 @@ export const DUE_SOON_DAYS = 7;
 const TODO_TAKE = 20;
 
 /**
- * HOME-3, in this order: cases sent back, with Head Office's reason; installments being paid whose
- * expected day has passed or is within 7 days; cases in progress with no update for 30 days; drafts.
+ * HOME-3, in this order: cases Head Office asked to replace with another name (CASE-11); cases sent
+ * back, with Head Office's reason; installments being paid whose expected day has passed or is within
+ * 7 days; cases in progress with no update for 30 days; drafts.
  */
 export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date()): Promise<TodoItem[]> {
   const scope = officeFilter(viewer);
@@ -363,7 +405,8 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
   const today = colomboDay(now);
   const caseFields = { id: true, name: true, childName: true } as const;
 
-  const [returned, due, stale, drafts] = await Promise.all([
+  const [replace, returned, due, stale, drafts] = await Promise.all([
+    openRequests(db, viewer),
     db.case.findMany({
       where: { ...scope, status: "RETURNED" },
       orderBy: { updatedAt: "desc" },
@@ -398,6 +441,15 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
   ]);
 
   return [
+    ...replace.slice(0, TODO_TAKE).map((c) => ({
+      id: c.id,
+      name: c.name,
+      childName: c.childName,
+      type: "replace" as const,
+      caseNumber: c.caseNumber,
+      status: c.status,
+      reason: c.reason,
+    })),
     ...returned.map(({ decisions, ...c }) => ({
       ...c,
       type: "returned" as const,

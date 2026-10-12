@@ -377,7 +377,11 @@
         "overdueText": "Was due to be paid on {date}. Record it here once it is paid.",
         "stale": "{name}: update the progress",
         "staleText": "Days without an update: {days}.",
-        "open": "Open"
+        "open": "Open",
+        "replace": "{name}: another name asked for",
+        "replaceRejected": "Head Office rejected {number}: “{reason}” Enter another beneficiary in its place and send it.",
+        "replaceStopped": "Head Office stopped {number}: “{reason}” Enter another beneficiary in its place and send it.",
+        "replaceAction": "Enter someone in its place"
       },
       "paid": "{paid} / {total}",
       "money": {
@@ -498,7 +502,8 @@
         "phones": "Phone number",
         "office": "DS division",
         "documents": "Other documents",
-        "documentCount": "{count, plural, =0 {None attached} one {# file} other {# files}}"
+        "documentCount": "{count, plural, =0 {None attached} one {# file} other {# files}}",
+        "replaces": "In place of"
       },
       "errors": {
         "summary": "Correct these before sending:",
@@ -528,10 +533,23 @@
         "notAllowed": "You can't attach files.",
         "notAllowedNow": "This can't be done in the beneficiary's current status. Reload the page.",
         "roleNotAllowed": "You can't do this.",
-        "kindLocked": "Physical progress is already recorded for this beneficiary, so the kind of assistance can't be changed."
+        "kindLocked": "Physical progress is already recorded for this beneficiary, so the kind of assistance can't be changed.",
+        "replacementRequired": "Choose whether this beneficiary is in place of the case Head Office named.",
+        "replacementUnavailable": "A name can no longer be entered in place of the chosen case. Reload the page and choose again."
       },
       "saveChanges": "Save the changes",
-      "changeIntro": "This beneficiary has been verified. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty."
+      "changeIntro": "This beneficiary has been verified. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
+      "replaces": {
+        "title": "Head Office has asked for another name *",
+        "text": "Is the beneficiary you are entering now the one sent in its place? This question shows only while there is such a request.",
+        "yes": "Yes, in place of {number}",
+        "rejectedOn": "{name} · rejected on {date}",
+        "stoppedOn": "{name} · stopped on {date}",
+        "reason": "Reason: {reason}",
+        "no": "No, this is a separate new beneficiary",
+        "noHint": "The request stays on the DS office's to-do list until a name is sent in its place.",
+        "ref": "{number} ({name})"
+      }
     },
     "notices": {
       "saved": "Saved. You can complete it later from the “My beneficiaries” page.",
@@ -580,7 +598,16 @@
         "verifiedAt": "Verified on"
       },
       "verifiedDs": "Head Office has verified this. You'll be told once the Rs. 2,000,000 is released.",
-      "rejectedTitle": "Head Office has rejected this"
+      "rejectedTitle": "Head Office has rejected this",
+      "replacesTitle": "Entered in place of {number} ({name})",
+      "replacesRejected": "Head Office rejected it on {date} and asked for another name.",
+      "replacesStopped": "Head Office stopped it on {date} and asked for another name.",
+      "replacesReason": "Reason: {reason}",
+      "openOther": "Open {number}",
+      "askedTitle": "Another name was asked for in this one's place",
+      "askedWaiting": "The DS office hasn't entered one yet.",
+      "askedEnter": "Enter someone in its place",
+      "askedDone": "{number} ({name}) has been entered in its place."
     },
     "officeClosed": "Your Divisional Secretariat has been deactivated, so new beneficiaries can't be added. Contact Head Office.",
     "installment": {
@@ -695,6 +722,7 @@
       "check": "Sent on {date} · {days, plural, =0 {sent today} one {waiting for # day} other {waiting for # days}}"
     },
     "duplicateFlag": "Another beneficiary also has this NIC number",
+    "replacesFlag": "In place of {number}",
     "subtitle": "{number} · {office} DS division · {district} District",
     "openCase": "The beneficiary's full page",
     "documents": "Documents",
@@ -720,7 +748,10 @@
       "verifyText": "Once {name} ({number}) is verified, it goes to the “To release allocations” list. The DS office will be told.",
       "verifyConfirm": "Yes, verify",
       "verifyBack": "No",
-      "working": "Saving..."
+      "working": "Saving...",
+      "askName": "Ask the DS office for another name",
+      "askNameHelp": "It shows on the DS office's to-do list. The name they send comes as a new beneficiary in this one's place and is checked as usual.",
+      "confirmRejectAsk": "Reject and ask for another name"
     },
     "letters": {
       "waitingTitle": "Districts waiting for a letter",
@@ -777,7 +808,8 @@
       "sentBack": "{name} ({number}) sent back to the {office} DS office for correction.",
       "rejected": "{name} ({number}) rejected. The reason is shown to the DS office.",
       "corrected": "The allocation letter's details were corrected.",
-      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). Their work is now in progress. The {offices} DS offices will be told."
+      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). Their work is now in progress. The {offices} DS offices will be told.",
+      "rejectedAskName": "{name} ({number}) rejected. The {office} DS office was asked for another name in its place."
     },
     "errors": {
       "summary": "Correct these before saving:",
@@ -901,7 +933,10 @@
       "reopenTitle": "Reopen the project?",
       "reopenText": "{name} ({number}) goes back to “{status}”, its status before it was stopped.",
       "reopenReason": "Reason for reopening *",
-      "reopenConfirm": "Yes, reopen it"
+      "reopenConfirm": "Yes, reopen it",
+      "askName": "Ask the DS office for another name",
+      "askNameHelp": "It shows on the DS office's to-do list. The name they send comes as a new beneficiary in this one's place and is checked as usual.",
+      "confirmAsk": "Stop and ask for another name"
     },
     "completed": "This project was completed on {date}. All four installments were paid and the last stage was reached.",
     "notices": {
@@ -911,7 +946,8 @@
       "completed": "Saved. All four installments are paid and the last stage is reached, so this project is complete.",
       "stopped": "The project has been stopped. The DS office will be told.",
       "reopened": "The project has been reopened. The DS office will be told.",
-      "undone": "The payment was undone. The installment is back to “Being paid”."
+      "undone": "The payment was undone. The installment is back to “Being paid”.",
+      "stoppedAskName": "The project has been stopped. The DS office was asked for another name in its place."
     },
     "errors": {
       "dateRequired": "Enter the date.",
@@ -944,7 +980,8 @@
       "fileType": "Add only a JPEG, PNG or WebP photo.",
       "photoUnreadable": "This photo can't be opened. Choose another photo.",
       "fileFailed": "The upload failed. Try again.",
-      "notAllowed": "You can't add photos."
+      "notAllowed": "You can't add photos.",
+      "replaced": "Another beneficiary has already been entered in this one's place, so it can't be reopened."
     }
   },
   "history": {
@@ -1003,7 +1040,11 @@
       "letterNumber": "My No.",
       "letterDate": "Letter date",
       "validUntil": "Valid until"
-    }
+    },
+    "anotherNameRequested": "Another name was asked of the DS office",
+    "anotherNameWithdrawn": "The request for another name was withdrawn",
+    "replacesSet": "Entered in place of another case",
+    "replacesCleared": "No longer in place of another case"
   },
   "dashboard": {
     "title": "Summary",

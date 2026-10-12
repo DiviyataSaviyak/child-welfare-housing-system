@@ -16,7 +16,14 @@ export function randomNic(): string {
 
 export type CaseInput = { name: string; nic: string; atRisk?: boolean };
 
+/** The case form's answer for a separate new beneficiary, when it asks about a replacement (CASE-11). */
+export const NOT_A_REPLACEMENT = /^නැත, මෙය වෙනම නව ප්‍රතිලාභියෙකි/;
+
 export async function fillCase(page: Page, input: CaseInput) {
+  // Another test may have left Head Office asking this office for another name; this case isn't it.
+  if (await page.locator("#part-replaces").isVisible()) {
+    await page.getByRole("radio", { name: NOT_A_REPLACEMENT }).check();
+  }
   await page.getByRole("radio", { name: input.atRisk ? /^අවදානම් දරුවන්/ : /^නිවාසගත/ }).check();
   await page.getByRole("radio", { name: /^නව නිවසක් ඉදිකිරීම/ }).check();
   if (input.atRisk) await page.getByLabel("දරුවාගේ නම *").fill("පරීක්ෂණ දරුවා");

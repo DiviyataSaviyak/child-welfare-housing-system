@@ -80,7 +80,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       return;
     }
     // Shown once, here only: only its hash is stored (ADM-2).
-    console.log(`Admin account created.
+    console.log(`Admin account created for ${(option("--name") ?? "").trim()}.
   Username:           ${result.credentials.username}
   Temporary password: ${result.credentials.temporaryPassword}
 Give these to the admin in person. They set their own password at first sign-in.`);

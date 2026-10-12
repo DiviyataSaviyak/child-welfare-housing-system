@@ -54,9 +54,10 @@ export async function decideAction(_previous: DecisionState, form: FormData): Pr
   const chosen = target(form);
   if (!chosen || !isDecision(decision)) return { error: "notFound" };
 
-  const result = await decideCase(db, actor, { ...chosen, decision, reason: read(form, "reason") });
+  const askAnotherName = decision === "reject" && read(form, "anotherName") === "1";
+  const result = await decideCase(db, actor, { ...chosen, decision, reason: read(form, "reason"), askAnotherName });
   if (!result.ok) return { error: result.error };
-  goOn(form, "check", chosen.caseId, NOTICE[decision]);
+  goOn(form, "check", chosen.caseId, askAnotherName ? "rejectedAskName" : NOTICE[decision]);
 }
 
 const releaseForm = (form: FormData) =>

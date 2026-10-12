@@ -1,6 +1,6 @@
 # Diviyata Sawiyak — Software Specification
 
-2026-09-28, updated 2026-10-09 · Janindu Pramod
+2026-09-28, updated 2026-10-12 · Janindu Pramod
 
 > **Status:** draft. This SPEC turns the [PRD](PRD.md) into requirements precise enough to build and test against. The [clickable prototype](https://claude.ai/artifact/DQarnsyMfCao1y6SmpMDbT) shows the screens. The PRD's open questions are deferred: [section 13](#13-deferred-questions-and-the-defaults-used) gives the default this SPEC uses for each until the Ministry answers.
 
@@ -91,7 +91,7 @@ Amounts are whole rupees stored as integers. Nothing listed here is ever deleted
 | District | name in Sinhala, Tamil and English, province | 25 rows, seeded |
 | DsOffice | name in Sinhala, Tamil and English, code, district, active | `code` is 3 capital letters, unique nationally, and used in case numbers. The Sinhala name is unique within its district |
 | User | full name, designation, mobile, email, username, role, DS office, active, must change password, last sign-in, failed sign-ins, locked until | DS office is required for DS officers only, and an office has at most one active DS officer (ADM-3). Username is generated (ADM-2) and unique |
-| Case | case number, DS office, category, kind, status, name, child's name, NIC, NIC key, address, GN division, mobile 1, mobile 2, remark, created by, submitted at, verified at, completed at, status before stop, version | See CASE-2 for field rules. `version` goes up by one on every save and every installment, stage or status change (CASE-10). `submitted at` is the latest submit. While the case is stopped, `status before stop` holds the status it goes back to (CLS-3); the stop's day and reason are its Decision |
+| Case | case number, DS office, category, kind, status, name, child's name, NIC, NIC key, address, GN division, mobile 1, mobile 2, remark, created by, submitted at, verified at, completed at, status before stop, another name requested, replaces case, version | See CASE-2 for field rules. `version` goes up by one on every save and every installment, stage or status change (CASE-10). `submitted at` is the latest submit. While the case is stopped, `status before stop` holds the status it goes back to (CLS-3); the stop's day and reason are its Decision. `another name requested` is set when Head Office rejects or stops the case and asks for another name in its place (CASE-11); only a rejected or stopped case has it (a database check), and reopening clears it. `replaces case` is the case this one was entered in place of; a case is replaced by at most one other (unique), never by itself |
 | CaseNumberCounter | DS office, year, last number | One row per office and year. Taking the next number locks the row, so two submits at once never share a number (CASE-5) |
 | Decision | case, type, reason, by, at | Types: submit, verify, send back, reject, stop, reopen |
 | ReleaseLetter | district, letter number, letter date, valid until, note, by, at | One allocation letter (ප්‍රතිපාදන ලිපිය) to a District Secretary for several verified cases of that district (REL-2, 6 Oct 2026). Valid until is never before the letter date (a database check). Its scan, if any, is a File |
@@ -184,6 +184,7 @@ Values used across the system:
   - for a case in progress, days since the last update, when that is 30 or more (the same rule as HOME-3 and DSH-1)
 - **HOME-2** Tabs shall filter the list to all cases, cases in progress or completed cases. Search shall match name, child's name, case number or NIC.
 - **HOME-3** A "to do" panel shall list:
+  - cases for which Head Office asked for another name and none has been entered yet (CASE-11), with the Head Office reason, leading to the new-case form
   - returned cases, with the Head Office reason
   - drafts
   - installments in `PROCESSING` whose expected date has passed or is within 7 days
@@ -229,6 +230,12 @@ Values used across the system:
 - **CASE-8** The owning DS, or Head Office (which may also start drafts), may delete a draft with its documents. The deletion is logged without personal details.
 - **CASE-9** After a case is verified, only a Head Office officer can change its details, and every changed field is logged with its old and new value. This is possible while the case is `VERIFIED` or `IN_PROGRESS`; a completed, rejected or stopped case can't be changed. Every required field must stay filled in, and the form has one save button and no submit. The kind of help can't change once the case has reached a stage, because the kind decides the stage list (LST-4).
 - **CASE-10** Saving a case that someone else changed after it was opened shall fail with ERR-3. It shall never overwrite their change silently.
+- **CASE-11** (added 2026-10-12, PRD question 7) Replacing a beneficiary. The new person is always a new case, never an edit of the old one:
+  - When Head Office rejects a case (CHK-3) or stops it (CLS-2), it may tick "ask the DS office for another name". The case keeps its status; it is then waiting for a replacement until a case is entered in its place.
+  - While a DS office has such a case, the case form (for a new case, a draft or a returned case) asks first whether this person is in place of it, listing each such case with its number, name, decision day and Head Office's reason, and "no, a separate new beneficiary". Submitting needs an answer; saving a draft doesn't. "No" isn't stored, so the form asks again whenever it opens on a case with no link. A Head Office officer entering a case sees the question for the DS office chosen.
+  - The answer links the new case to the old one. Only a case of the same DS office that is waiting for a replacement can be chosen, and each old case can be replaced once. If another case took it in the meantime, the save is refused with a message to choose again.
+  - The link shows on both cases: the new case's check view and page say which case it replaces, with Head Office's day and reason; the old case's page says another name was asked for and, once entered, which case replaced it. Each links to the other.
+  - The link can be changed while the new case is a draft or returned. A case Head Office has verified keeps it.
 
 ### 7.6 Finding cases (FND)
 
@@ -241,7 +248,7 @@ Values used across the system:
 - **CHK-3** Head Office shall have three actions:
   - **Verify:** no input needed.
   - **Send back:** a reason is required (5–1,000 characters).
-  - **Reject:** a reason is required (5–1,000 characters).
+  - **Reject:** a reason is required (5–1,000 characters). A tick box, unticked to start with, also asks the DS office for another name in the case's place (CASE-11).
 
   Verifying asks once to confirm. Each writes a Decision and notifies every active officer of the case's DS. A decision is refused if the case changed after the check view showed it (CASE-10), for example when it was sent back and submitted again in the meantime.
 - **CHK-4** (added 2026-10-06) Head Office shall be able to narrow both queues (CHK-1, REL-1) to a district, then to one DS office in it. Each choice shows how many cases wait there. Only places with cases waiting are offered, plus the chosen one even once none are left. The place stays in the address (`districtId`, `dsOfficeId`) through paging, both tabs and every decision, so after a decision the next case shown is the next one waiting in the same place. The tab counts and the menu's count stay for the whole country. Cases are still checked one at a time. The release tab doesn't use the two selects: it lists the districts waiting for a letter instead (REL-1), and it opens on the district in the address. Once the chosen district, or the district of the case just verified, has nothing left to check but has verified cases waiting, a banner above the check queue says so and leads to that district's letter (as in the prototype).
@@ -286,8 +293,8 @@ Only the DS office starts and pays installments (section 4). Each change is refu
 ### 7.11 Completing, stopping and reopening (CLS)
 
 - **CLS-1** The system shall set a case to `COMPLETED` when installment 4 is `RELEASED` and the case has reached the last active stage of its kind. A kind with no active stages needs only installment 4.
-- **CLS-2** Stopping a case shall need a reason. The confirmation and the case page shall show the balance left with the DS (2,000,000 minus the amount paid out).
-- **CLS-3** Reopening a stopped case shall need a reason. It returns the case to the status it had before it was stopped. Stopping and reopening take a reason of 5 to 1,000 characters, and a stopped case's page shows the day, the reason and the balance to both roles.
+- **CLS-2** Stopping a case shall need a reason. The confirmation and the case page shall show the balance left with the DS (2,000,000 minus the amount paid out). As with rejecting, a tick box, unticked to start with, also asks the DS office for another name in the case's place (CASE-11).
+- **CLS-3** Reopening a stopped case shall need a reason. It returns the case to the status it had before it was stopped, and withdraws any request for another name. Once a case has been entered in its place, a stopped case can't be reopened. Stopping and reopening take a reason of 5 to 1,000 characters, and a stopped case's page shows the day, the reason and the balance to both roles.
 
 ### 7.12 Dashboards and exports (DSH, EXP)
 
@@ -445,6 +452,7 @@ Version 1 is accepted when every check below passes on staging with made-up data
 | AC-27 | On the sign-in page, choosing தமிழ் or English shows the page in that language and keeps it after a reload. A DS officer working in Tamil sees the menu, their office and district names and the money in Tamil; Head Office working in English downloads an Excel file with English headers and file name. | UI-9, EXP-1 |
 | AC-28 | The admin, working in Sinhala, adds a DS office with its Sinhala and English names and its code, leaving the Tamil name blank. The lists screen shows only the Sinhala name; in English it shows the typed English name, and in Tamil the name the system wrote in Tamil letters. A stage needs only its Sinhala name. | UI-9, LST-2, LST-4 |
 | AC-29 | A commit pushed to `main` that passes CI runs on the server with no manual step, and a page left open from the old version reloads on its next move. A release whose app fails its health check is undone: the previous version runs again, and the database is as it was before the deploy. | OPS-3 |
+| AC-30 | Head Office rejects a case and ticks "ask for another name". The DS officer's to-do panel shows the request; their new-case form asks whether the new person is in its place and won't submit without an answer. Once linked, the new case's check view and both case pages name each other, and the request leaves the to-do panel. A second case can't take the same place, and a stopped case that has been replaced can't be reopened. | CASE-11, CHK-3, CLS-3, HOME-3 |
 
 ## 13. Deferred questions and the defaults used
 
@@ -457,7 +465,7 @@ On 28 Sep the open questions were set aside for later. Until the Ministry answer
 | 4. Hosting | Answered 9 Oct 2026: one Amazon EC2 server. The Ministry must still agree that the data may be kept outside Sri Lanka. No longer a default. | Section 11 |
 | 5. How long records are kept | Everything is kept; nothing is deleted automatically. | Section 5 |
 | 6. Money on a stopped case | The balance left with the DS is shown. The system has no refund process. | CLS-2 |
-| 7. Replacing a beneficiary | The new person is a new case. The old case is rejected or stopped with a reason that names the new case number. | CHK-3, CLS-2 |
+| 7. Replacing a beneficiary | Settled on 12 Oct 2026 after the prototype: the new person is a new case linked to the one it replaces, and Head Office asks for it when rejecting or stopping. Still to ask the Ministry: may a case be replaced after money was paid, and does its balance then go to the new person? Until then the stopped case's balance stays with the DS (question 6) and the new case gets its own Rs. 2,000,000. | CASE-11, CHK-3, CLS-2, CLS-3 |
 | 8. Tamil | Answered 7 Oct 2026: the screens come in Sinhala, Tamil and English. | UI-9 |
 | 9. How the Rs. 2M is released | Answered on 6 Oct 2026: by one allocation letter to a District Secretary for several verified cases of the district. No longer a default. | REL-1–4 |
 | 12. First password | The admin sees it once and passes it on in person or by phone. | ADM-2 |

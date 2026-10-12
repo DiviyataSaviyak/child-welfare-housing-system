@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { formatDate } from "@/lib/dates";
 import type { CaseDetails } from "@/server/cases/queries";
-import type { CaseFormValues } from "@/components/forms/case-form";
+import type { ReplacementRequest } from "@/server/cases/replacements";
+import type { CaseFormValues, ReplacementOption } from "@/components/forms/case-form";
 
 /** A case page's back link, title and one line under it, as in the prototype. */
 export function PageHeader({
@@ -54,4 +56,20 @@ export function caseName(
 ): string {
   const shown = name ?? t("noName");
   return childName ? t("withChild", { name: shown, child: childName }) : shown;
+}
+
+/** The cases the case form offers to replace (CASE-11), with their names and days written out. */
+export function replacementOptions(
+  t: (key: "noName" | "withChild" | "noNumber", values?: Record<string, string>) => string,
+  requests: ReplacementRequest[],
+): ReplacementOption[] {
+  return requests.map((request) => ({
+    id: request.id,
+    dsOfficeId: request.dsOfficeId,
+    number: request.caseNumber ?? t("noNumber"),
+    name: caseName(t, request.name, request.childName),
+    stopped: request.status === "STOPPED",
+    date: request.decidedAt ? formatDate(request.decidedAt) : null,
+    reason: request.reason,
+  }));
 }

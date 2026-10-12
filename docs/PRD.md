@@ -1,6 +1,6 @@
 # Diviyata Sawiyak — Product Requirements Document
 
-2026-09-28, updated 2026-10-09 · Janindu Pramod
+2026-09-28, updated 2026-10-12 · Janindu Pramod
 
 > **Status:** draft, awaiting approval. This file mirrors the [review copy](https://claude.ai/code/artifact/9b67ede5-1f80-41e8-96be-0af36e03eda2) of the PRD.
 
@@ -126,6 +126,7 @@ Version 1 covers a case from first entry to completion, with dashboards, history
 - Narrow the queue to a district or a DS division, showing how many cases wait in each.
 - Release money by district (6 Oct 2026): one allocation letter to a District Secretary for several verified cases of the district, with its number, date, last valid day, an optional scan and the total of Rs. 2,000,000 per case. This answers open question 9.
 - Verify a case, send it back with comments, or reject it with a reason.
+- When rejecting or stopping a case, ask the DS for another name in its place (12 Oct 2026). The new person comes as a new case, linked to the old one and checked as usual. This answers open question 7.
 - Keep every decision and comment in the case's history.
 
 ### Rs. 2M release
@@ -255,7 +256,7 @@ The system holds children's personal data, and it must be easy for non-technical
 
 ## Open questions for the Ministry
 
-These were set aside on 28 Sep, to be answered later. Until then the [SPEC](SPEC.md#13-deferred-questions-and-the-defaults-used) uses a default for each. Questions 2, 10 and 11 were settled on 28 Sep and removed: land cases stay out of the system, and no documents are required. The other numbers stay the same, because the prototype's notes use them. Question 12 was added on 28 Sep. Question 8 was answered on 7 Oct: the screens come in Sinhala, Tamil and English. Question 4 was answered on 9 Oct: the system runs on one AWS EC2 server.
+These were set aside on 28 Sep, to be answered later. Until then the [SPEC](SPEC.md#13-deferred-questions-and-the-defaults-used) uses a default for each. Questions 2, 10 and 11 were settled on 28 Sep and removed: land cases stay out of the system, and no documents are required. The other numbers stay the same, because the prototype's notes use them. Question 12 was added on 28 Sep. Question 8 was answered on 7 Oct: the screens come in Sinhala, Tamil and English. Question 4 was answered on 9 Oct: the system runs on one AWS EC2 server. Question 7 was settled on 12 Oct after the prototype, except for cases that already received money.
 
 | # | Question | Why it matters |
 | --- | --- | --- |
@@ -264,7 +265,7 @@ These were set aside on 28 Sep, to be answered later. Until then the [SPEC](SPEC
 | 4 | Where will the system be hosted? **Answered 9 Oct 2026: on one AWS EC2 server.** | This decides cost, security and who runs it. The Ministry must still agree that the data may be kept outside Sri Lanka. |
 | 5 | How long are records kept? | Rejected, stopped and completed cases hold personal data. |
 | 6 | What happens to the money on a stopped case? | One sheet case is already marked as a project that cannot be carried out. |
-| 7 | How is a beneficiary replaced? | The sheet has "another name submitted for approval". It could be a new case or an edit. |
+| 7 | How is a beneficiary replaced? **Settled 12 Oct 2026: as a new case, linked to the old one, which Head Office rejects or stops while asking for another name.** Still open: may a case be replaced after money was paid, and does its balance go to the new person? | The sheet has "another name submitted for approval". It could be a new case or an edit. |
 | 8 | Is Tamil needed in version 1? **Answered 7 Oct 2026: yes, and English too.** | Northern DS offices typed the sheet in English. |
 | 9 | Is the Rs. 2M released case by case, or in batches per DS? | This decides how Head Office records releases. |
 | 12 | How does a new officer get their first password? | SMS alerts come later, so for now the admin must pass it on by phone or in person. |

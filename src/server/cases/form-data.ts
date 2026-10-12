@@ -25,11 +25,24 @@ export function readCaseForm(
   const parsed = parseCaseForm(read, submit ? "submit" : "draft");
   if (!parsed.ok) return { ok: false, errors: parsed.errors };
 
+  // CASE-11: sent only when the form asked; "" is no answer, "none" is "no", anything else a case id.
+  const asked = form.get("replaces");
+  const replaces = typeof asked !== "string" ? undefined : asked === "none" ? null : asked;
+  if (typeof replaces === "string" && replaces.length > 64) return { ok: false, notFound: true };
+
   const documentIds = form
     .getAll("documentIds")
     .filter((value): value is string => typeof value === "string" && UUID.test(value));
   return {
     ok: true,
-    input: { id, version, dsOfficeId: parseOfficeId(read("dsOfficeId")), values: parsed.value, documentIds, submit },
+    input: {
+      id,
+      version,
+      dsOfficeId: parseOfficeId(read("dsOfficeId")),
+      values: parsed.value,
+      documentIds,
+      submit,
+      replaces,
+    },
   };
 }

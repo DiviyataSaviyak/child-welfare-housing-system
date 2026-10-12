@@ -1,7 +1,7 @@
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { ArrowRightLeft, CircleCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { caseFieldRows, DocumentLinks } from "@/components/cases/case-view";
+import { caseFieldRows, DocumentLinks, ReplacementNotes } from "@/components/cases/case-view";
 import { caseName } from "@/components/cases/page-header";
 import { Pager } from "@/components/cases/pager";
 import { DecisionPanel } from "@/components/review/decision-panel";
@@ -252,6 +252,12 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
                           {t("duplicateFlag")}
                         </span>
                       )}
+                      {row.replacesNumber && (
+                        <span className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-primary">
+                          <ArrowRightLeft aria-hidden="true" className="size-4 shrink-0" />
+                          {t("replacesFlag", { number: row.replacesNumber })}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
@@ -284,6 +290,7 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
               </Link>
             </div>
 
+            <ReplacementNotes details={details} audience="ho" />
             <DuplicateCases matches={duplicates} />
 
             <dl className="grid grid-cols-[250px_minmax(0,1fr)] gap-x-4 gap-y-2.5">

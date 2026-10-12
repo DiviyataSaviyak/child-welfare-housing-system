@@ -263,49 +263,56 @@ model Verification {
 
 /// A beneficiary's case. Never deleted, except drafts (CASE-8).
 model Case {
-  id               String         @id
+  id                   String         @id
   /// {DS code}-{year}-{NNN}, given on the first submit and never changed (CASE-5).
-  caseNumber       String?        @unique @map("case_number")
-  dsOfficeId       Int            @map("ds_office_id")
-  dsOffice         DsOffice       @relation(fields: [dsOfficeId], references: [id])
+  caseNumber           String?        @unique @map("case_number")
+  dsOfficeId           Int            @map("ds_office_id")
+  dsOffice             DsOffice       @relation(fields: [dsOfficeId], references: [id])
   /// Category and kind may be empty only while the case is a draft (CASE-4).
-  category         Category?
-  kind             Kind?
-  status           CaseStatus     @default(DRAFT)
+  category             Category?
+  kind                 Kind?
+  status               CaseStatus     @default(DRAFT)
   /// The care leaver, or the guardian of a child at risk.
-  name             String?
+  name                 String?
   /// Only for children at risk.
-  childName        String?        @map("child_name")
+  childName            String?        @map("child_name")
   /// As entered, in capitals without spaces.
-  nic              String?
+  nic                  String?
   /// The NIC in its 12-digit form, so old and new numbers match (CASE-6).
-  nicKey           String?        @map("nic_key")
-  address          String?
+  nicKey               String?        @map("nic_key")
+  address              String?
   /// The Grama Niladhari division (ග්‍රාම නිලධාරී වසම), as typed. Optional.
-  gnDivision       String?        @map("gn_division")
-  mobile1          String?        @map("mobile_1")
-  mobile2          String?        @map("mobile_2")
-  remark           String?
-  createdById      String         @map("created_by_id")
-  createdBy        User           @relation(fields: [createdById], references: [id])
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
+  gnDivision           String?        @map("gn_division")
+  mobile1              String?        @map("mobile_1")
+  mobile2              String?        @map("mobile_2")
+  remark               String?
+  createdById          String         @map("created_by_id")
+  createdBy            User           @relation(fields: [createdById], references: [id])
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
   /// The latest submit. The check queue lists the oldest first (CHK-1).
-  submittedAt      DateTime?      @map("submitted_at")
+  submittedAt          DateTime?      @map("submitted_at")
   /// When Head Office verified it. The release queue lists the oldest first (REL-1).
-  verifiedAt       DateTime?      @map("verified_at")
+  verifiedAt           DateTime?      @map("verified_at")
   /// When the system found it finished (CLS-1).
-  completedAt      DateTime?      @map("completed_at")
+  completedAt          DateTime?      @map("completed_at")
   /// While the case is stopped: the status it goes back to when it is reopened (CLS-3).
-  statusBeforeStop CaseStatus?    @map("status_before_stop")
+  statusBeforeStop     CaseStatus?    @map("status_before_stop")
+  /// Head Office asked the DS office for another name in this case's place when it rejected or stopped
+  /// it (CASE-11). Only a rejected or stopped case has it (a database check); reopening clears it.
+  anotherNameRequested Boolean        @default(false) @map("another_name_requested")
+  /// The rejected or stopped case this one was entered in place of (CASE-11). A case is replaced once.
+  replacesCaseId       String?        @unique @map("replaces_case_id")
+  replaces             Case?          @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
+  replacedBy           Case?          @relation("Replacement")
   /// Goes up by one on every save, so a form opened earlier can't overwrite a newer change (CASE-10).
-  version          Int            @default(1)
-  decisions        Decision[]
-  files            StoredFile[]
-  release          Release?
-  installments     Installment[]
-  notifications    Notification[]
-  stageUpdates     StageUpdate[]
+  version              Int            @default(1)
+  decisions            Decision[]
+  files                StoredFile[]
+  release              Release?
+  installments         Installment[]
+  notifications        Notification[]
+  stageUpdates         StageUpdate[]
 
   @@index([dsOfficeId, status])
   @@index([status, submittedAt])

@@ -70,6 +70,9 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
     const lines: string[] = [];
     const reason = text(after.reason);
     if (reason) lines.push(t("reason", { reason }));
+    // CASE-11: a rejection or stop that asked for another name, and a reopening that withdrew it.
+    if (after.anotherNameRequested === true) lines.push(t("anotherNameRequested"));
+    if (after.anotherNameWithdrawn === true) lines.push(t("anotherNameWithdrawn"));
 
     switch (entry.action) {
       case "case_created":
@@ -78,6 +81,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
         if (entry.action === "case_updated" && changed.length > 0) {
           lines.push(t("changedFields", { fields: changed.map((field) => t(`fields.${field}`)).join(", ") }));
         }
+        if ("replacesCaseId" in after) lines.push(t(text(after.replacesCaseId) ? "replacesSet" : "replacesCleared"));
         const added = count(after.documentsAdded);
         if (added > 0) lines.push(t("documentsAdded", { count: added }));
         return { sentence: t(`actions.${entry.action}`), lines };

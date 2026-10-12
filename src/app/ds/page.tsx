@@ -26,6 +26,7 @@ import { readHomeList, type Tab, TABS, tabFilter } from "./list";
 
 /** The colour of each kind of to-do item, as in the prototype. */
 const TODO_COLOUR: Record<TodoItem["type"], string> = {
+  replace: "bg-[#F8E1DE]",
   returned: "bg-[#FBEBD3]",
   due: "bg-[#E4EDF8]",
   stale: "bg-muted",
@@ -277,6 +278,17 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
   const name = caseName(t, item.name, item.childName);
   const content = (() => {
     switch (item.type) {
+      case "replace":
+        // CASE-11: Head Office asked for another name; the new-case form asks whether it is this one.
+        return {
+          href: "/ds/cases/new",
+          title: t("home.todo.replace", { name }),
+          text: t(item.status === "STOPPED" ? "home.todo.replaceStopped" : "home.todo.replaceRejected", {
+            number: item.caseNumber ?? t("noNumber"),
+            reason: item.reason ?? t("home.todo.noReason"),
+          }),
+          action: t("home.todo.replaceAction"),
+        };
       case "returned":
         return {
           href: `/ds/cases/${item.id}/edit`,
