@@ -18,6 +18,7 @@ Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists
 - the four installments paid in order by the DS, building stages with photos, completion, stopping and reopening, and each case's history, on two-column case pages as in the prototype
 - the DS home's money panel and its full to-do panel
 - Head Office's dashboard, the Excel exports of the case lists, and a load-test data script
+- replacing a beneficiary (12 Oct 2026): Head Office asks for another name when rejecting or stopping, and the DS office's new case is linked to the old one
 - tests and CI
 - the server's files (Phase 9's code tasks): the two production images, the Compose stack behind Caddy, the server setup, automatic deploys from `main` with rollback, the first-admin script, backups, alerts, the runbook, the security tests and the officers' guides
 
@@ -205,6 +206,15 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **The root error page** (`global-error.tsx`) shows Sinhala at once and loads the chosen language's messages from the cookie.
 - **End-to-end tests:** `screenText` leaves out text marked with another `lang`, such as the picker's names. `chooseLanguage(page, "தமிழ்")` in `tests/e2e/helpers.ts` switches a page's language; `tests/e2e/languages.spec.ts` covers AC-27.
 - **Lengths:** Tamil labels run longer than Sinhala ones. The header keeps the name, office and buttons on one line; the dashboard's table scrolls rather than being cut off.
+
+### Replacing a beneficiary (CASE-11, 12 Oct 2026)
+
+- **PRD question 7, settled after the prototype:** the new person is always a new case, linked to the old one; never an edit. Task 7.8 in the PLAN. Still open with the Ministry: replacing a case that already received money.
+- **Two columns on `case`** (migration `20261012090000_replacing_a_beneficiary`): `another_name_requested`, set when Head Office rejects (`decideCase`'s `askAnotherName`) or stops (`stopCase`'s `askAnotherName`) and ticks "ask for another name"; and `replaces_case_id` (unique, `ON DELETE SET NULL`) on the new case. Hand-written checks: the flag only on a `REJECTED` or `STOPPED` case, and never a case replacing itself. Reopening clears the flag (audit `anotherNameWithdrawn`) and answers `replaced` once a case has taken the place.
+- **`src/server/cases/replacements.ts`** holds `openRequests` (the office's cases waiting for another name; `forCaseId` keeps the one a case already replaces), `replacementRefusal` and `REQUEST_SELECT`/`toRequest`, which `getCase` reuses for `replaces`; `getCase` also gives `anotherNameRequested` and `replacedBy`. The to-do panel lists requests first (`type: "replace"`), and the check queue's cards say "<number> වෙනුවට" (`QueueRow.replacesNumber`).
+- **The form's answer** travels as `replaces`: absent when the form didn't ask (keep the link), `""` unanswered (refused on submit with `replacementRequired`, kept on a draft save), `"none"` (no link), or the old case's id. `saveCase` checks the target (same office, waiting, not taken: `replacementUnavailable`) and, in the transaction, claims it with `claimReplaced`, which moves the old case's version on, so a reopening at the same moment fails as a conflict. A verified case keeps its link whatever is sent. "No" isn't stored, so the form asks again on a case with no link.
+- **Screens:** the reject tick box is in `DecisionPanel`; the stop one is `ReasonAction`'s `ask` prop (the pop-up is then `wide`). The form's question is the unnumbered `#part-replaces` above part 1, fed by `replacementOptions` (`page-header.tsx`) on the four form pages; Head Office's choosing form filters it by the office chosen. `ReplacementNotes` (`case-view.tsx`) shows the link on both case pages and the check view.
+- **End-to-end tests:** while one test's request is open, other tests' forms for the same office ask the question, so `fillCase` answers "no" whenever it shows (`NOT_A_REPLACEMENT`). `tests/e2e/replacement.spec.ts` (AC-30) uses Homagama, because the notifications test counts Kaduwela's notices exactly.
 
 ### The server (Phase 9)
 
