@@ -7,9 +7,20 @@ import type { Actor } from "./commands";
 import { Refusal, type Result } from "./refusal";
 import { applyMove, type MoveError, moveRefusal } from "./transitions";
 
-export type StopError = "notFound" | MoveError | ReasonErrorKey;
+export type StopError =
+  | "notFound"
+  | MoveError
+  | ReasonErrorKey
+  /** Another case was entered in this one's place, so it can't be reopened (CASE-11, CLS-3). */
+  | "replaced";
 
-type Input = { caseId: string; version: number; reason: string };
+type Input = {
+  caseId: string;
+  version: number;
+  reason: string;
+  /** Stopping only: also ask the DS office for another name in the case's place (CASE-11). */
+  askAnotherName?: boolean;
+};
 
 /**
  * The status a stopped case goes back to (CLS-3). A case stopped before Phase 6 may have none
@@ -28,6 +39,8 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       dsOfficeId: true,
       version: true,
       statusBeforeStop: true,
+      anotherNameRequested: true,
+      replacedBy: { select: { id: true } },
       release: { select: { amount: true } },
       installments: { select: { amount: true, status: true } },
     },
@@ -37,7 +50,8 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
 
 /**
  * CLS-2: Head Office stops a verified or running case that can't go ahead, with a reason of 5 to
- * 1,000 characters. The case remembers its status, for reopening (CLS-3). While stopped, its details,
+ * 1,000 characters, and may ask the DS office for another name in its place (CASE-11). The case
+ * remembers its status, for reopening (CLS-3). While stopped, its details,
  * installments and stages can't change (CASE-9, INS-5, STG-5). The DS office is told (NTF-1).
  */
 export async function stopCase(db: PrismaClient, actor: Actor, input: Input): Promise<Result<CaseStatus, StopError>> {
@@ -57,8 +71,11 @@ export async function stopCase(db: PrismaClient, actor: Actor, input: Input): Pr
         at: new Date(),
         reason: reason.value,
         checkVersion: true,
-        data: { statusBeforeStop: found.status },
-        auditAfter: { balance: balance(found.release, found.installments) },
+        data: { statusBeforeStop: found.status, ...(input.askAnotherName ? { anotherNameRequested: true } : {}) },
+        auditAfter: {
+          balance: balance(found.release, found.installments),
+          ...(input.askAnotherName ? { anotherNameRequested: true } : {}),
+        },
       }),
     );
     return { ok: true, value: status };
@@ -68,13 +85,18 @@ export async function stopCase(db: PrismaClient, actor: Actor, input: Input): Pr
   }
 }
 
-/** CLS-3: Head Office reopens a stopped case, with a reason. It goes back to the status it had before. */
+/**
+ * CLS-3: Head Office reopens a stopped case, with a reason. It goes back to the status it had before,
+ * and any request for another name is withdrawn; once a case has taken its place, it can't be reopened
+ * (CASE-11).
+ */
 export async function reopenCase(db: PrismaClient, actor: Actor, input: Input): Promise<Result<CaseStatus, StopError>> {
   const found = await load(db, actor, input.caseId);
   if (!found) return { ok: false, error: "notFound" };
   const to = statusToReopen({ statusBeforeStop: found.statusBeforeStop, hasRelease: found.release !== null });
   const refusal = moveRefusal(actor.role, "reopen", found.status, to);
   if (refusal) return { ok: false, error: refusal };
+  if (found.replacedBy) return { ok: false, error: "replaced" };
   const reason = parseReason(input.reason);
   if (!reason.ok) return { ok: false, error: reason.error };
   if (found.version !== input.version) return { ok: false, error: "conflict" };
@@ -88,7 +110,8 @@ export async function reopenCase(db: PrismaClient, actor: Actor, input: Input): 
         to,
         reason: reason.value,
         checkVersion: true,
-        data: { statusBeforeStop: null },
+        data: { statusBeforeStop: null, anotherNameRequested: false },
+        auditAfter: found.anotherNameRequested ? { anotherNameWithdrawn: true } : undefined,
       }),
     );
     return { ok: true, value: status };

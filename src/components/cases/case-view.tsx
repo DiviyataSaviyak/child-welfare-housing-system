@@ -1,7 +1,9 @@
+import { ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { formatDate } from "@/lib/dates";
 import type { CaseDetails } from "@/server/cases/queries";
+import { caseName } from "./page-header";
 
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 
@@ -69,6 +71,93 @@ export async function CaseNotes({ details, audience }: { details: CaseDetails; a
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * CASE-11, as in the prototype: a case entered in place of another names it, with Head Office's
+ * decision on it; a case Head Office asked to replace says so, and names its replacement once there is
+ * one. Each links to the other case on the reader's own pages.
+ */
+export async function ReplacementNotes({ details, audience }: { details: CaseDetails; audience: "ds" | "ho" }) {
+  if (!details.replaces && !details.anotherNameRequested) return null;
+  const t = await getTranslations("cases");
+  const caseHref = (id: string) => `/${audience}/cases/${id}`;
+  const number = (caseNumber: string | null) => caseNumber ?? t("noNumber");
+  const { replaces, replacedBy } = details;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {replaces && (
+        <ReplacementBox
+          id="replaces-title"
+          title={t("page.replacesTitle", {
+            number: number(replaces.caseNumber),
+            name: caseName(t, replaces.name, replaces.childName),
+          })}
+        >
+          {replaces.decidedAt && (
+            <p>
+              {t(replaces.status === "STOPPED" ? "page.replacesStopped" : "page.replacesRejected", {
+                date: formatDate(replaces.decidedAt),
+              })}
+            </p>
+          )}
+          {replaces.reason && (
+            <p className="whitespace-pre-line">{t("page.replacesReason", { reason: replaces.reason })}</p>
+          )}
+          <Link href={caseHref(replaces.id)} className="self-start font-semibold text-primary underline">
+            {t("page.openOther", { number: number(replaces.caseNumber) })}
+          </Link>
+        </ReplacementBox>
+      )}
+      {details.anotherNameRequested && (
+        <ReplacementBox id="asked-title" title={t("page.askedTitle")}>
+          {replacedBy ? (
+            <>
+              <p>
+                {t("page.askedDone", {
+                  number: number(replacedBy.caseNumber),
+                  name: caseName(t, replacedBy.name, replacedBy.childName),
+                })}
+              </p>
+              <Link href={caseHref(replacedBy.id)} className="self-start font-semibold text-primary underline">
+                {t("page.openOther", { number: number(replacedBy.caseNumber) })}
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>{t("page.askedWaiting")}</p>
+              {audience === "ds" && (
+                <Link
+                  href="/ds/cases/new"
+                  className="flex h-11.5 items-center self-start rounded-lg bg-primary px-4.5 font-bold text-primary-foreground"
+                >
+                  {t("page.askedEnter")}
+                </Link>
+              )}
+            </>
+          )}
+        </ReplacementBox>
+      )}
+    </div>
+  );
+}
+
+function ReplacementBox({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+  return (
+    <section
+      aria-labelledby={id}
+      className="flex items-start gap-3 rounded-xl border border-[#A9CBBF] bg-accent px-5 py-4 text-accent-foreground"
+    >
+      <ArrowRightLeft aria-hidden="true" className="mt-0.5 size-5.5 shrink-0" />
+      <div className="flex flex-col gap-1">
+        <h2 id={id} className="text-[17px] font-bold">
+          {title}
+        </h2>
+        {children}
+      </div>
+    </section>
   );
 }
 

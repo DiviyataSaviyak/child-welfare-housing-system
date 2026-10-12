@@ -1,11 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { DeleteDraft } from "@/components/cases/delete-draft";
-import { formValues, PageHeader } from "@/components/cases/page-header";
+import { formValues, PageHeader, replacementOptions } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { CaseForm } from "@/components/forms/case-form";
 import { FormNotice } from "@/components/forms/form-field";
 import { getCase } from "@/server/cases/queries";
+import { openRequests } from "@/server/cases/replacements";
 import { canDeleteDraft, canEditDetails } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -33,7 +34,10 @@ export default async function EditCasePage({
   // Nobody changes a case while Head Office checks it, or after (STS-3, CASE-9).
   if (!canEditDetails(viewer.role, details.status)) redirect(`/ds/cases/${id}`);
 
-  const t = await getTranslations("cases");
+  const [t, requests] = await Promise.all([
+    getTranslations("cases"),
+    openRequests(db, viewer, { forCaseId: details.id }),
+  ]);
   const notice = (await searchParams).notice === "saved";
 
   return (
@@ -59,6 +63,8 @@ export default async function EditCasePage({
         office={{ kind: "own", districtName: details.districtName, officeName: details.officeName }}
         documents={details.documents}
         returnReason={details.returnReason}
+        replacements={replacementOptions(t, requests)}
+        replacesCaseId={details.replaces?.id ?? null}
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,

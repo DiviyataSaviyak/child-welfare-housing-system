@@ -6,7 +6,7 @@ import type { CaseDetails } from "@/server/cases/queries";
 import type { LetterSummary } from "@/server/releases/queries";
 
 /** What a check action or a letter correction leaves on the next page, by its key under "review.notices". */
-const NOTICES = ["verified", "sentBack", "rejected", "corrected"] as const;
+const NOTICES = ["verified", "sentBack", "rejected", "rejectedAskName", "corrected"] as const;
 type ReviewNoticeKey = (typeof NOTICES)[number];
 
 export const isReviewNotice = (value: unknown): value is ReviewNoticeKey =>

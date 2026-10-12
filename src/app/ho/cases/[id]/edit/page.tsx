@@ -1,11 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { DeleteDraft } from "@/components/cases/delete-draft";
-import { formValues, PageHeader } from "@/components/cases/page-header";
+import { formValues, PageHeader, replacementOptions } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { CaseForm, type OfficeSetting } from "@/components/forms/case-form";
 import { FormNotice } from "@/components/forms/form-field";
 import { getCase } from "@/server/cases/queries";
+import { openRequests } from "@/server/cases/replacements";
 import { canChangeOffice, canDeleteDraft, canEditDetails, isBeingEntered } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -47,6 +48,13 @@ export default async function HoEditCasePage({
         dsOfficeId: details.dsOfficeId,
       }
     : { kind: "fixed", districtName: details.districtName, officeName: details.officeName };
+  // CASE-11: while the office can still change, the form offers each office's own requests.
+  const requests = isBeingEntered(details.status)
+    ? await openRequests(db, viewer, {
+        forCaseId: details.id,
+        ...(office.kind === "fixed" ? { dsOfficeId: details.dsOfficeId } : {}),
+      })
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -71,6 +79,8 @@ export default async function HoEditCasePage({
         documents={details.documents}
         returnReason={details.returnReason}
         mode={isBeingEntered(details.status) ? "entry" : "change"}
+        replacements={replacementOptions(t, requests)}
+        replacesCaseId={details.replaces?.id ?? null}
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,

@@ -15,7 +15,8 @@ const isReasonError = (error: string | null): error is ReasonErrorKey =>
 
 /**
  * CHK-3, as in the prototype: verify (after one confirmation), send back or reject. The last two open
- * a box for the reason the DS office will read. What was typed stays after a refusal (ERR-1).
+ * a box for the reason the DS office will read; rejecting can also ask the DS office for another name
+ * in the case's place (CASE-11). What was typed stays after a refusal (ERR-1).
  */
 export function DecisionPanel({
   caseId,
@@ -40,6 +41,7 @@ export function DecisionPanel({
   const [, startTransition] = useTransition();
   const [mode, setMode] = useState<"sendBack" | "reject" | null>(null);
   const [reason, setReason] = useState("");
+  const [askName, setAskName] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // The browser's own check of the reason; null once the form has gone to the server.
   const [checkError, setCheckError] = useState<ReasonErrorKey | null>(null);
@@ -56,6 +58,7 @@ export function DecisionPanel({
     if (place?.dsOfficeId) form.set("dsOfficeId", String(place.dsOfficeId));
     form.set("decision", decision);
     form.set("reason", decision === "verify" ? "" : reason);
+    if (decision === "reject" && askName) form.set("anotherName", "1");
     startTransition(() => dispatch(form));
   }
 
@@ -72,6 +75,7 @@ export function DecisionPanel({
 
   const open = (next: "sendBack" | "reject") => {
     setMode(next);
+    setAskName(false);
     setCheckError(null);
   };
 
@@ -126,6 +130,24 @@ export function DecisionPanel({
             error={reasonError ? t(`errors.${reasonError}`) : undefined}
             autoFocus
           />
+          {mode === "reject" && (
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border-[1.5px] px-3.5 py-3 ${
+                askName ? "border-primary bg-accent" : "border-border bg-card"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={askName}
+                onChange={(event) => setAskName(event.target.checked)}
+                className="mt-0.5 size-[22px] shrink-0 accent-primary"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-bold">{t("decision.askName")}</span>
+                <span className="text-sm text-[#3F4843]">{t("decision.askNameHelp")}</span>
+              </span>
+            </label>
+          )}
           <div className="flex justify-end gap-3">
             <button
               type="button"
@@ -145,7 +167,7 @@ export function DecisionPanel({
               {pending
                 ? t("decision.working")
                 : mode === "reject"
-                  ? t("decision.confirmReject")
+                  ? t(askName ? "decision.confirmRejectAsk" : "decision.confirmReject")
                   : t("decision.confirmSendBack")}
             </button>
           </div>

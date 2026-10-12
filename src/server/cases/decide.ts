@@ -17,7 +17,8 @@ export type DecideError = "notFound" | MoveError | ReasonErrorKey;
 
 /**
  * CHK-3: verifies a submitted case, sends it back to its DS office for correction, or rejects it.
- * Sending back and rejecting need a reason of 5 to 1,000 characters. The decision, its audit record
+ * Sending back and rejecting need a reason of 5 to 1,000 characters. Rejecting can also ask the DS
+ * office for another name in the case's place (CASE-11). The decision, its audit record
  * and the notices to the DS office's officers are saved with the status change (transitions.ts).
  * `version` is the one the check view showed, so a case resubmitted in the meantime isn't decided
  * on details nobody has seen (CASE-10).
@@ -25,7 +26,7 @@ export type DecideError = "notFound" | MoveError | ReasonErrorKey;
 export async function decideCase(
   db: PrismaClient,
   actor: Actor,
-  input: { caseId: string; version: number; decision: Decision; reason: string | null },
+  input: { caseId: string; version: number; decision: Decision; reason: string | null; askAnotherName?: boolean },
 ): Promise<Result<CaseStatus, DecideError>> {
   const found = await db.case.findUnique({
     where: { id: input.caseId },
@@ -44,6 +45,7 @@ export async function decideCase(
   if (found.version !== input.version) return { ok: false, error: "conflict" };
 
   const now = new Date();
+  const askAnotherName = input.decision === "reject" && input.askAnotherName === true;
   try {
     const status = await db.$transaction((tx) =>
       applyMove(tx, found, input.decision, {
@@ -52,7 +54,13 @@ export async function decideCase(
         at: now,
         reason,
         checkVersion: true,
-        data: input.decision === "verify" ? { verifiedAt: now } : undefined,
+        data:
+          input.decision === "verify"
+            ? { verifiedAt: now }
+            : askAnotherName
+              ? { anotherNameRequested: true }
+              : undefined,
+        auditAfter: askAnotherName ? { anotherNameRequested: true } : undefined,
       }),
     );
     return { ok: true, value: status };

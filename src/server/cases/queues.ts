@@ -18,6 +18,8 @@ export type QueueRow = {
   waitingSince: Date | null;
   /** The NIC is on another case too (CHK-1). Only the check queue looks. */
   duplicate: boolean;
+  /** The number of the case this one was entered in place of (CASE-11). */
+  replacesNumber: string | null;
 };
 
 /** The part of the country a queue is narrowed to (CHK-4): a district, or one DS office in it. */
@@ -66,6 +68,7 @@ export async function listQueue(
         submittedAt: true,
         verifiedAt: true,
         dsOffice: { select: NAMES },
+        replaces: { select: { caseNumber: true } },
       },
     }),
     db.case.count({ where }),
@@ -81,6 +84,7 @@ export async function listQueue(
       officeName: localName(row.dsOffice, locale),
       waitingSince: row[since],
       duplicate: flagged.has(row.id),
+      replacesNumber: row.replaces?.caseNumber ?? null,
     })),
     total,
   };

@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import { CaseColumns, CaseDetailsSection, CaseNotes, caseSubtitle } from "@/components/cases/case-view";
+import {
+  CaseColumns,
+  CaseDetailsSection,
+  CaseNotes,
+  caseSubtitle,
+  ReplacementNotes,
+} from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
@@ -29,7 +35,7 @@ import { correctReleaseAction, decideAction } from "../../check/actions";
 import { reopenAction, stopAction, undoInstallmentAction } from "./actions";
 
 /** What a stop, reopen or undo leaves on the page, by its key under "progress.notices". */
-const NOTICES = ["stopped", "reopened", "undone"] as const;
+const NOTICES = ["stopped", "stoppedAskName", "reopened", "undone"] as const;
 const isNotice = (value: unknown): value is (typeof NOTICES)[number] =>
   typeof value === "string" && (NOTICES as readonly string[]).includes(value);
 
@@ -90,6 +96,7 @@ export default async function HoCasePage({
       look="danger"
       hidden={hidden}
       action={stopAction}
+      ask={{ label: tp("stop.askName"), help: tp("stop.askNameHelp"), confirm: tp("stop.confirmAsk") }}
       texts={{
         ...reasonTexts,
         button: tp("stop.button"),
@@ -187,6 +194,7 @@ export default async function HoCasePage({
       <ReviewNotice notice={notice} details={details} />
       <CaseNotes details={details} audience="ho" />
       <StoppedBanner details={details} reopen={reopen} />
+      <ReplacementNotes details={details} audience="ho" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

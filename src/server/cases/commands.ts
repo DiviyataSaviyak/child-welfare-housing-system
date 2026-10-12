@@ -10,6 +10,7 @@ import { logError } from "../log";
 import { canSeeOffice, caseScope, type Viewer } from "../permissions";
 import { nextCaseNumber } from "./numbers";
 import { isUniqueViolation, Refusal } from "./refusal";
+import { CLOSED, replacementRefusal } from "./replacements";
 import { canChangeOffice, canDeleteDraft, canEditDetails, editableStatuses, mustStayComplete } from "./rules";
 import { applyMove, moveRefusal } from "./transitions";
 
@@ -38,7 +39,11 @@ export type CaseCommandError =
   /** The actor's role never takes this step (SPEC section 4). */
   | "roleNotAllowed"
   /** The kind of help decides the stages, so it stays once a stage is recorded (CASE-9, STG-4). */
-  | "kindLocked";
+  | "kindLocked"
+  /** The form asked whether the person is in place of another case, and got no answer (CASE-11). */
+  | "replacementRequired"
+  /** The case chosen to replace no longer waits for another name, or another case took its place (CASE-11). */
+  | "replacementUnavailable";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: CaseCommandError };
 
@@ -54,6 +59,11 @@ export type SaveCaseInput = {
   documentIds: string[];
   /** Also send the case to Head Office (CASE-5). */
   submit: boolean;
+  /**
+   * The answer to "is this person in place of another case?" (CASE-11): undefined when the form didn't
+   * ask, "" when it asked and got no answer, null for "no", or the id of the case replaced.
+   */
+  replaces?: string | null;
 };
 
 export type SavedCase = { id: string; caseNumber: string | null; status: CaseStatus };
@@ -74,6 +84,7 @@ const CASE_SELECT = {
   mobile1: true,
   mobile2: true,
   remark: true,
+  replacesCaseId: true,
 } as const satisfies Prisma.CaseSelect & Record<(typeof CASE_FIELDS)[number], true>;
 
 type StoredCase = Prisma.CaseGetPayload<{ select: typeof CASE_SELECT }>;
@@ -136,6 +147,13 @@ async function checkSave(
   if (input.submit) {
     const refusal = moveRefusal(actor.role, "submit", current?.status ?? "DRAFT");
     if (refusal) return refusal;
+    if (input.replaces === "") return "replacementRequired";
+  }
+  // CASE-11: a new link, or a linked draft moving to another office, must still find its case waiting.
+  const link = linkAfterSave(current, input);
+  if (link && (link !== current?.replacesCaseId || office !== current?.dsOfficeId)) {
+    const refusal = await replacementRefusal(db, { caseId: input.id, targetId: link, dsOfficeId: office });
+    if (refusal) return refusal;
   }
   // A new case, or a draft moving to another office, needs an active office (LST-3).
   if (!current || office !== current.dsOfficeId) {
@@ -154,13 +172,24 @@ async function writeCase(
   dsOfficeId: number,
 ): Promise<SavedCase> {
   const now = new Date();
-  const fields = { ...input.values, nicKey: input.values.nic ? nicKey(input.values.nic) : null, dsOfficeId };
+  const replacesCaseId = linkAfterSave(current, input);
+  const fields = {
+    ...input.values,
+    nicKey: input.values.nic ? nicKey(input.values.nic) : null,
+    dsOfficeId,
+    replacesCaseId,
+  };
 
+  if (replacesCaseId && replacesCaseId !== (current?.replacesCaseId ?? null)) {
+    await claimReplaced(tx, replacesCaseId, dsOfficeId);
+  }
   if (!current) await tx.case.create({ data: { id: input.id, ...fields, createdById: actor.userId } });
   const documentIds = await attachDocuments(tx, actor, input.id, input.documentIds);
 
   // CASE-9, HIS-1: the old and new value of every field that changed.
-  const changed = (["dsOfficeId", ...CASE_FIELDS] as const).filter((field) => current?.[field] !== fields[field]);
+  const changed = (["dsOfficeId", ...CASE_FIELDS, "replacesCaseId"] as const).filter(
+    (field) => current?.[field] !== fields[field],
+  );
   const pick = (source: Record<string, unknown>) => Object.fromEntries(changed.map((f) => [f, source[f] ?? null]));
   if (!current) {
     await writeAudit(tx, {
@@ -214,6 +243,29 @@ async function writeCase(
     },
   );
   return { id: input.id, caseNumber, status: "SUBMITTED" };
+}
+
+/**
+ * The case this one replaces once saved (CASE-11): the form's answer, or the link it has when the form
+ * didn't answer. A case Head Office has verified keeps its link.
+ */
+function linkAfterSave(current: StoredCase | null, input: SaveCaseInput): string | null {
+  const kept = current?.replacesCaseId ?? null;
+  if (input.replaces === undefined || input.replaces === "") return kept;
+  if (current && mustStayComplete(current.status)) return kept;
+  return input.replaces;
+}
+
+/**
+ * Takes the replaced case's row for this transaction and moves its version on, so reopening it at the
+ * same moment (CLS-3) is refused as a conflict instead of reopening a case that now has a replacement.
+ */
+async function claimReplaced(tx: Prisma.TransactionClient, id: string, dsOfficeId: number): Promise<void> {
+  const claimed = await tx.case.updateMany({
+    where: { id, dsOfficeId, anotherNameRequested: true, status: { in: [...CLOSED] } },
+    data: { version: { increment: 1 } },
+  });
+  if (claimed.count === 0) throw new Refusal("replacementUnavailable");
 }
 
 const withoutEmpty = (values: Record<string, unknown>) =>

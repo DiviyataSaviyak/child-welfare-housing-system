@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import { CaseColumns, CaseDetailsSection, CaseNotes, caseSubtitle } from "@/components/cases/case-view";
+import {
+  CaseColumns,
+  CaseDetailsSection,
+  CaseNotes,
+  caseSubtitle,
+  ReplacementNotes,
+} from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
@@ -117,6 +123,7 @@ export default async function DsCasePage({
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <CaseNotes details={details} audience="ds" />
       <StoppedBanner details={details} />
+      <ReplacementNotes details={details} audience="ds" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

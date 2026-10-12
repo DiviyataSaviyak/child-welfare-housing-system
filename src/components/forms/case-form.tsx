@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRightLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { FormError, FormField, FormTextArea } from "@/components/forms/form-field";
@@ -32,6 +33,19 @@ export type OfficeSetting =
   /** Head Office chooses the district, then the DS office. */
   | { kind: "choose"; districts: DistrictOptions[]; districtId: number | null; dsOfficeId: number | null };
 
+/** A case Head Office asked to replace (CASE-11), as the form offers it, for its own DS office. */
+export type ReplacementOption = {
+  id: string;
+  dsOfficeId: number;
+  number: string;
+  name: string;
+  /** Stopped, not rejected. */
+  stopped: boolean;
+  /** The day Head Office decided, written out. */
+  date: string | null;
+  reason: string | null;
+};
+
 export type CaseFormActions = DocumentActions & {
   save: (state: CaseFormState, form: FormData) => Promise<CaseFormState>;
   checkNic: (nic: string, caseId: string, dsOfficeId: number | null) => Promise<NicMatch[]>;
@@ -56,7 +70,8 @@ const DETAIL_FIELDS: CaseField[] = [
  * kept in state, so a refused save loses nothing (ERR-1, ERR-3). The browser runs the same checks as the
  * server before anything is sent, and submitting shows a summary to confirm first (CASE-5).
  * In "change" mode Head Office corrects a verified case (CASE-9): one save button, and every required
- * field must stay filled in.
+ * field must stay filled in. While Head Office has asked the case's office for another name, the form
+ * first asks whether this person is in that case's place, and submitting needs an answer (CASE-11).
  */
 export function CaseForm({
   caseId,
@@ -67,6 +82,8 @@ export function CaseForm({
   returnReason,
   actions,
   mode = "entry",
+  replacements = [],
+  replacesCaseId = null,
 }: {
   caseId: string;
   /** The version the form was opened with (CASE-10); null for a new case. */
@@ -77,6 +94,10 @@ export function CaseForm({
   returnReason: string | null;
   actions: CaseFormActions;
   mode?: "entry" | "change";
+  /** The cases waiting for another name that this one may replace, of any office the form may choose. */
+  replacements?: ReplacementOption[];
+  /** The case this one already replaces. */
+  replacesCaseId?: string | null;
 }) {
   const t = useTranslations("cases");
   const [state, dispatch, pending] = useActionState(actions.save, EMPTY);
@@ -88,6 +109,9 @@ export function CaseForm({
   // Checks made in the browser; null once the form has gone to the server, whose answer then shows.
   const [localErrors, setLocalErrors] = useState<CaseErrors | null>(null);
   const [officeMissing, setOfficeMissing] = useState(false);
+  // "" until answered, "none" for no, or the id of the case replaced (CASE-11).
+  const [replaces, setReplaces] = useState(replacesCaseId ?? "");
+  const [replacementMissing, setReplacementMissing] = useState(false);
   const [intent, setIntent] = useState<Intent>("submit");
   const [failedTries, setFailedTries] = useState(0);
   const [nicCheck, setNicCheck] = useState<{ nic: string; matches: NicMatch[] } | null>(null);
@@ -108,6 +132,13 @@ export function CaseForm({
   const uploading = uploads.some((u) => u.state === "uploading");
   const documentCount = documents.length + uploads.filter((u) => u.state === "done").length;
   const chosenOffice = office.kind === "choose" ? parseOfficeId(dsOfficeId) : null;
+  // A Head Office officer choosing the office sees the requests of the office chosen.
+  const replacementChoices =
+    office.kind === "choose" ? replacements.filter((r) => r.dsOfficeId === chosenOffice) : replacements;
+  const askReplacement = mode === "entry" && replacementChoices.length > 0;
+  const replacesValue = replaces === "none" || replacementChoices.some((r) => r.id === replaces) ? replaces : "";
+  const replaced = replacementChoices.find((r) => r.id === replacesValue);
+  const showReplacementError = askReplacement && (replacementMissing || serverError === "replacementRequired");
 
   const set = (field: CaseField) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -140,6 +171,9 @@ export function CaseForm({
     form.set("intent", chosen);
     for (const field of CASE_FIELDS) form.set(field, values[field]);
     if (office.kind === "choose") form.set("dsOfficeId", dsOfficeId);
+    // When asked, the answer; when no longer asked because another office was chosen, its link goes.
+    if (askReplacement) form.set("replaces", replacesValue);
+    else if (replacesCaseId && mode === "entry") form.set("replaces", "none");
     for (const upload of uploads) if (upload.state === "done" && upload.id) form.append("documentIds", upload.id);
     startTransition(() => dispatch(form));
   }
@@ -151,14 +185,17 @@ export function CaseForm({
       chosen === "submit" || mode === "change" ? "submit" : "draft",
     );
     const noOffice = office.kind === "choose" && chosenOffice === null;
-    if (!checked.ok || noOffice) {
+    const noAnswer = chosen === "submit" && askReplacement && replacesValue === "";
+    if (!checked.ok || noOffice || noAnswer) {
       setLocalErrors(checked.ok ? {} : checked.errors);
       setOfficeMissing(noOffice);
+      setReplacementMissing(noAnswer);
       setFailedTries((n) => n + 1);
       return;
     }
     setLocalErrors(null);
     setOfficeMissing(false);
+    setReplacementMissing(false);
     if (chosen === "save") {
       send("save");
       return;
@@ -169,6 +206,9 @@ export function CaseForm({
 
   // The list above the buttons (ERR-1), in the order of the form, each linked to its field.
   const errorList = [
+    ...(showReplacementError
+      ? [{ key: "replaces", target: "part-replaces", message: t("form.errors.replacementRequired") }]
+      : []),
     ...CASE_FIELDS.flatMap((field) => {
       const key = errors[field];
       if (!key) return [];
@@ -223,6 +263,53 @@ export function CaseForm({
             </h2>
             <p className="text-[15px]">{t("form.returned.text")}</p>
             <p className="text-[17px] font-semibold whitespace-pre-line">{returnReason}</p>
+          </section>
+        )}
+
+        {askReplacement && (
+          <section
+            id="part-replaces"
+            aria-labelledby="part-replaces-title"
+            tabIndex={-1}
+            className={`flex flex-col gap-3.5 rounded-xl border-2 bg-card px-6 py-5 ${
+              showReplacementError ? "border-destructive" : "border-[#A9CBBF]"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <ArrowRightLeft aria-hidden="true" className="mt-0.5 size-6.5 shrink-0 text-primary" />
+              <div className="flex flex-col gap-0.5">
+                <h2 id="part-replaces-title" className="text-xl font-bold">
+                  {t("form.replaces.title")}
+                </h2>
+                <p className="text-[15px] text-muted-foreground">{t("form.replaces.text")}</p>
+              </div>
+            </div>
+            <ChoiceCards
+              name="replaces"
+              labelledBy="part-replaces-title"
+              options={[
+                ...replacementChoices.map((r) => ({
+                  value: r.id,
+                  label: t("form.replaces.yes", { number: r.number }),
+                  hint: [
+                    r.date
+                      ? t(r.stopped ? "form.replaces.stoppedOn" : "form.replaces.rejectedOn", {
+                          name: r.name,
+                          date: r.date,
+                        })
+                      : r.name,
+                    ...(r.reason ? [t("form.replaces.reason", { reason: r.reason })] : []),
+                  ].join(" · "),
+                })),
+                { value: "none", label: t("form.replaces.no"), hint: t("form.replaces.noHint") },
+              ]}
+              value={replacesValue}
+              onChange={(value) => {
+                setReplaces(value);
+                setReplacementMissing(false);
+              }}
+              error={showReplacementError ? t("form.errors.replacementRequired") : undefined}
+            />
           </section>
         )}
 
@@ -394,9 +481,11 @@ export function CaseForm({
             </ul>
           </div>
         )}
-        {serverError && serverError !== "officeRequired" && (
-          <FormError id="case-error" message={t(`form.errors.${serverError}`)} />
-        )}
+        {serverError &&
+          serverError !== "officeRequired" &&
+          !(showReplacementError && serverError === "replacementRequired") && (
+            <FormError id="case-error" message={t(`form.errors.${serverError}`)} />
+          )}
 
         <div className="flex items-center justify-end gap-3">
           {mode === "entry" && (
@@ -465,6 +554,14 @@ export function CaseForm({
         <p className="text-[#3F4843]">{t("form.confirm.text")}</p>
         <dl className="flex flex-col overflow-hidden rounded-lg border">
           {[
+            ...(replaced
+              ? [
+                  {
+                    label: t("form.confirm.replaces"),
+                    value: t("form.replaces.ref", { number: replaced.number, name: replaced.name }),
+                  },
+                ]
+              : []),
             { label: t("form.confirm.category"), value: category ? t(`category.${category}`) : "" },
             { label: t("form.confirm.kind"), value: kind ? t(`kind.${kind}`) : "" },
             ...(atRisk ? [{ label: t("form.confirm.childName"), value: values.childName }] : []),
