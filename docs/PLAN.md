@@ -90,6 +90,7 @@ docker-compose.dev.yml  the development database
 | 2.6 | Audit writer used inside the same transaction as each change; a database trigger that refuses any change or removal of audit rows | ARC-4, HIS-1, HIS-3 | `src/server/audit.ts`, `prisma/migrations/*` |
 | 2.7 | Proxy (Next.js 16's name for middleware) that only redirects signed-out users; role home pages; the "not found" page | ARC-3, ERR-2 | `src/proxy.ts`, `src/app/not-found.tsx` |
 | 2.8 | Security headers, Server Actions origin check, error page with a reference code, logging without personal data | SEC-5, SEC-6, SEC-8, ERR-6 | `next.config.ts`, `src/app/error.tsx`, `src/server/log.ts` |
+| 2.9 | Asking for a new password (added 2026-10-14): "මුරපදය අමතකද?" on the sign-in page opens `/forgot-password`, which takes a username and answers the same for any (5 per 15 minutes per IP); migration `new_password_requests` adds `app_user.new_password_asked_at`; the admin's menu badge, the list's waiting accounts first, the pop-up with the mobile number and "close the request"; a new password, disabling, or the officer's own sign-in closes it | AUTH-7, SEC-4, ADM-5, AC-31 | `src/app/(auth)/forgot-password/*`, `src/app/(auth)/actions.ts`, `src/server/auth/{new-password,sign-in,rate-limit}.ts`, `src/server/users/*`, `src/app/admin/users/*`, `src/app/admin/{layout.tsx,waiting/route.ts}`, `messages/*.json` |
 
 **Tests:** permission helpers for every role and office combination; an audit row is written with each change and rolled back with it; e2e for sign-in, lockout and the forced password change.
 

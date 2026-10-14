@@ -160,6 +160,7 @@ Version 1 covers a case from first entry to completion, with dashboards, history
 
 - Create an account for each named officer. A DS can have more than one officer account (14 Oct 2026), and they all work on the DS's cases. When an officer leaves, disable their account; a new officer gets one of their own.
 - Give each new account a temporary password, which the officer must change at first login. Reset passwords the same way.
+- Let an officer who has forgotten their password ask for a new one from the sign-in page (14 Oct 2026). With no SMS or email yet, the request goes to the admin, who calls the officer on the number in their account and gives a temporary password.
 - Disable the account of an officer who leaves; their past changes stay in the history. Move an officer to another DS when they transfer.
 - Keep the lists of provinces, districts, DS divisions, and the stages for new houses and renovations. Entries are never deleted.
 
@@ -268,4 +269,4 @@ These were set aside on 28 Sep, to be answered later. Until then the [SPEC](SPEC
 | 7 | How is a beneficiary replaced? **Settled 12 Oct 2026: as a new case, linked to the old one, which Head Office rejects or stops while asking for another name.** Still open: may a case be replaced after money was paid, and does its balance go to the new person? | The sheet has "another name submitted for approval". It could be a new case or an edit. |
 | 8 | Is Tamil needed in version 1? **Answered 7 Oct 2026: yes, and English too.** | Northern DS offices typed the sheet in English. |
 | 9 | Is the Rs. 2M released case by case, or in batches per DS? | This decides how Head Office records releases. |
-| 12 | How does a new officer get their first password? | SMS alerts come later, so for now the admin must pass it on by phone or in person. |
+| 12 | How does a new officer get their first password? | SMS alerts come later, so for now the admin must pass it on by phone or in person. A forgotten password goes the same way, after the officer asks on the sign-in page (14 Oct 2026). |

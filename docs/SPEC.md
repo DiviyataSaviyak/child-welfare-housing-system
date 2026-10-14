@@ -90,7 +90,7 @@ Amounts are whole rupees stored as integers. Nothing listed here is ever deleted
 | Province | name in Sinhala, Tamil and English | 9 rows, seeded |
 | District | name in Sinhala, Tamil and English, province | 25 rows, seeded |
 | DsOffice | name in Sinhala, Tamil and English, code, district, active | `code` is 3 capital letters, unique nationally, and used in case numbers. The Sinhala name is unique within its district |
-| User | full name, designation, mobile, email, username, role, DS office, active, must change password, last sign-in, failed sign-ins, locked until | DS office is required for DS officers only, and an office can have several active DS officers (ADM-3). Username is generated (ADM-2) and unique |
+| User | full name, designation, mobile, email, username, role, DS office, active, must change password, last sign-in, failed sign-ins, locked until, new password asked at (AUTH-7) | DS office is required for DS officers only, and an office can have several active DS officers (ADM-3). Username is generated (ADM-2) and unique |
 | Case | case number, DS office, category, kind, status, name, child's name, NIC, NIC key, address, GN division, mobile 1, mobile 2, remark, created by, submitted at, verified at, completed at, status before stop, another name requested, replaces case, version | See CASE-2 for field rules. `version` goes up by one on every save and every installment, stage or status change (CASE-10). `submitted at` is the latest submit. While the case is stopped, `status before stop` holds the status it goes back to (CLS-3); the stop's day and reason are its Decision. `another name requested` is set when Head Office rejects or stops the case and asks for another name in its place (CASE-11); only a rejected or stopped case has it (a database check), and reopening clears it. `replaces case` is the case this one was entered in place of; a case is replaced by at most one other (unique), never by itself |
 | CaseNumberCounter | DS office, year, last number | One row per office and year. Taking the next number locks the row, so two submits at once never share a number (CASE-5) |
 | Decision | case, type, reason, by, at | Types: submit, verify, send back, reject, stop, reopen |
@@ -148,6 +148,10 @@ Values used across the system:
 - **AUTH-4** A session shall end after 30 minutes without activity, and always after 12 hours. Signing out shall end it at once.
 - **AUTH-5** A disabled account shall not be able to sign in. Its open sessions shall stop working on their next request.
 - **AUTH-6** Passwords shall be stored only as slow hashes, using Better Auth's default. A temporary password shall be shown once and never stored in plain text or written to any log.
+- **AUTH-7** An officer who has forgotten their password shall be able to ask for a new one from the sign-in page ("මුරපදය අමතකද?", added 14 Oct 2026). The system sends no email or SMS (PRD, Later), so the request goes to the admin:
+  - **Input:** the username only. The answer shall be the same whether or not the username exists or the account is disabled, as for AUTH-2; only an unknown or disabled account opens no request. A second request while one is open changes nothing.
+  - **The admin's users screen** shall show how many accounts wait, put them at the top of the list with the day they asked, and show the count in the menu. The new-password pop-up shall ask the admin to call the officer on the mobile number in the account before giving one, and show that number.
+  - **The request closes** when the admin gives a new password (ADM-5), closes it without one (for example when the officer didn't ask), or disables the account, or when the officer signs in with their own password. Asking, closing and withdrawing are in the account's history.
 
 ### 7.2 Admin: accounts (ADM)
 
@@ -378,7 +382,7 @@ Only the DS office starts and pays installments (section 4). Each change is refu
 - **SEC-1** The system shall be reachable only over HTTPS (TLS 1.2 or later) with HSTS. Plain HTTP redirects to HTTPS.
 - **SEC-2** Every Server Action and route handler shall check the role and office in the data-access layer. Tests shall call each one with each role.
 - **SEC-3** The database shall accept connections only from the containers on the server; it publishes no port. The app's database account shall not be able to change the schema, or update or delete audit rows. Migrations run with a separate owner account.
-- **SEC-4** Sign-in shall allow at most 10 attempts per minute from one IP address. An unused temporary password expires after 7 days.
+- **SEC-4** Sign-in shall allow at most 10 attempts per minute from one IP address, and asking for a new password (AUTH-7) at most 5 per 15 minutes. An unused temporary password expires after 7 days.
 - **SEC-5** Responses shall carry these security headers:
   - a Content Security Policy that allows only this site, with no third-party scripts or fonts
   - `frame-ancestors 'none'`
@@ -453,6 +457,7 @@ Version 1 is accepted when every check below passes on staging with made-up data
 | AC-28 | The admin, working in Sinhala, adds a DS office with its Sinhala and English names and its code, leaving the Tamil name blank. The lists screen shows only the Sinhala name; in English it shows the typed English name, and in Tamil the name the system wrote in Tamil letters. A stage needs only its Sinhala name. | UI-9, LST-2, LST-4 |
 | AC-29 | A commit pushed to `main` that passes CI runs on the server with no manual step, and a page left open from the old version reloads on its next move. A release whose app fails its health check is undone: the previous version runs again, and the database is as it was before the deploy. | OPS-3 |
 | AC-30 | Head Office rejects a case and ticks "ask for another name". The DS officer's to-do panel shows the request; their new-case form asks whether the new person is in its place and won't submit without an answer. Once linked, the new case's check view and both case pages name each other, and the request leaves the to-do panel. A second case can't take the same place, and a stopped case that has been replaced can't be reopened. | CASE-11, CHK-3, CLS-3, HOME-3 |
+| AC-31 | On the sign-in page an officer follows "මුරපදය අමතකද?" and asks for a new password; an unknown username gets the same answer. The admin's menu and users screen show the request with the officer's mobile number. The admin gives a new temporary password, the request goes, and the officer signs in with it and must set their own. A request the admin closes, or that the officer withdraws by signing in, goes too, and the history records each. | AUTH-7, ADM-5 |
 
 ## 13. Deferred questions and the defaults used
 
@@ -468,6 +473,6 @@ On 28 Sep the open questions were set aside for later. Until the Ministry answer
 | 7. Replacing a beneficiary | Settled on 12 Oct 2026 after the prototype: the new person is a new case linked to the one it replaces, and Head Office asks for it when rejecting or stopping. Still to ask the Ministry: may a case be replaced after money was paid, and does its balance then go to the new person? Until then the stopped case's balance stays with the DS (question 6) and the new case gets its own Rs. 2,000,000. | CASE-11, CHK-3, CLS-2, CLS-3 |
 | 8. Tamil | Answered 7 Oct 2026: the screens come in Sinhala, Tamil and English. | UI-9 |
 | 9. How the Rs. 2M is released | Answered on 6 Oct 2026: by one allocation letter to a District Secretary for several verified cases of the district. No longer a default. | REL-1–4 |
-| 12. First password | The admin sees it once and passes it on in person or by phone. | ADM-2 |
+| 12. First password | The admin sees it once and passes it on in person or by phone. A forgotten password goes the same way: the officer asks on the sign-in page, and the admin calls them with a new one (14 Oct 2026). | ADM-2, AUTH-7 |
 
 The six rules marked Proposed in the PRD are built as written there: send back (CHK-3), Head Office-only edits after verification (CASE-9), nothing deleted (ADM-7, LST-3), the completion rule (CLS-1), one account per person (ADM-2), and the duplicate NIC in another DS (CASE-6).
