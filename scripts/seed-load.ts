@@ -129,8 +129,11 @@ export type Person = {
 export type Cast = {
   /** Every case's id starts with this, which is how they are removed again. */
   idPrefix: string;
-  /** Who enters a case and takes the DS office's steps on it. */
-  officer: (office: Office) => string;
+  /**
+   * The office's officers: the first enters a case and takes the DS office's steps on it, and each one
+   * gets its notices (NTF-1).
+   */
+  officers: (office: Office) => string[];
   /** Who takes Head Office's steps on a case: checking, releasing and stopping. */
   headOffice: (r: Random) => string;
   person: (r: Random, office: Office, category: Category | null) => Person;
@@ -177,7 +180,7 @@ export type Planned = {
   installments: Prisma.InstallmentCreateManyInput[];
   stageUpdates: Prisma.StageUpdateCreateManyInput[];
   history: Step[];
-  /** The notices the steps send the office's officer (NTF-1); the older ones have been read. */
+  /** The notices the steps send the office's officers (NTF-1); the older ones have been read. */
   notifications: Prisma.NotificationCreateManyInput[];
 };
 
@@ -213,7 +216,8 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
   };
 
   const id = `${cast.idPrefix}${randomUUID()}`;
-  const officer = cast.officer(office);
+  const officers = cast.officers(office);
+  const officer = officers[0]!;
   const headOffice = cast.headOffice(r);
   const draft = status === "DRAFT";
   // A draft may still have empty fields (CASE-4).
@@ -252,14 +256,16 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
     history.push({ entityType: "case", entityId: id, ...step });
     if (notice) {
       const read = ctx.now.getTime() - step.at.getTime() > UNREAD_DAYS * DAY;
-      notifications.push({
-        id: randomUUID(),
-        userId: officer,
-        caseId: id,
-        type: notice,
-        createdAt: step.at,
-        readAt: read ? new Date(step.at.getTime() + 60 * MINUTE) : null,
-      });
+      for (const userId of officers) {
+        notifications.push({
+          id: randomUUID(),
+          userId,
+          caseId: id,
+          type: notice,
+          createdAt: step.at,
+          readAt: read ? new Date(step.at.getTime() + 60 * MINUTE) : null,
+        });
+      }
     }
   };
   // A status change, as applyMove records it (src/server/cases/transitions.ts).
@@ -738,7 +744,7 @@ export async function removeMadeUp(
 
 const LOAD_CAST: Cast = {
   idPrefix: LOAD_ID_PREFIX,
-  officer: () => LOAD_USER_ID,
+  officers: () => [LOAD_USER_ID],
   headOffice: () => LOAD_USER_ID,
   person: (r, office, category) => {
     const surname = r.pick(SURNAMES);

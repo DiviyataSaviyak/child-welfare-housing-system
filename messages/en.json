@@ -143,7 +143,7 @@
       "district": "District *",
       "chooseDistrict": "Choose",
       "office": "Divisional Secretariat *",
-      "oneOfficer": "Each Divisional Secretariat has only one Child Rights Promotion Officer. An office that shows a name already has one. When the officer changes, disable the old account and create a new one.",
+      "officersShown": "An office can have more than one account. The names after an office are its officers who already have one. When an officer leaves, disable their account.",
       "inactiveOffice": "Inactive",
       "headOfficeNote": "Head Office accounts belong to no DS office.",
       "create": "Create the account",
@@ -160,7 +160,6 @@
         "role": "Choose a role.",
         "office": "Choose a Divisional Secretariat.",
         "officeUnavailable": "This office is inactive. Choose another office.",
-        "officeTaken": "This office already has an active Child Rights Promotion Officer. Disable that account first.",
         "self": "You can't change your own account this way.",
         "lastAdmin": "There must be at least one active administrator.",
         "notFound": "This account can't be found."
@@ -235,7 +234,7 @@
     "columns": {
       "office": "Divisional Secretariat",
       "code": "Code",
-      "officer": "Child Rights Promotion Officer",
+      "officers": "Child Rights Promotion Officers",
       "status": "Status",
       "actions": "Actions"
     },

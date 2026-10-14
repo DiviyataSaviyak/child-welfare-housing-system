@@ -265,22 +265,20 @@ describe("checking a case (CHK-3)", () => {
     expect(await db.notification.count({ where: { caseId: sent.id } })).toBe(1);
   });
 
-  it("tells only active officers", async () => {
+  it("tells every active officer of the office, and only them (ADM-3)", async () => {
     const office = dsA.dsOfficeId as number;
-    await db.user.create({
-      data: {
-        id: "review-test-ds-old",
-        name: "පැරණි නිලධාරී",
-        email: "review-test-ds-old@no-email.invalid",
-        role: "DS_OFFICER",
-        dsOfficeId: office,
-        banned: true,
-      },
-    });
+    const colleague = (id: string, name: string, banned: boolean) =>
+      db.user.create({
+        data: { id, name, email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId: office, banned },
+      });
+    await colleague("review-test-ds-old", "පැරණි නිලධාරී", true);
+    await colleague("review-test-ds-a2", "දෙවන නිලධාරී", false);
     const sent = await submitted("200200000010");
     await decideCase(db, ho, { caseId: sent.id, version: sent.version, decision: "verify", reason: null });
     const told = await db.notification.findMany({ where: { caseId: sent.id }, select: { userId: true } });
-    expect(told).toEqual([{ userId: dsA.userId }]);
+    expect(told.map((n) => n.userId).sort()).toEqual([dsA.userId, "review-test-ds-a2"].sort());
+    // The later tests count the office's notices as dsA's alone.
+    await db.user.update({ where: { id: "review-test-ds-a2" }, data: { banned: true } });
   });
 });
 

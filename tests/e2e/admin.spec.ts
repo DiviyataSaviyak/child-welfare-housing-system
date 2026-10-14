@@ -14,10 +14,16 @@ import {
 const CRPO = /ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී/;
 
 /**
- * The Gampaha offices have no sample officer. An office has only one active officer (ADM-3), so each
- * test that creates one uses its own office; tests/e2e/cleanup.ts frees them again before each run.
+ * The Gampaha offices have no sample officer. Each test that creates one uses its own office, so it sees
+ * only its own officers; tests/e2e/cleanup.ts deletes them again before each run.
  */
-const OFFICES = { signIn: "ගම්පහ", moveFrom: "මීගමුව", moveTo: "කැලණිය", disable: "මිනුවන්ගොඩ" } as const;
+const OFFICES = {
+  signIn: "ගම්පහ",
+  second: "වත්තල",
+  moveFrom: "මීගමුව",
+  moveTo: "කැලණිය",
+  disable: "මිනුවන්ගොඩ",
+} as const;
 
 /** Creates a Child Rights Promotion Officer through the admin screens; returns the credentials shown once. */
 async function createOfficer(page: Page, office: string): Promise<{ username: string; password: string }> {
@@ -86,20 +92,25 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
   await expect(page.getByLabel("සම්පූර්ණ නම *")).toHaveValue(TEST_OFFICER_NAME);
 });
 
-// AC-23: the other half, disabling an officer frees the office, is at the end of the ADM-5/ADM-6 test.
-test("AC-23: an office that has its officer can't be chosen for a new one (ADM-3)", async ({ page }) => {
+// AC-23: both officers getting the office's notices is in src/server/cases/review.db.test.ts.
+test("AC-23: an office that has an officer takes a second one (ADM-3)", async ({ page }) => {
+  test.slow();
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  await page.goto("/admin/users/new");
-  await page.getByRole("radio", { name: CRPO }).check();
-  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "කොළඹ" });
+  await createOfficer(page, OFFICES.second);
 
-  await expect(
-    page.getByText("සෑම ප්‍රාදේශීය ලේකම් කාර්යාලයකටම සිටින්නේ එක් ළමා හිමිකම් ප්‍රවර්ධන නිලධාරියෙකු පමණි."),
-  ).toBeVisible();
-  // Homagama's officer is the sample account ds0101.
-  const homagama = page.getByRole("radio", { name: /^හෝමාගම/ });
-  await expect(homagama).toBeDisabled();
-  await expect(page.getByText("හෝමාගම · එන්. පෙරේරා")).toBeVisible();
+  const office = async () => {
+    await page.goto("/admin/users/new");
+    await page.getByRole("radio", { name: CRPO }).check();
+    await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
+    return page.getByRole("radio", { name: new RegExp(`^${OFFICES.second}`) });
+  };
+  await expect(await office()).toBeEnabled();
+  await expect(page.getByText("කාර්යාලයකට ගිණුම් කිහිපයක් තිබිය හැක.")).toBeVisible();
+  await expect(page.getByText(`${OFFICES.second} · ${TEST_OFFICER_NAME}`)).toBeVisible();
+
+  await createOfficer(page, OFFICES.second);
+  await expect(await office()).toBeEnabled();
+  await expect(page.getByText(`${OFFICES.second} · ${TEST_OFFICER_NAME}, ${TEST_OFFICER_NAME}`)).toBeVisible();
 });
 
 test("moving an officer to another office is recorded in the account's history (ADM-4)", async ({ page }) => {
@@ -153,12 +164,6 @@ test("a new password replaces the old one, and a disabled account can't sign in 
     await signIn(officer, username, secondPassword);
     await expect(signInError(officer)).toHaveText(TEXT.wrongSignIn);
   });
-
-  // The office is free again for the next officer (ADM-3).
-  await page.goto("/admin/users/new");
-  await page.getByRole("radio", { name: CRPO }).check();
-  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
-  await expect(page.getByRole("radio", { name: new RegExp(`^${OFFICES.disable}`) })).toBeEnabled();
 });
 
 test("the admin can't disable their own account", async ({ page }) => {

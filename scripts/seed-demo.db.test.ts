@@ -8,6 +8,8 @@ import { addDemoData, DEMO_ID_PREFIX, removeDemoData } from "./seed-demo";
 const db = createTestClient();
 
 const OFFICER = "demo-test-ds";
+/** A second officer of the same office, whose account came later (ADM-3). */
+const SECOND_OFFICER = "demo-test-ds-2";
 const HEAD_OFFICE = "demo-test-ho";
 const demoCases = { id: { startsWith: DEMO_ID_PREFIX } };
 let officeId: number;
@@ -15,15 +17,14 @@ let officeId: number;
 beforeAll(async () => {
   await seed(db);
   officeId = await freeOfficeId(db);
-  await db.user.create({
-    data: {
-      id: OFFICER,
-      name: "ද. පරීක්ෂණ",
-      email: `${OFFICER}@no-email.invalid`,
-      role: "DS_OFFICER",
-      dsOfficeId: officeId,
-    },
-  });
+  for (const [id, name] of [
+    [OFFICER, "ද. පරීක්ෂණ"],
+    [SECOND_OFFICER, "දෙ. පරීක්ෂණ"],
+  ] as const) {
+    await db.user.create({
+      data: { id, name, email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId: officeId },
+    });
+  }
   await db.user.create({
     data: { id: HEAD_OFFICE, name: "ප්‍ර. පරීක්ෂණ", email: `${HEAD_OFFICE}@no-email.invalid`, role: "HO_OFFICER" },
   });
@@ -120,6 +121,10 @@ describe("demo data", { timeout: 120_000 }, () => {
     expect(notices.length).toBeGreaterThan(0);
     const weekAgo = now.getTime() - 7 * 24 * 60 * 60_000;
     for (const n of notices) expect(n.readAt === null).toBe(n.createdAt.getTime() > weekAgo);
+    // The office's other officer gets them too, though the first one entered the cases (ADM-3).
+    expect(await db.notification.count({ where: { userId: SECOND_OFFICER, case: { dsOfficeId: officeId } } })).toBe(
+      notices.length,
+    );
   });
 
   it("leaves an office that already has demo cases alone", async () => {

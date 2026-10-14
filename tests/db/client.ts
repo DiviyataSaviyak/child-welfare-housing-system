@@ -10,8 +10,9 @@ export function createTestClient(): PrismaClient {
 }
 
 /**
- * An active DS office that has no Child Rights Promotion Officer yet (ADM-3), for a test that adds
- * one. Test files share the schema, so they don't count on any particular office being free.
+ * An active DS office that has no active DS officer yet, for a test that adds one and wants the office's
+ * cases and notices to itself. An office can have several officers (ADM-3), but test files share the
+ * schema, so they don't count on any particular office being free.
  */
 export async function freeOfficeId(db: PrismaClient): Promise<number> {
   const office = await db.dsOffice.findFirstOrThrow({

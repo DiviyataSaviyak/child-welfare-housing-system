@@ -5,11 +5,11 @@ import type { AccountInput } from "@/lib/validation/user";
 import { writeAudit } from "../audit";
 import { placeholderEmail } from "../auth/accounts";
 import { generateTemporaryPassword } from "./passwords";
-import { activeAdminCount, officeHolder } from "./queries";
+import { activeAdminCount } from "./queries";
 import { type AccountRuleError, checkDisable, checkRoleChange } from "./rules";
 import { nextUsername, USERNAME_PREFIX } from "./usernames";
 
-export type AccountCommandError = AccountRuleError | "notFound" | "officeUnavailable" | "officeTaken";
+export type AccountCommandError = AccountRuleError | "notFound" | "officeUnavailable";
 export type Credentials = { username: string; temporaryPassword: string };
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: AccountCommandError };
@@ -25,19 +25,6 @@ async function officeUsable(db: PrismaClient, dsOfficeId: number | null): Promis
 }
 
 /**
- * ADM-3: true when an active DS officer account would join an office that already has its Child
- * Rights Promotion Officer. The database refuses it too, which catches two admins saving at once.
- */
-async function officeTaken(
-  db: PrismaClient,
-  account: { role: string | null; dsOfficeId: number | null; banned: boolean },
-  exceptId?: string,
-): Promise<boolean> {
-  if (account.role !== "DS_OFFICER" || account.dsOfficeId === null || account.banned) return false;
-  return (await officeHolder(db, account.dsOfficeId, exceptId)) !== null;
-}
-
-/**
  * ADM-2: creates an account with a generated username and a temporary password that must be
  * changed at first sign-in. The password is returned once and only its hash is stored. The actor
  * is null for the first admin, whom the system creates (scripts/create-admin.ts).
@@ -48,7 +35,6 @@ export async function createAccount(
   input: AccountInput,
 ): Promise<Result<Credentials>> {
   if (!(await officeUsable(db, input.dsOfficeId))) return { ok: false, error: "officeUnavailable" };
-  if (await officeTaken(db, { ...input, banned: false })) return { ok: false, error: "officeTaken" };
 
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await hashPassword(temporaryPassword);
@@ -97,8 +83,7 @@ export async function createAccount(
       return { ok: true, value: { username, temporaryPassword } };
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      // Either another admin just gave the office its officer, or took the same username.
-      if (await officeTaken(db, { ...input, banned: false })) return { ok: false, error: "officeTaken" };
+      // Another admin took the same username.
       if (attempt < 3) continue;
       throw error;
     }
@@ -138,29 +123,23 @@ export async function updateAccount(
   if (input.dsOfficeId !== current.dsOfficeId && !(await officeUsable(db, input.dsOfficeId))) {
     return { ok: false, error: "officeUnavailable" };
   }
-  if (await officeTaken(db, { ...input, banned: current.banned }, id)) return { ok: false, error: "officeTaken" };
 
   const changed = EDITABLE.filter((field) => current[field] !== input[field]);
   if (changed.length === 0) return { ok: true, value: { changed } };
 
   const pick = (source: Record<string, unknown>) =>
     Object.fromEntries(changed.map((f) => [f, source[f]])) as Prisma.InputJsonObject;
-  try {
-    await db.$transaction(async (tx) => {
-      await tx.user.update({ where: { id }, data: input });
-      await writeAudit(tx, {
-        actorId,
-        action: "account_updated",
-        entityType: "user",
-        entityId: id,
-        before: pick(current),
-        after: pick(input),
-      });
+  await db.$transaction(async (tx) => {
+    await tx.user.update({ where: { id }, data: input });
+    await writeAudit(tx, {
+      actorId,
+      action: "account_updated",
+      entityType: "user",
+      entityId: id,
+      before: pick(current),
+      after: pick(input),
     });
-  } catch (error) {
-    if (isUniqueViolation(error)) return { ok: false, error: "officeTaken" };
-    throw error;
-  }
+  });
   return { ok: true, value: { changed } };
 }
 
@@ -195,11 +174,7 @@ export async function resetPassword(db: PrismaClient, actorId: string, id: strin
   return { ok: true, value: { username: user.username, temporaryPassword } };
 }
 
-/**
- * ADM-6: disables or re-enables an account. Disabling ends its sessions at once (AUTH-5). When a
- * DS office gets a new Child Rights Promotion Officer, the old account is disabled first (ADM-3), so
- * it can only be enabled again while the office has no other officer.
- */
+/** ADM-6: disables or re-enables an account. Disabling ends its sessions at once (AUTH-5). */
 export async function setAccountDisabled(
   db: PrismaClient,
   actorId: string,
@@ -208,7 +183,7 @@ export async function setAccountDisabled(
 ): Promise<Result<null>> {
   const target = await db.user.findUnique({
     where: { id },
-    select: { id: true, role: true, banned: true, dsOfficeId: true },
+    select: { id: true, role: true, banned: true },
   });
   if (!target) return { ok: false, error: "notFound" };
   if (target.banned === disabled) return { ok: true, value: null };
@@ -216,24 +191,17 @@ export async function setAccountDisabled(
   if (disabled) {
     const problem = checkDisable(actorId, target, await activeAdminCount(db));
     if (problem) return { ok: false, error: problem };
-  } else if (await officeTaken(db, { ...target, banned: false }, id)) {
-    return { ok: false, error: "officeTaken" };
   }
 
-  try {
-    await db.$transaction(async (tx) => {
-      await tx.user.update({ where: { id }, data: { banned: disabled } });
-      if (disabled) await tx.session.deleteMany({ where: { userId: id } });
-      await writeAudit(tx, {
-        actorId,
-        action: disabled ? "account_disabled" : "account_enabled",
-        entityType: "user",
-        entityId: id,
-      });
+  await db.$transaction(async (tx) => {
+    await tx.user.update({ where: { id }, data: { banned: disabled } });
+    if (disabled) await tx.session.deleteMany({ where: { userId: id } });
+    await writeAudit(tx, {
+      actorId,
+      action: disabled ? "account_disabled" : "account_enabled",
+      entityType: "user",
+      entityId: id,
     });
-  } catch (error) {
-    if (isUniqueViolation(error)) return { ok: false, error: "officeTaken" };
-    throw error;
-  }
+  });
   return { ok: true, value: null };
 }

@@ -9,9 +9,11 @@
  *   npm run db:seed-demo -- --remove           removes every demo case again
  *
  * It plans the cases as the load-test data does (scripts/seed-load.ts), with three differences:
- * - Every step is credited to a real account: the office's own officer, or a Head Office officer.
+ * - Every step is credited to a real account: the office's own officer (the first one with an account,
+ *   when it has several), or a Head Office officer.
  * - Every step is also written to the audit log, so each case's history reads as if it had been
- *   entered on the screens, and the officer gets the notices those steps send (the older ones read).
+ *   entered on the screens, and each of the office's officers gets the notices those steps send (the
+ *   older ones read).
  * - Each district's allocation letter goes out every second week, so a letter holds several cases.
  *
  * Every name, NIC and phone number is made up (SEC-11). It runs on development, test and staging
@@ -209,14 +211,15 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
   const now = options.now ?? new Date();
   const r = generator(options.seed ?? 1);
 
-  const officers = new Map(
-    (
-      await db.user.findMany({
-        where: { role: "DS_OFFICER", banned: false, dsOfficeId: { not: null } },
-        select: { id: true, dsOfficeId: true },
-      })
-    ).map((u) => [u.dsOfficeId!, u.id]),
-  );
+  // Each office's active officers, the first account first (ADM-3).
+  const officers = new Map<number, string[]>();
+  for (const u of await db.user.findMany({
+    where: { role: "DS_OFFICER", banned: false, dsOfficeId: { not: null } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, dsOfficeId: true },
+  })) {
+    officers.set(u.dsOfficeId!, [...(officers.get(u.dsOfficeId!) ?? []), u.id]);
+  }
   const headOffice = (
     await db.user.findMany({
       where: { role: "HO_OFFICER", banned: false },
@@ -234,7 +237,7 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
 
   const cast: Cast = {
     idPrefix: DEMO_ID_PREFIX,
-    officer: (office) => officers.get(office.id)!,
+    officers: (office) => officers.get(office.id)!,
     headOffice: (r) => r.pick(headOffice),
     person: demoPerson,
     // Cases still waiting are recent; the rest go back about a year and a half.
