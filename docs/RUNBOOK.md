@@ -126,6 +126,28 @@ sudo -iu deploy
 
 It prints a username and a temporary password once. Give them to the admin in person. The admin signs in, sets their own password, and creates the Head Office and DS office accounts on the users screen. The account's history says the system created it.
 
+### 7. Email for forgotten passwords (AUTH-7)
+
+Officers reset a forgotten password with a code sent by email to the address in their account (the admin fills in "ඊමේල් (අවශ්‍ය නම් පමණි)" on the account form). The app sends through any mail service that speaks SMTP. Until one is set, the page for a forgotten password tells officers to call the admin, who gives a new password on the users screen.
+
+The simplest is a Gmail account the Ministry owns. It is free and sends up to about 500 emails a day.
+
+1. Sign in to the account, turn on 2-Step Verification, then make an app password at https://myaccount.google.com/apppasswords (name it "Diviyata"). Google shows its 16 letters once.
+2. Put these in `/opt/diviyata/.env` (a `.env` made before 14 Oct 2026 doesn't have the lines yet; add them):
+
+   ```bash
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=465
+   SMTP_USER=<the account>@gmail.com
+   SMTP_PASSWORD=<the 16 letters, without spaces>
+   MAIL_FROM=<the account>@gmail.com
+   ```
+
+3. Restart the app with them: `dc up -d --wait app`.
+4. Test it: give your own account an email address on the users screen, then on the sign-in page choose "මුරපදය අමතකද?" and give your username. The email should arrive within a minute; look in spam too. If it doesn't, `dc logs --since 10m app` shows `email_failed` with an error code, never the address or the email: `EAUTH` is a wrong user or app password, `ECONNECTION` or `ETIMEDOUT` a mail server the app can't reach.
+
+Another service works the same way with its own SMTP settings: Amazon SES (part of AWS, so no third party sees the addresses, STK-2; about US$0.10 per 1,000 emails; it needs a verified domain and production access first) or Brevo (free for 300 emails a day). Port 465 speaks TLS from the start; with 587 the app insists on switching to TLS (STARTTLS). An account gets at most 5 codes a day (SEC-4).
+
 ## Everyday
 
 Everything below runs on the server as the deploy user (`sudo -iu deploy`), unless it says root. The deploy user's shell starts in `/opt/diviyata` and has `dc` for `docker compose` with the server's two env files.
@@ -201,6 +223,7 @@ All of them are in `/opt/diviyata/.env` (SEC-9). GitHub holds only the deploy ke
 | `APP_DB_PASSWORD` | Set a new one and run the deploy again; the grants set the new password. |
 | `DB_OWNER_PASSWORD` | `ALTER ROLE diviyata PASSWORD '<new>'` in psql, then set it in `.env`. |
 | `RESTIC_PASSWORD` | `restic key add`, then `restic key remove` the old one, as root with the old value exported. Give the Ministry the new one. |
+| `SMTP_PASSWORD` (the mail account's app password) | Make a new app password in the mail account and remove the old one, put it in `.env` and run `dc up -d --wait app`. |
 | The deploy key | Run `server-setup.sh` after removing `/home/deploy/.ssh/github-actions.pub` and its line in `authorized_keys`, then update `DEPLOY_SSH_KEY`. |
 
 ## Upgrades

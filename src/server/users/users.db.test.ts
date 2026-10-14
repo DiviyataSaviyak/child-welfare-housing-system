@@ -68,33 +68,38 @@ describe("creating an account (ADM-2)", () => {
   });
 });
 
-describe("one Child Rights Promotion Officer per DS office (ADM-3)", () => {
-  it("refuses a second active officer at the same office", async () => {
+describe("several DS officers at one office (ADM-3)", () => {
+  const active = (dsOfficeId: number) => db.user.count({ where: { dsOfficeId, role: "DS_OFFICER", banned: false } });
+
+  it("gives an office that has an officer a second one", async () => {
     const { dsOfficeId } = await newOfficer();
-    expect(await createAccount(db, ADMIN, officer(dsOfficeId))).toEqual({ ok: false, error: "officeTaken" });
+    const second = await createAccount(db, ADMIN, officer(dsOfficeId));
+    expect(second.ok).toBe(true);
+    expect(await active(dsOfficeId)).toBe(2);
   });
 
-  it("lets a new officer take over once the old account is disabled, and then keeps the old one off", async () => {
+  it("enables a former officer again while the office has another", async () => {
     const { user: former, dsOfficeId } = await newOfficer();
     expect(await setAccountDisabled(db, ADMIN, former.id, true)).toEqual({ ok: true, value: null });
+    expect((await createAccount(db, ADMIN, officer(dsOfficeId))).ok).toBe(true);
 
-    const successor = await createAccount(db, ADMIN, officer(dsOfficeId));
-    expect(successor.ok).toBe(true);
-    expect(await setAccountDisabled(db, ADMIN, former.id, false)).toEqual({ ok: false, error: "officeTaken" });
+    expect(await setAccountDisabled(db, ADMIN, former.id, false)).toEqual({ ok: true, value: null });
+    expect(await active(dsOfficeId)).toBe(2);
   });
 
-  it("refuses a transfer to an office that has its officer", async () => {
+  it("moves an officer to an office that has one, and turns a Head Office account into another", async () => {
     const { user } = await newOfficer();
-    const { dsOfficeId: taken } = await newOfficer();
-    expect(await updateAccount(db, ADMIN, user.id, officer(taken))).toEqual({ ok: false, error: "officeTaken" });
-  });
+    const { dsOfficeId: office } = await newOfficer();
+    expect(await updateAccount(db, ADMIN, user.id, officer(office))).toEqual({
+      ok: true,
+      value: { changed: ["dsOfficeId"] },
+    });
 
-  it("refuses to turn a Head Office account into a second officer of an office", async () => {
-    const { dsOfficeId: taken } = await newOfficer();
     const ho = await createAccount(db, ADMIN, { ...officer(null), role: "HO_OFFICER" });
     if (!ho.ok) throw new Error(ho.error);
-    const user = await db.user.findUniqueOrThrow({ where: { username: ho.value.username } });
-    expect(await updateAccount(db, ADMIN, user.id, officer(taken))).toEqual({ ok: false, error: "officeTaken" });
+    const headOffice = await db.user.findUniqueOrThrow({ where: { username: ho.value.username } });
+    expect((await updateAccount(db, ADMIN, headOffice.id, officer(office))).ok).toBe(true);
+    expect(await active(office)).toBe(3);
   });
 });
 

@@ -59,23 +59,28 @@ describe("DS offices (LST-2, LST-3)", () => {
     expect(audit?.after).toEqual(renamed);
   });
 
-  it("names each office's Child Rights Promotion Officer (ADM-3)", async () => {
+  it("names every active officer of each office (ADM-3)", async () => {
     const office = await db.dsOffice.findUniqueOrThrow({ where: { id: await freeOfficeId(db) } });
-    const before = await officesOfDistrict(db, office.districtId, "si");
-    expect(before?.offices.find((o) => o.id === office.id)?.officer).toBeNull();
+    const officersOf = async () =>
+      (await officesOfDistrict(db, office.districtId, "si"))?.offices.find((o) => o.id === office.id)?.officers;
+    expect(await officersOf()).toEqual([]);
 
-    await db.user.create({
-      data: {
-        id: "lists-officer",
-        name: "කේ. නිලධාරී",
-        email: "lists-officer@no-email.invalid",
-        username: "ds9300",
-        role: "DS_OFFICER",
-        dsOfficeId: office.id,
-      },
-    });
-    const after = await officesOfDistrict(db, office.districtId, "si");
-    expect(after?.offices.find((o) => o.id === office.id)?.officer).toBe("කේ. නිලධාරී");
+    const officer = (id: string, name: string, username: string, banned = false) =>
+      db.user.create({
+        data: {
+          id,
+          name,
+          email: `${id}@no-email.invalid`,
+          username,
+          role: "DS_OFFICER",
+          dsOfficeId: office.id,
+          banned,
+        },
+      });
+    await officer("lists-officer", "කේ. නිලධාරී", "ds9300");
+    await officer("lists-officer-2", "ඒ. නිලධාරී", "ds9301");
+    await officer("lists-officer-old", "ප. නිලධාරී", "ds9302", true);
+    expect(await officersOf()).toEqual(["ඒ. නිලධාරී", "කේ. නිලධාරී"]);
   });
 
   it("names districts and provinces in the screen's language (UI-9)", async () => {

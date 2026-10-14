@@ -2,12 +2,26 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { clientIp, signInLimiter } from "@/server/auth/rate-limit";
+import { getTranslations } from "next-intl/server";
+import { checkResetCode, resetPasswordWithCode, sendResetCode } from "@/server/auth/password-reset";
+import { clientIp, resetCodeLimiter, signInLimiter } from "@/server/auth/rate-limit";
 import { homeFor, safeReturnPath } from "@/server/auth/roles";
 import { attemptSignIn, changeOwnPassword, signOutCurrentSession } from "@/server/auth/sign-in";
 import { requireSignedIn } from "@/server/context";
+import { db } from "@/server/db";
 import { logEvent } from "@/server/log";
-import { checkNewPassword, checkSignInForm, type NewPasswordError, type SignInFormError } from "@/lib/validation/auth";
+import { mailSetup, sendMail } from "@/server/mail";
+import {
+  checkChosenPassword,
+  checkNewPassword,
+  checkResetCodeForm,
+  checkSignInForm,
+  type ChosenPasswordError,
+  type NewPasswordError,
+  readResetCode,
+  type ResetCodeFormError,
+  type SignInFormError,
+} from "@/lib/validation/auth";
 
 export type SignInState = {
   error: SignInFormError | "wrong" | "locked" | null;
@@ -44,6 +58,73 @@ export async function signIn(_previous: SignInState, form: FormData): Promise<Si
 
   if (result.mustChangePassword) redirect("/change-password");
   redirect(safeReturnPath(text(form, "next"), result.role) ?? homeFor(result.role));
+}
+
+export type AskForCodeState = {
+  error: "required" | "tooMany" | "emailFailed" | "emailOff" | null;
+  username: string;
+  /** Carries the officer from step to step; never shown or put in an address, and stored only as a hash. */
+  ticket: string | null;
+};
+
+/**
+ * AUTH-7, step 1: sends a code by email to the address in the account. The answer is the same for any
+ * username (src/server/auth/password-reset.ts); only an empty box, the rate limit, a server with no mail
+ * server and an email that didn't go are refused. The email is in the screen's language.
+ */
+export async function askForCode(_previous: AskForCodeState, form: FormData): Promise<AskForCodeState> {
+  const username = text(form, "username").trim();
+  if (username === "") return { error: "required", username, ticket: null };
+  if (!mailSetup()) return { error: "emailOff", username, ticket: null };
+
+  if (!resetCodeLimiter.allow(clientIp(await headers()))) {
+    logEvent("reset_code_refused", { reason: "rate_limited" });
+    return { error: "tooMany", username, ticket: null };
+  }
+
+  const t = await getTranslations("forgotPassword");
+  const result = await sendResetCode(db, username, (email, code) =>
+    sendMail(email, { subject: t("email.subject"), text: t("email.body", { code }) }),
+  );
+  if (!result.ok) {
+    logEvent("reset_code_refused", { reason: "email_failed" });
+    return { error: "emailFailed", username, ticket: null };
+  }
+  logEvent("reset_code_sent", { userId: result.userId });
+  return { error: null, username, ticket: result.ticket };
+}
+
+export type CheckCodeState = {
+  error: ResetCodeFormError | "wrong" | "tooManyTries" | "expired" | null;
+  /** With "wrong": tries left before the code stops working. */
+  count?: number;
+  checked: boolean;
+};
+
+/** AUTH-7, step 2: the code from the email. */
+export async function checkCode(_previous: CheckCodeState, form: FormData): Promise<CheckCodeState> {
+  const code = readResetCode(text(form, "code"));
+  const problem = checkResetCodeForm(code);
+  if (problem) return { error: problem, checked: false };
+
+  const result = await checkResetCode(db, text(form, "ticket"), code);
+  if (result.ok) return { error: null, checked: true };
+  if (result.error === "wrong") return { error: "wrong", count: result.triesLeft, checked: false };
+  return { error: result.error, checked: false };
+}
+
+export type SetNewPasswordState = { error: ChosenPasswordError | "expired" | null };
+
+/** AUTH-7, step 3: the new password. Then the officer signs in with it. */
+export async function setNewPassword(_previous: SetNewPasswordState, form: FormData): Promise<SetNewPasswordState> {
+  const input = { next: text(form, "next"), confirm: text(form, "confirm") };
+  const problem = checkChosenPassword(input);
+  if (problem) return { error: problem };
+
+  const result = await resetPasswordWithCode(db, text(form, "ticket"), input.next);
+  if (!result.ok) return { error: "expired" };
+  logEvent("password_reset_by_code", { userId: result.userId });
+  redirect("/login?notice=passwordReset");
 }
 
 export type ChangePasswordState = { error: NewPasswordError | "currentWrong" | null };

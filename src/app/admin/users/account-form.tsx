@@ -112,6 +112,7 @@ export function AccountForm({
           name="contactEmail"
           type="email"
           label={t("form.contactEmail")}
+          help={t("form.contactEmailHint")}
           value={values.contactEmail}
           onChange={set("contactEmail")}
           error={error("contactEmail")}
@@ -179,23 +180,16 @@ export function AccountForm({
             >
               <legend className="mb-2 text-base font-semibold">{t("form.office")}</legend>
               <p id="office-rule" className="text-[15px] text-muted-foreground">
-                {t("form.oneOfficer")}
+                {t("form.severalOfficers")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {district.offices.map((o) => {
                   const checked = values.dsOfficeId === String(o.id);
-                  const holder = o.holder && o.holder.id !== account?.id ? o.holder : null;
-                  // ADM-3: an office with its officer can't take another; the account's own office stays selectable.
-                  const taken = holder !== null && o.id !== account?.dsOfficeId;
                   return (
                     <label
                       key={o.id}
-                      className={`flex min-h-11 items-center gap-2 rounded-lg border-2 px-3.5 py-1.5 ${
-                        taken
-                          ? "cursor-not-allowed border-dashed border-border bg-muted text-muted-foreground"
-                          : checked
-                            ? "cursor-pointer border-primary bg-accent"
-                            : "cursor-pointer border-border bg-card"
+                      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border-2 px-3.5 py-1.5 ${
+                        checked ? "border-primary bg-accent" : "border-border bg-card"
                       }`}
                     >
                       <input
@@ -203,13 +197,11 @@ export function AccountForm({
                         name="dsOfficeId"
                         value={o.id}
                         checked={checked}
-                        disabled={taken}
                         onChange={set("dsOfficeId")}
                         className="size-[18px] accent-primary"
                       />
                       <span className="text-base">
                         {o.name}
-                        {holder && ` · ${holder.name}`}
                         {!o.active && ` · ${t("form.inactiveOffice")}`}
                       </span>
                     </label>

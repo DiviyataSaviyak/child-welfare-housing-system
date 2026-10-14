@@ -1,7 +1,9 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { transliterate } from "../../src/lib/transliterate";
 import {
+  askForCode,
   chooseLanguage,
+  lastCodeSentTo,
   randomLetters,
   signIn,
   signInAs,
@@ -11,22 +13,30 @@ import {
   TEXT,
 } from "./helpers";
 
-const CRPO = /ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී/;
+const DS_OFFICER = /ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී/;
 
 /**
- * The Gampaha offices have no sample officer. An office has only one active officer (ADM-3), so each
- * test that creates one uses its own office; tests/e2e/cleanup.ts frees them again before each run.
+ * The Gampaha offices have no sample officer. Each test that creates one uses its own office, so it sees
+ * only its own officers; tests/e2e/cleanup.ts deletes them again before each run.
  */
-const OFFICES = { signIn: "ගම්පහ", moveFrom: "මීගමුව", moveTo: "කැලණිය", disable: "මිනුවන්ගොඩ" } as const;
+const OFFICES = {
+  signIn: "ගම්පහ",
+  second: "වත්තල",
+  moveFrom: "මීගමුව",
+  moveTo: "කැලණිය",
+  disable: "මිනුවන්ගොඩ",
+  resetByEmail: "අත්තනගල්ල",
+} as const;
 
-/** Creates a Child Rights Promotion Officer through the admin screens; returns the credentials shown once. */
-async function createOfficer(page: Page, office: string): Promise<{ username: string; password: string }> {
+/** Creates a Divisional Secretariat Officer through the admin screens; returns the credentials shown once. */
+async function createOfficer(page: Page, office: string, email = ""): Promise<{ username: string; password: string }> {
   await page.goto("/admin/users");
   await page.getByRole("link", { name: "නව පරිශීලකයෙකු එක් කරන්න" }).click();
   await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
   await page.getByLabel("තනතුර (අවශ්‍ය නම් පමණි)").fill("සංවර්ධන නිලධාරී");
   await page.getByLabel("ජංගම දුරකතන අංකය *").fill("071 000 0301");
-  await page.getByRole("radio", { name: CRPO }).check();
+  await page.getByLabel("ඊමේල් (අවශ්‍ය නම් පමණි)").fill(email);
+  await page.getByRole("radio", { name: DS_OFFICER }).check();
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await page.getByRole("radio", { name: new RegExp(`^${office}`) }).check();
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
@@ -78,7 +88,7 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
   await page.goto("/admin/users/new");
   await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
   await page.getByLabel("ජංගම දුරකතන අංකය *").fill("12345");
-  await page.getByRole("radio", { name: CRPO }).check();
+  await page.getByRole("radio", { name: DS_OFFICER }).check();
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
 
   await expect(page.getByText("0 න් පටන් ගන්නා ඉලක්කම් 10ක දුරකතන අංකයක් ඇතුළත් කරන්න.")).toBeVisible();
@@ -86,20 +96,29 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
   await expect(page.getByLabel("සම්පූර්ණ නම *")).toHaveValue(TEST_OFFICER_NAME);
 });
 
-// AC-23: the other half, disabling an officer frees the office, is at the end of the ADM-5/ADM-6 test.
-test("AC-23: an office that has its officer can't be chosen for a new one (ADM-3)", async ({ page }) => {
+// AC-23: both officers getting the office's notices is in src/server/cases/review.db.test.ts.
+test("AC-23: an office that has an officer takes a second one (ADM-3)", async ({ page }) => {
+  test.slow();
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  await page.goto("/admin/users/new");
-  await page.getByRole("radio", { name: CRPO }).check();
-  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "කොළඹ" });
+  const officersOnList = async () => {
+    await page.goto("/admin/lists");
+    await page.getByRole("link", { name: /^ගම්පහ/ }).click();
+    await expect(page.getByRole("heading", { name: "ගම්පහ දිස්ත්‍රික්කය" })).toBeVisible();
+    return page.getByRole("row").filter({ hasText: OFFICES.second }).getByText(TEST_OFFICER_NAME);
+  };
+  await createOfficer(page, OFFICES.second);
+  const before = await (await officersOnList()).count();
+  expect(before).toBeGreaterThan(0);
 
-  await expect(
-    page.getByText("සෑම ප්‍රාදේශීය ලේකම් කාර්යාලයකටම සිටින්නේ එක් ළමා හිමිකම් ප්‍රවර්ධන නිලධාරියෙකු පමණි."),
-  ).toBeVisible();
-  // Homagama's officer is the sample account ds0101.
-  const homagama = page.getByRole("radio", { name: /^හෝමාගම/ });
-  await expect(homagama).toBeDisabled();
-  await expect(page.getByText("හෝමාගම · එන්. පෙරේරා")).toBeVisible();
+  // The form still offers the office, by its name alone.
+  await page.goto("/admin/users/new");
+  await page.getByRole("radio", { name: DS_OFFICER }).check();
+  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
+  await expect(page.getByText("කාර්යාලයකට ගිණුම් කිහිපයක් තිබිය හැක.")).toBeVisible();
+  await expect(page.getByRole("radio", { name: OFFICES.second, exact: true })).toBeEnabled();
+
+  await createOfficer(page, OFFICES.second);
+  await expect(await officersOnList()).toHaveCount(before + 1);
 });
 
 test("moving an officer to another office is recorded in the account's history (ADM-4)", async ({ page }) => {
@@ -153,12 +172,50 @@ test("a new password replaces the old one, and a disabled account can't sign in 
     await signIn(officer, username, secondPassword);
     await expect(signInError(officer)).toHaveText(TEXT.wrongSignIn);
   });
+});
 
-  // The office is free again for the next officer (ADM-3).
-  await page.goto("/admin/users/new");
-  await page.getByRole("radio", { name: CRPO }).check();
-  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
-  await expect(page.getByRole("radio", { name: new RegExp(`^${OFFICES.disable}`) })).toBeEnabled();
+test("AC-31: an officer who forgot their password sets a new one with a code sent by email (AUTH-7)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  // An address of its own, so the test finds its own email among other tests' emails.
+  const email = `reset-${Date.now()}-${randomLetters(6).toLowerCase()}@example.com`;
+  const { username } = await createOfficer(page, OFFICES.resetByEmail, email);
+  const newPassword = "Reset-By-Email-2026";
+
+  await asNewOfficer(browser, async (officer) => {
+    // An unknown username gets the same next step.
+    await askForCode(officer, "ds9999");
+    await askForCode(officer, username);
+    const code = await lastCodeSentTo(email);
+
+    const codeField = officer.getByLabel("ඊමේල් පණිවිඩයේ කේතය");
+    await codeField.fill(code === "000000" ? "111111" : "000000");
+    await officer.getByRole("button", { name: "ඉදිරියට" }).click();
+    await expect(officer.locator("#reset-code-error")).toHaveText("කේතය වැරදියි. තවත් උත්සාහ 4ක් ඉතිරිව ඇත.");
+    await codeField.fill(code);
+    await officer.getByRole("button", { name: "ඉදිරියට" }).click();
+
+    await expect(officer.getByRole("status")).toHaveText("කේතය නිවැරදියි. දැන් ඔබේ නව මුරපදය සකසන්න.");
+    await officer.getByLabel("නව මුරපදය", { exact: true }).fill(newPassword);
+    await officer.getByLabel("නව මුරපදය නැවත").fill(newPassword);
+    await officer.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(officer).toHaveURL(/\/login\?notice=passwordReset$/);
+    await expect(officer.getByRole("status")).toHaveText("ඔබේ නව මුරපදය සකසන ලදී. එයින් ඇතුළු වන්න.");
+
+    // The officer chose it, so it isn't temporary.
+    await signIn(officer, username, newPassword);
+    await expect(officer).toHaveURL(/\/ds$/);
+  });
+
+  await openRow(page, username);
+  await page.getByRole("link", { name: `සංස්කරණය: ${TEST_OFFICER_NAME}` }).click();
+  const history = page.getByRole("region", { name: "ගිණුමේ ඉතිහාසය" });
+  await expect(history).toContainText("මුරපදය නැවත සැකසීමට ඊමේල් මගින් කේතයක් යැව්වා");
+  await expect(history).toContainText("ඇතුළු වීමේ පිටුව");
+  await expect(history).toContainText("ඊමේල් කේතයෙන් නිලධාරියා නව මුරපදයක් සැකසුවා");
 });
 
 test("the admin can't disable their own account", async ({ page }) => {

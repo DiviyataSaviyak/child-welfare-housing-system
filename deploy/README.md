@@ -134,7 +134,8 @@ Both refuse once the server runs as production.
 | An email: **the disk is 80% full** or more | Run `ssh`, then `docker system df` to see what uses the space, and `docker image prune` to remove leftover images. If it's still full, make the EC2 volume bigger in AWS. |
 | A push to `main` didn't reach the server | Open the failed run under **Actions**, fix the problem in a new commit, and push again |
 | Officers see an error after a deploy | Run `rollback`, then fix the problem in a new commit |
-| An officer forgot their password, or is locked out | Nothing here: the admin resets it on the users screen |
+| An officer forgot their password, or is locked out | Nothing here: the officer resets it with a code sent by email from the sign-in page ("මුරපදය අමතකද?"), or the admin gives a new one on the users screen |
+| Officers say the email with the code never comes | Ask them to look in spam, and the admin to check the email address in their account. Then run `logs app` and look for `email_failed`: `EAUTH` means a wrong `SMTP_USER` or `SMTP_PASSWORD`, and a new app password is the usual fix. Set them as in docs/RUNBOOK.md, "Email for forgotten passwords" |
 
 ## What's in this folder
 

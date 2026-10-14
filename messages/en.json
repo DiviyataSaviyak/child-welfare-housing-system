@@ -41,7 +41,9 @@
     "password": "Password",
     "submit": "Sign in",
     "submitting": "Signing in...",
-    "help": "If you have forgotten your password or have no account, contact the administrator at Head Office.",
+    "forgot": "Forgot your password?",
+    "passwordReset": "Your new password is set. Sign in with it.",
+    "help": "If you have no account or have forgotten your username, contact the administrator at Head Office.",
     "errors": {
       "required": "Enter both your username and your password.",
       "invalid": "The username or password is wrong.",
@@ -67,6 +69,57 @@
       "mismatch": "Enter the same new password both times.",
       "sameAsCurrent": "The new password must be different from the current one.",
       "currentWrong": "The current password is wrong."
+    }
+  },
+  "forgotPassword": {
+    "title": "Forgot your password?",
+    "intro": "Enter your username. A 6-digit code will be sent to the email address in your account, and with it you can set a new password.",
+    "username": "Username",
+    "submit": "Send the code",
+    "submitting": "Sending...",
+    "noUsername": "If you have forgotten your username, or your account has no email address or yours has changed, contact the administrator at Head Office.",
+    "backToSignIn": "Back to sign in",
+    "startAgain": "Start again",
+    "email": {
+      "subject": "Diviyata Sawiyak: your code to reset your password",
+      "body": "Your code to reset your password is {code}. It is valid for 15 minutes. Don't tell it to anyone.\n\nIf you didn't ask for it, ignore this email. Your password stays the same."
+    },
+    "code": {
+      "sent": "If the username is right, a code has been sent to the email address in the account. It is valid for 15 minutes.",
+      "label": "Code from the email",
+      "help": "6 digits",
+      "submit": "Continue",
+      "submitting": "Checking...",
+      "sendAgain": "Send a new code",
+      "noEmail": "If no email arrives within a few minutes, look in the spam folder too. If it isn't there, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at Head Office."
+    },
+    "password": {
+      "intro": "The code is right. Now set your new password.",
+      "next": "New password",
+      "nextHelp": "At least 8 characters",
+      "confirm": "New password again",
+      "submit": "Save",
+      "submitting": "Saving..."
+    },
+    "errors": {
+      "required": "Enter your username.",
+      "tooMany": "Too many requests from this computer. Try again in 15 minutes.",
+      "emailFailed": "The email couldn't be sent. Try again in a little while, or contact the administrator at Head Office.",
+      "emailOff": "Resetting a password by email isn't switched on yet. For a new password, contact the administrator at Head Office."
+    },
+    "codeErrors": {
+      "required": "Enter the code from the email.",
+      "format": "The code has 6 digits. Type it as it is in the email.",
+      "wrong": "The code is wrong. {count, plural, one {# try} other {# tries}} left.",
+      "tooManyTries": "5 wrong codes were entered, so this code no longer works. Ask for a new code.",
+      "expired": "This code has expired, or a newer one was sent. Ask for a new code."
+    },
+    "passwordErrors": {
+      "required": "Fill in both boxes.",
+      "tooShort": "The new password must have at least 8 characters.",
+      "tooLong": "The new password can't be longer than 128 characters.",
+      "mismatch": "Enter the same new password both times.",
+      "expired": "The code has expired. Start again and ask for a new code."
     }
   },
   "passwordField": {
@@ -102,7 +155,7 @@
       "actions": "Actions"
     },
     "roles": {
-      "DS_OFFICER": "Child Rights Promotion Officer",
+      "DS_OFFICER": "Divisional Secretariat Officer",
       "HO_OFFICER": "Head Office officer",
       "ADMIN": "Administrator"
     },
@@ -139,11 +192,12 @@
       "designationHint": "e.g. Development Officer",
       "mobile": "Mobile number *",
       "contactEmail": "Email (optional)",
+      "contactEmailHint": "If the officer forgets their password, the code to reset it is sent to this address.",
       "role": "Role *",
       "district": "District *",
       "chooseDistrict": "Choose",
       "office": "Divisional Secretariat *",
-      "oneOfficer": "Each Divisional Secretariat has only one Child Rights Promotion Officer. An office that shows a name already has one. When the officer changes, disable the old account and create a new one.",
+      "severalOfficers": "An office can have more than one account. When an officer leaves, disable their account.",
       "inactiveOffice": "Inactive",
       "headOfficeNote": "Head Office accounts belong to no DS office.",
       "create": "Create the account",
@@ -160,7 +214,6 @@
         "role": "Choose a role.",
         "office": "Choose a Divisional Secretariat.",
         "officeUnavailable": "This office is inactive. Choose another office.",
-        "officeTaken": "This office already has an active Child Rights Promotion Officer. Disable that account first.",
         "self": "You can't change your own account this way.",
         "lastAdmin": "There must be at least one active administrator.",
         "notFound": "This account can't be found."
@@ -195,6 +248,7 @@
       "title": "Account history",
       "empty": "Nothing yet.",
       "system": "The system",
+      "signInPage": "The sign-in page",
       "actions": {
         "account_created": "Account created",
         "account_updated": "Details changed",
@@ -203,6 +257,8 @@
         "account_disabled": "Account disabled",
         "account_enabled": "Account enabled again",
         "account_locked": "Account locked for 15 minutes after 5 wrong passwords",
+        "reset_code_sent": "A code to reset the password was sent by email",
+        "password_reset_by_code": "The officer set a new password with a code sent by email",
         "other": "A change was made"
       },
       "fields": {
@@ -235,7 +291,7 @@
     "columns": {
       "office": "Divisional Secretariat",
       "code": "Code",
-      "officer": "Child Rights Promotion Officer",
+      "officers": "Divisional Secretariat Officers",
       "status": "Status",
       "actions": "Actions"
     },
@@ -269,8 +325,8 @@
       "RENOVATION": "Renovating a house"
     },
     "kindHints": {
-      "NEW_HOUSE": "Child Rights Promotion Officers record progress in this order.",
-      "RENOVATION": "The stages added here are shown to Child Rights Promotion Officers for recording the progress of renovation beneficiaries."
+      "NEW_HOUSE": "Divisional Secretariat Officers record progress in this order.",
+      "RENOVATION": "The stages added here are shown to Divisional Secretariat Officers for recording the progress of renovation beneficiaries."
     },
     "noStages": "No stages added yet.",
     "newStage": "A new stage",

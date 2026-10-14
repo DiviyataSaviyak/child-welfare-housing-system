@@ -36,15 +36,15 @@ describe("account rules kept by the database (SPEC section 4)", () => {
     );
   });
 
-  it("refuses a second active DS officer at an office, but keeps disabled ones (ADM-3)", async () => {
-    const unique = { code: "P2002" };
-    await expect(account("rule-ds-second", { role: "DS_OFFICER", dsOfficeId: office })).rejects.toMatchObject(unique);
+  it("lets an office have several active DS officers (ADM-3)", async () => {
+    await expect(account("rule-ds-second", { role: "DS_OFFICER", dsOfficeId: office })).resolves.toBeTruthy();
     await expect(
       account("rule-ds-former", { role: "DS_OFFICER", dsOfficeId: office, banned: true }),
     ).resolves.toBeTruthy();
     await expect(
       prisma.user.update({ where: { id: "rule-ds-former" }, data: { banned: false } }),
-    ).rejects.toMatchObject(unique);
+    ).resolves.toBeTruthy();
+    expect(await prisma.user.count({ where: { dsOfficeId: office, banned: false } })).toBe(3);
   });
 
   it("starts every new account with a password that must be changed (AUTH-3)", async () => {

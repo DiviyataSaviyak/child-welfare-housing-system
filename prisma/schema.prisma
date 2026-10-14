@@ -179,10 +179,10 @@ model User {
   banExpires             DateTime?       @map("ban_expires")
   designation            String?
   mobile                 String?
-  /// The officer's real email address, if they have one.
+  /// The officer's real email address, if they have one. Codes for a forgotten password go to it (AUTH-7).
   contactEmail           String?         @map("contact_email")
-  /// Required for DS officers, empty for everyone else (checked by the database). An office has at
-  /// most one active DS officer, its Child Rights Promotion Officer (a partial unique index, ADM-3).
+  /// Required for DS officers, empty for everyone else (checked by the database). An office can have
+  /// several active DS officers (ADM-3).
   dsOfficeId             Int?            @map("ds_office_id")
   dsOffice               DsOffice?       @relation(fields: [dsOfficeId], references: [id])
   mustChangePassword     Boolean         @default(true) @map("must_change_password")
@@ -200,6 +200,7 @@ model User {
   releaseLetters         ReleaseLetter[]
   notifications          Notification[]
   stageUpdates           StageUpdate[]
+  resetCodes             ResetCode[]
 
   @@index([dsOfficeId])
   @@map("app_user")
@@ -255,6 +256,27 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+/// A code sent by email to reset a forgotten password (AUTH-7). The browser holds a random ticket; the
+/// row's id is the ticket's SHA-256 and the code is kept only as an HMAC. A ticket for an unknown
+/// username, a disabled account, one with no email address or one over its daily limit has no user and
+/// no email goes out, so the page acts the same for any username.
+model ResetCode {
+  id        String    @id
+  userId    String?   @map("user_id")
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @map("code_hash")
+  createdAt DateTime  @default(now()) @map("created_at")
+  /// 15 minutes after sending, for typing the code and setting the new password.
+  expiresAt DateTime  @map("expires_at")
+  /// Wrong codes typed so far; at 5 the ticket stops working.
+  tries     Int       @default(0)
+  /// When the right code was typed; the new password may then be set until it expires.
+  checkedAt DateTime? @map("checked_at")
+
+  @@index([userId, createdAt])
+  @@map("password_reset_code")
 }
 
 // ---------------------------------------------------------------------------

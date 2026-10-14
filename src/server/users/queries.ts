@@ -84,23 +84,6 @@ export async function activeAdminCount(db: PrismaClient | Prisma.TransactionClie
   return db.user.count({ where: { role: "ADMIN", banned: false } });
 }
 
-export type OfficeHolder = { id: string; name: string };
-
-/**
- * ADM-3: the office's active DS officer, its Child Rights Promotion Officer. There is at most one,
- * which the database also enforces. `exceptId` leaves out the account being changed.
- */
-export async function officeHolder(
-  db: PrismaClient,
-  dsOfficeId: number,
-  exceptId?: string,
-): Promise<OfficeHolder | null> {
-  return db.user.findFirst({
-    where: { dsOfficeId, role: "DS_OFFICER", banned: false, ...(exceptId ? { id: { not: exceptId } } : {}) },
-    select: { id: true, name: true },
-  });
-}
-
 export type AccountDetails = {
   id: string;
   name: string;
@@ -145,12 +128,12 @@ export async function getAccount(db: PrismaClient, id: string): Promise<AccountD
   };
 }
 
-export type OfficeChoice = { id: number; name: string; active: boolean; holder: OfficeHolder | null };
+export type OfficeChoice = { id: number; name: string; active: boolean };
 export type DistrictChoice = { id: number; name: string; offices: OfficeChoice[] };
 
 /**
- * Districts and their DS offices for the account form, each with its current Child Rights Promotion
- * Officer, if any (ADM-3). Inactive offices are included only if the account already belongs to one.
+ * Districts and their DS offices for the account form, by name only (ADM-3). Inactive offices are
+ * included only if the account already belongs to one.
  */
 export async function officeChoices(
   db: PrismaClient,
@@ -165,12 +148,7 @@ export async function officeChoices(
       dsOffices: {
         where: { OR: [{ active: true }, ...(keepOfficeId ? [{ id: keepOfficeId }] : [])] },
         orderBy: { id: "asc" },
-        select: {
-          id: true,
-          ...NAMES,
-          active: true,
-          users: { where: { role: "DS_OFFICER", banned: false }, select: { id: true, name: true }, take: 1 },
-        },
+        select: { id: true, ...NAMES, active: true },
       },
     },
   });
@@ -181,7 +159,6 @@ export async function officeChoices(
       id: o.id,
       name: localName(o, locale),
       active: o.active,
-      holder: o.users[0] ?? null,
     })),
   }));
 }

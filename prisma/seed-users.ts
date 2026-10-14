@@ -21,7 +21,8 @@ export const SAMPLE_TEMPORARY_PASSWORD = "Temp-Pass-2026";
 
 type SampleUser = { username: string; name: string; role: Role; officeCode?: string; temporary?: boolean };
 
-// Each DS office has one Child Rights Promotion Officer (ADM-3), so each sample officer has their own office.
+// An office can have several officers (ADM-3), but each sample officer has their own, so tests signed in as
+// different officers don't see each other's cases.
 export const SAMPLE_USERS: SampleUser[] = [
   { username: "ds0101", name: "එන්. පෙරේරා", role: "DS_OFFICER", officeCode: "HMG" },
   { username: "ds0102", name: "එස්. නවරත්න", role: "DS_OFFICER", officeCode: "MHG", temporary: true },
@@ -69,15 +70,6 @@ export async function putSampleUsers(prisma: PrismaClient, { reset }: { reset: b
     const password = await hashPassword(sample.temporary ? SAMPLE_TEMPORARY_PASSWORD : SAMPLE_PASSWORD);
 
     await prisma.$transaction([
-      // An office has one active DS officer (ADM-3): on a reset, the sample officer takes theirs back.
-      ...(reset && dsOfficeId !== null
-        ? [
-            prisma.user.updateMany({
-              where: { dsOfficeId, role: "DS_OFFICER", banned: false, id: { not: id } },
-              data: { banned: true },
-            }),
-          ]
-        : []),
       prisma.user.upsert({ where: { id }, create: { id, ...fields }, update: fields }),
       prisma.session.deleteMany({ where: { userId: id } }),
       prisma.account.deleteMany({ where: { userId: id } }),

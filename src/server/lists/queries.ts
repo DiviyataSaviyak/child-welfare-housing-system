@@ -23,8 +23,8 @@ export type OfficeRow = Names & {
   id: number;
   code: string;
   active: boolean;
-  /** The office's Child Rights Promotion Officer (its one active DS officer); empty if it still needs one. */
-  officer: string | null;
+  /** The names of the office's active DS officers (ADM-3); empty if it still needs one. */
+  officers: string[];
 };
 
 export async function officesOfDistrict(
@@ -45,7 +45,7 @@ export async function officesOfDistrict(
           ...NAMES,
           code: true,
           active: true,
-          users: { where: { role: "DS_OFFICER", banned: false }, select: { name: true }, take: 1 },
+          users: { where: { role: "DS_OFFICER", banned: false }, orderBy: { name: "asc" }, select: { name: true } },
         },
       },
     },
@@ -65,7 +65,7 @@ export async function officesOfDistrict(
       nameEn: o.nameEn,
       code: o.code,
       active: o.active,
-      officer: o.users[0]?.name ?? null,
+      officers: o.users.map((u) => u.name),
     })),
   };
 }

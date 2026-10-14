@@ -6,9 +6,9 @@
  * - deletes the cases they created (named with TEST_CASE_NAME), with their files and photos, decisions,
  *   release, installments, stage updates and notifications, and the allocation letters left with no case,
  *   with their scans;
- * - deletes the DS officer accounts they created (named TEST_OFFICER_NAME), which frees those offices for
- *   the next run, since an office has only one active officer (ADM-3). Their audit records stay, with an
- *   actor id that no longer exists. An account that still holds case records is disabled instead.
+ * - deletes the DS officer accounts they created (named TEST_OFFICER_NAME), so the admin's users screen
+ *   doesn't fill up with them. Their audit records stay, with an actor id that no longer exists. An account
+ *   that still holds case records is disabled instead.
  * Runs only where sample accounts are allowed (development and test databases).
  */
 import "dotenv/config";

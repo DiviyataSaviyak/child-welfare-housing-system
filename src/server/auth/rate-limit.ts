@@ -25,6 +25,9 @@ export function createRateLimiter({ limit, windowMs }: { limit: number; windowMs
 /** SEC-4: at most 10 sign-in attempts per minute from one IP address. */
 export const signInLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 });
 
+/** SEC-4: at most 5 email codes for a forgotten password asked for per 15 minutes from one IP address (AUTH-7). */
+export const resetCodeLimiter = createRateLimiter({ limit: 5, windowMs: 15 * 60_000 });
+
 /**
  * The client's IP address. On the server Caddy overwrites X-Forwarded-For with the real address
  * (deploy/server/caddy/Caddyfile), so the first entry is trusted; without it every request counts as "unknown".

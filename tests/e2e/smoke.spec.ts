@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { screenText, signInAs } from "./helpers";
+import { askForCode, screenText, signInAs } from "./helpers";
 
 const shells = [
   { username: "ds0101", home: /\/ds$/, heading: "මගේ ප්‍රතිලාභීන්", office: "හෝමාගම ප්‍රාදේශීය ලේකම් කාර්යාලය" },
@@ -22,6 +22,15 @@ for (const shell of shells) {
 test("the sign-in page is in Sinhala only", async ({ page }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("පද්ධතියට ඇතුළු වන්න");
+  expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
+});
+
+test("the page for a forgotten password is in Sinhala only, at both steps (AUTH-7)", async ({ page }) => {
+  await page.goto("/forgot-password");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("මුරපදය අමතකද?");
+  expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
+  // The code step, with "email" written in Sinhala letters.
+  await askForCode(page, "ds9999");
   expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
 });
 

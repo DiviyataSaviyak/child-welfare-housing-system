@@ -90,6 +90,7 @@ docker-compose.dev.yml  the development database
 | 2.6 | Audit writer used inside the same transaction as each change; a database trigger that refuses any change or removal of audit rows | ARC-4, HIS-1, HIS-3 | `src/server/audit.ts`, `prisma/migrations/*` |
 | 2.7 | Proxy (Next.js 16's name for middleware) that only redirects signed-out users; role home pages; the "not found" page | ARC-3, ERR-2 | `src/proxy.ts`, `src/app/not-found.tsx` |
 | 2.8 | Security headers, Server Actions origin check, error page with a reference code, logging without personal data | SEC-5, SEC-6, SEC-8, ERR-6 | `next.config.ts`, `src/app/error.tsx`, `src/server/log.ts` |
+| 2.9 | Resetting a forgotten password by email (added 2026-10-14; the request to the admin built earlier that day was replaced, first by a code sent by SMS, then the same day by email): "මුරපදය අමතකද?" on the sign-in page opens `/forgot-password`, three steps on one page (username, code, new password); migration `reset_password_by_sms` drops `app_user.new_password_asked_at` and adds `password_reset_code`; the code goes to the account's email address (`contact_email`, which the account form now says) through the mail server in `SMTP_HOST` (nodemailer), or into a file in development and CI; limits 5 per 15 minutes per IP, 5 codes per account a day, 5 tries per code; the sign-in page's notice; the account history's two new entries | AUTH-7, SEC-4, SEC-9, STK-2, AC-31 | `src/app/(auth)/forgot-password/*`, `src/app/(auth)/actions.ts`, `src/app/(auth)/login/page.tsx`, `src/server/auth/{password-reset,rate-limit}.ts`, `src/server/mail.ts`, `src/app/admin/users/account-form.tsx`, `src/app/admin/users/[id]/edit/account-history.tsx`, `messages/*.json`, `deploy/server/{compose.yml,env.example}` |
 
 **Tests:** permission helpers for every role and office combination; an audit row is written with each change and rolled back with it; e2e for sign-in, lockout and the forced password change.
 
@@ -105,13 +106,14 @@ docker-compose.dev.yml  the development database
 | # | Task | SPEC | Files |
 | --- | --- | --- | --- |
 | 3.1 | Users list with search and role filter | ADM-1 | `src/app/admin/users/page.tsx`, `src/server/users/*` |
-| 3.2 | Create account: form, district → DS choice, usernames, 12-character temporary password shown once, one active DS officer (the Child Rights Promotion Officer) per office, enforced by the database too | ADM-2, ADM-3 | `src/app/admin/users/*`, `src/lib/validation/user.ts`, `prisma/migrations/*` |
+| 3.2 | Create account: form, district → DS choice, usernames, 12-character temporary password shown once, one active DS officer (the Child Rights Promotion Officer) per office, enforced by the database too (until 2026-10-14, see 3.7) | ADM-2, ADM-3 | `src/app/admin/users/*`, `src/lib/validation/user.ts`, `prisma/migrations/*` |
 | 3.3 | Edit account and transfer to another office, with history | ADM-4, PRM-3 | `src/server/users/*` |
 | 3.4 | Reset password, disable and enable, with the "last admin" and "not yourself" rules | ADM-5, ADM-6, ADM-7 | `src/server/users/*` |
 | 3.5 | Lists: districts and DS offices (add, rename, deactivate) | LST-2, LST-3 | `src/app/admin/lists/*`, `src/server/lists/*` |
 | 3.6 | Lists: stages per kind (add, rename, reorder, deactivate), on a second tab of the lists page (`/admin/lists?tab=stages`) | LST-4 | `src/app/admin/lists/*`, `src/server/lists/*` |
+| 3.7 | Several DS officers per office (added 2026-10-14): migration `several_officers_per_office` drops the one-officer index; the account commands take any active office; the form offers every office, by name only; the lists screen names every officer; the demo data tells every officer of an office; the role is renamed Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී), since an office's officers are not all Child Rights Promotion Officers | ADM-3, NTF-1, AC-23 | `prisma/migrations/*`, `src/server/users/*`, `src/app/admin/users/account-form.tsx`, `src/server/lists/queries.ts`, `src/app/admin/lists/page.tsx`, `scripts/seed-{demo,load}.ts`, `messages/*.json` |
 
-**Tests:** unit tests for username generation and the account rules; database tests for every account and list command and its audit record; e2e for creating a DS officer who then signs in (AC-3), transfer, reset and disable, adding an office and a stage, and a Head Office officer trying an admin page (not found).
+**Tests:** unit tests for username generation and the account rules; database tests for every account and list command and its audit record; e2e for creating a DS officer who then signs in (AC-3), a second officer at the same office (AC-23), transfer, reset and disable, adding an office and a stage, and a Head Office officer trying an admin page (not found).
 
 **Done when:**
 - AC-3 and AC-23 pass.
@@ -242,4 +244,5 @@ These don't block Phases 1–8. Each one is needed by the phase shown.
 | The full list of DS offices with Sinhala names | Phase 9 (sample list until then) | Ministry |
 | Renovation stages (PRD question 3) | Any time; the admin adds them | Ministry |
 | How the sheet's cases come into the system, now that the import is removed | Phase 9 | Ministry / Head Office |
+| A mail account to send reset codes from (a Gmail account with an app password, free, or Amazon SES) for `SMTP_HOST`, and each officer's email address in their account; until then a forgotten password goes to the admin | Phase 9, before officers rely on resetting their own passwords | Ministry / admin |
 | Answers to the other deferred questions | When they arrive; SPEC section 13 lists what to change | Ministry |
