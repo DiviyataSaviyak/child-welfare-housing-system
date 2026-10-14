@@ -20,6 +20,7 @@ Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists
 - Head Office's dashboard, the Excel exports of the case lists, and a load-test data script
 - replacing a beneficiary (12 Oct 2026): Head Office asks for another name when rejecting or stopping, and the DS office's new case is linked to the old one
 - several officer accounts for one DS office (14 Oct 2026)
+- asking for a new password from the sign-in page, answered by the admin (14 Oct 2026)
 - tests and CI
 - the server's files (Phase 9's code tasks): the two production images, the Compose stack behind Caddy, the server setup, automatic deploys from `main` with rollback, the first-admin script, backups, alerts, the runbook, the security tests and the officers' guides
 
@@ -69,6 +70,9 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **Every change calls `writeAudit(tx, …)`** (`src/server/audit.ts`) in the same `db.$transaction` as the change. A database trigger refuses any update or delete of `audit_log`.
 - **Better Auth's HTTP endpoints are deliberately not mounted.** Sign-in, sign-out and password changes are Server Actions in `src/app/(auth)/actions.ts`. They pass through our lockout (`src/server/auth/lockout.ts`) and the per-IP rate limit.
 - **The rate limit trusts `X-Forwarded-For`.** On the server, Caddy overwrites that header with the real client address (`deploy/server/caddy/Caddyfile`). The end-to-end tests give each page its own address.
+- **A forgotten password (AUTH-7, 14 Oct 2026)** goes to the admin, because the system sends no email or SMS. "මුරපදය අමතකද?" on the sign-in page opens `/forgot-password`, whose `askForPassword` action (5 per 15 minutes per IP, `newPasswordLimiter`) calls `askForNewPassword` (`src/server/auth/new-password.ts`). It sets `app_user.new_password_asked_at` and writes `new_password_asked` with no actor, but only for an active account with no open request; the page answers the same for any username.
+  - The admin's menu badge on Users counts open requests (`newPasswordRequestsNow`, re-read from `/admin/waiting`; `NavEntry.countKey` picks the badge's screen-reader words). `listAccounts` puts waiting accounts first, oldest first, so an answered request's row stays in the table, and its pop-up with the one-time password stays open; there is deliberately no filter that would drop the row.
+  - The new-password pop-up shows the request and the account's mobile number, and a "close the request" button (`closeNewPasswordRequest`, audit `new_password_request_closed`). `resetPassword` and disabling clear the request; a successful sign-in clears it with `new_password_request_withdrawn`. The actions that change the count call `revalidatePath("/admin", "layout")`.
 - **The session ends after 30 minutes idle or 12 hours in total.** The idle time is our `session.last_active_at`, checked in `getContext()`.
 - **`src/proxy.ts` has only two jobs:** a quick redirect of signed-out visitors, and a fresh CSP nonce on every page. Because of the nonce, the root layout makes every page render per request.
 - **Sample accounts** exist in development and tests only, never in staging or production:
