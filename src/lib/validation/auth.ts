@@ -11,6 +11,13 @@ export function checkSignInForm(input: { username: string; password: string }): 
   return null;
 }
 
+export type AskForPasswordError = "required" | "tooMany";
+
+/** AUTH-7: a request for a new password needs only the username. */
+export function checkAskForPasswordForm(input: { username: string }): AskForPasswordError | null {
+  return input.username.trim() === "" ? "required" : null;
+}
+
 export type NewPasswordError = "required" | "tooShort" | "tooLong" | "mismatch" | "sameAsCurrent";
 
 /** AUTH-3: at least 8 characters, typed the same twice, and different from the current password. */

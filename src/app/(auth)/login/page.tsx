@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { homeFor } from "@/server/auth/roles";
@@ -15,6 +16,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <div className="flex flex-col gap-6">
       <h1 className="text-[26px] leading-snug font-bold">{t("title")}</h1>
       <SignInForm next={typeof next === "string" ? next : ""} />
+      <Link
+        href="/forgot-password"
+        className="self-start text-base font-semibold text-primary underline underline-offset-4"
+      >
+        {t("forgot")}
+      </Link>
       <p className="text-[15px] text-muted-foreground">{t("help")}</p>
     </div>
   );

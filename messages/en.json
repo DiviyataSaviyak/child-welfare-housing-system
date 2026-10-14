@@ -27,7 +27,8 @@
     "adminLists": "Lists",
     "hoCases": "Beneficiaries",
     "hoCheck": "Checking and releasing allocations",
-    "waiting": "Beneficiaries waiting: {count}"
+    "waiting": "Beneficiaries waiting: {count}",
+    "newPasswordRequests": "Asking for a new password: {count}"
   },
   "shell": {
     "signedInAs": "Signed in as",
@@ -41,7 +42,8 @@
     "password": "Password",
     "submit": "Sign in",
     "submitting": "Signing in...",
-    "help": "If you have forgotten your password or have no account, contact the administrator at Head Office.",
+    "forgot": "Forgot your password?",
+    "help": "If you have no account or have forgotten your username, contact the administrator at Head Office.",
     "errors": {
       "required": "Enter both your username and your password.",
       "invalid": "The username or password is wrong.",
@@ -67,6 +69,21 @@
       "mismatch": "Enter the same new password both times.",
       "sameAsCurrent": "The new password must be different from the current one.",
       "currentWrong": "The current password is wrong."
+    }
+  },
+  "forgotPassword": {
+    "title": "Forgot your password?",
+    "intro": "Enter your username and send the request. The administrator at Head Office will call you on the mobile number in your account and give you a temporary password. When you sign in with it, you set a new password of your own.",
+    "username": "Username",
+    "submit": "Ask for a new password",
+    "submitting": "Sending...",
+    "noUsername": "If you have forgotten your username too, contact the administrator at Head Office.",
+    "sent": "Your request has been sent to the administrator.",
+    "sentNext": "If the username is right, the administrator will call you on the mobile number in your account and give you a temporary password. If no one has called by the end of the next working day, call Head Office.",
+    "backToSignIn": "Back to sign in",
+    "errors": {
+      "required": "Enter your username.",
+      "tooMany": "Too many requests from this computer. Try again in 15 minutes."
     }
   },
   "passwordField": {
@@ -118,6 +135,8 @@
     "active": "Active",
     "disabled": "Disabled",
     "you": "(you)",
+    "newPasswordRequests": "{count, plural, one {# person has} other {# people have}} asked for a new password on the sign-in page. They are at the top of the list. Before you give a new password, call each one on the mobile number in their account to make sure they asked.",
+    "askedOn": "Asked for a new password · {date}",
     "edit": "Edit",
     "editLabel": "Edit: {name}",
     "resetPassword": "New password",
@@ -186,6 +205,11 @@
       "resetText": "{name}'s old password will stop working. A new temporary password will be shown to you.",
       "resetDone": "New password created",
       "resetDoneText": "Give {name} this temporary password.",
+      "mobile": "Mobile number: {mobile}",
+      "askedText": "{name} asked for a new password on the sign-in page on {date}.",
+      "callFirst": "Before you give one, call them on {mobile} to make sure they asked.",
+      "callFirstNoMobile": "Before you give one, call them to make sure they asked.",
+      "closeRequest": "Close the request",
       "cancel": "Cancel",
       "close": "OK",
       "working": "Working..."
@@ -194,6 +218,7 @@
       "title": "Account history",
       "empty": "Nothing yet.",
       "system": "The system",
+      "signInPage": "The sign-in page",
       "actions": {
         "account_created": "Account created",
         "account_updated": "Details changed",
@@ -202,6 +227,9 @@
         "account_disabled": "Account disabled",
         "account_enabled": "Account enabled again",
         "account_locked": "Account locked for 15 minutes after 5 wrong passwords",
+        "new_password_asked": "A new password was asked for on the sign-in page",
+        "new_password_request_closed": "The request for a new password was closed without one",
+        "new_password_request_withdrawn": "Signed in with their own password, so the request for a new password was closed",
         "other": "A change was made"
       },
       "fields": {

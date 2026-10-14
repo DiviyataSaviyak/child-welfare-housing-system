@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkNewPassword, checkSignInForm } from "./auth";
+import { checkAskForPasswordForm, checkNewPassword, checkSignInForm } from "./auth";
 
 describe("sign-in form", () => {
   it("needs both fields", () => {
@@ -10,6 +10,13 @@ describe("sign-in form", () => {
 
   it("treats absurdly long input as a wrong sign-in, not an error page", () => {
     expect(checkSignInForm({ username: "x".repeat(65), password: "p" })).toBe("invalid");
+  });
+});
+
+describe("asking for a new password (AUTH-7)", () => {
+  it("needs only the username", () => {
+    expect(checkAskForPasswordForm({ username: "  " })).toBe("required");
+    expect(checkAskForPasswordForm({ username: "ds0101" })).toBeNull();
   });
 });
 

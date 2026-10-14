@@ -8,16 +8,20 @@ export type AccountRow = {
   name: string;
   username: string;
   designation: string | null;
+  mobile: string | null;
   role: Role;
   officeName: string | null;
   districtName: string | null;
   lastSignInAt: Date | null;
   active: boolean;
+  /** When someone asked for a new password on the sign-in page, while the request waits (AUTH-7). */
+  newPasswordAskedAt: Date | null;
 };
 
 /**
  * ADM-1: every account, searchable by name, office (in any of its three names) or username, and
- * filterable by role. Office and district names come in the screen's language (UI-9).
+ * filterable by role. Office and district names come in the screen's language (UI-9). Accounts waiting
+ * for a new password come first, the longest waiting at the top (AUTH-7).
  */
 export async function listAccounts(
   db: PrismaClient,
@@ -44,15 +48,17 @@ export async function listAccounts(
   };
   const users = await db.user.findMany({
     where,
-    orderBy: [{ role: "asc" }, { name: "asc" }],
+    orderBy: [{ newPasswordAskedAt: { sort: "asc", nulls: "last" } }, { role: "asc" }, { name: "asc" }],
     select: {
       id: true,
       name: true,
       username: true,
       designation: true,
+      mobile: true,
       role: true,
       banned: true,
       lastSignInAt: true,
+      newPasswordAskedAt: true,
       dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
     },
   });
@@ -64,11 +70,13 @@ export async function listAccounts(
             name: u.name,
             username: u.username,
             designation: u.designation,
+            mobile: u.mobile,
             role: u.role,
             officeName: u.dsOffice ? localName(u.dsOffice, locale) : null,
             districtName: u.dsOffice ? localName(u.dsOffice.district, locale) : null,
             lastSignInAt: u.lastSignInAt,
             active: !u.banned,
+            newPasswordAskedAt: u.newPasswordAskedAt,
           },
         ]
       : [],
@@ -78,6 +86,16 @@ export async function listAccounts(
 export async function accountCounts(db: PrismaClient): Promise<{ total: number; active: number; disabled: number }> {
   const [total, disabled] = await Promise.all([db.user.count(), db.user.count({ where: { banned: true } })]);
   return { total, active: total - disabled, disabled };
+}
+
+/**
+ * AUTH-7: how many accounts wait for a new password, for the admin's menu, and when it was read. The menu
+ * reads it again from /admin/waiting after every move (src/components/shell/live-count.ts).
+ */
+export async function newPasswordRequestsNow(db: PrismaClient): Promise<{ count: number; at: number }> {
+  const at = Date.now();
+  const count = await db.user.count({ where: { newPasswordAskedAt: { not: null }, banned: false } });
+  return { count, at };
 }
 
 export async function activeAdminCount(db: PrismaClient | Prisma.TransactionClient): Promise<number> {

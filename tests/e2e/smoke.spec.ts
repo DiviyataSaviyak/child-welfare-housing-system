@@ -25,6 +25,12 @@ test("the sign-in page is in Sinhala only", async ({ page }) => {
   expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
 });
 
+test("the page for a forgotten password is in Sinhala only (AUTH-7)", async ({ page }) => {
+  await page.goto("/forgot-password");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("මුරපදය අමතකද?");
+  expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
+});
+
 test("/admin opens the users page", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
   await page.goto("/admin");

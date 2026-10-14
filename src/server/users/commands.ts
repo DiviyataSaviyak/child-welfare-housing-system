@@ -144,8 +144,8 @@ export async function updateAccount(
 }
 
 /**
- * ADM-5: issues a new temporary password, shown once. It also clears a lock, and ends every open
- * session of the account.
+ * ADM-5: issues a new temporary password, shown once. It also clears a lock, answers a request for a
+ * new password (AUTH-7), and ends every open session of the account.
  */
 export async function resetPassword(db: PrismaClient, actorId: string, id: string): Promise<Result<Credentials>> {
   const user = await db.user.findUnique({ where: { id }, select: { username: true } });
@@ -166,7 +166,13 @@ export async function resetPassword(db: PrismaClient, actorId: string, id: strin
     }
     await tx.user.update({
       where: { id },
-      data: { mustChangePassword: true, temporaryPasswordSetAt: new Date(), failedSignIns: 0, lockedUntil: null },
+      data: {
+        mustChangePassword: true,
+        temporaryPasswordSetAt: new Date(),
+        failedSignIns: 0,
+        lockedUntil: null,
+        newPasswordAskedAt: null,
+      },
     });
     await tx.session.deleteMany({ where: { userId: id } });
     await writeAudit(tx, { actorId, action: "password_reset", entityType: "user", entityId: id });
@@ -174,7 +180,10 @@ export async function resetPassword(db: PrismaClient, actorId: string, id: strin
   return { ok: true, value: { username: user.username, temporaryPassword } };
 }
 
-/** ADM-6: disables or re-enables an account. Disabling ends its sessions at once (AUTH-5). */
+/**
+ * ADM-6: disables or re-enables an account. Disabling ends its sessions at once (AUTH-5) and drops a
+ * waiting request for a new password (AUTH-7).
+ */
 export async function setAccountDisabled(
   db: PrismaClient,
   actorId: string,
@@ -194,7 +203,10 @@ export async function setAccountDisabled(
   }
 
   await db.$transaction(async (tx) => {
-    await tx.user.update({ where: { id }, data: { banned: disabled } });
+    await tx.user.update({
+      where: { id },
+      data: disabled ? { banned: true, newPasswordAskedAt: null } : { banned: false },
+    });
     if (disabled) await tx.session.deleteMany({ where: { userId: id } });
     await writeAudit(tx, {
       actorId,
@@ -202,6 +214,25 @@ export async function setAccountDisabled(
       entityType: "user",
       entityId: id,
     });
+  });
+  return { ok: true, value: null };
+}
+
+/**
+ * AUTH-7: the admin closes a request for a new password without giving one, for example when the officer
+ * says on the phone that they didn't ask. Closing one that is already closed changes nothing.
+ */
+export async function closeNewPasswordRequest(db: PrismaClient, actorId: string, id: string): Promise<Result<null>> {
+  const user = await db.user.findUnique({ where: { id }, select: { id: true } });
+  if (!user) return { ok: false, error: "notFound" };
+
+  await db.$transaction(async (tx) => {
+    const closed = await tx.user.updateMany({
+      where: { id, newPasswordAskedAt: { not: null } },
+      data: { newPasswordAskedAt: null },
+    });
+    if (closed.count === 0) return;
+    await writeAudit(tx, { actorId, action: "new_password_request_closed", entityType: "user", entityId: id });
   });
   return { ok: true, value: null };
 }

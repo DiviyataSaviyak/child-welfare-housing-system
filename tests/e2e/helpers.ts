@@ -83,6 +83,20 @@ export async function signIn(page: Page, username: string, password = PASSWORD) 
   await page.getByRole("button", { name: TEXT.signInButton }).click();
 }
 
+/**
+ * Asks for a new password from the sign-in page's link (AUTH-7) and waits for the answer, which reads
+ * the same for any username. The page gets its own address, as for a sign-in, because of the rate limit.
+ */
+export async function askForPassword(page: Page, username: string) {
+  await giveOwnAddress(page);
+  await page.goto("/login");
+  await page.getByRole("link", { name: "මුරපදය අමතකද?" }).click();
+  await expect(page).toHaveURL(/\/forgot-password$/);
+  await page.getByLabel(TEXT.username).fill(username);
+  await page.getByRole("button", { name: "නව මුරපදයක් ඉල්ලන්න" }).click();
+  await expect(page.getByRole("status")).toHaveText("ඔබේ ඉල්ලීම පරිපාලක වෙත යවන ලදී.");
+}
+
 /** Signs in and waits for the page the account lands on. */
 export async function signInAs(page: Page, username: string, landsOn: RegExp) {
   await signIn(page, username);

@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../../../tests/db/client";
 import type { AccountInput } from "@/lib/validation/user";
-import { createAccount, resetPassword, setAccountDisabled, updateAccount } from "./commands";
-import { accountHistory, listAccounts } from "./queries";
+import { askForNewPassword } from "../auth/new-password";
+import { closeNewPasswordRequest, createAccount, resetPassword, setAccountDisabled, updateAccount } from "./commands";
+import { accountHistory, listAccounts, newPasswordRequestsNow } from "./queries";
 
 const db = createTestClient();
 const ADMIN = "users-test-admin";
@@ -207,5 +208,88 @@ describe("the account list (ADM-1)", () => {
     expect(found.map((row) => row.id)).toContain(user.id);
     expect(found.every((row) => row.role === "DS_OFFICER")).toBe(true);
     expect(await listAccounts(db, { role: "HO_OFFICER", q: office.nameSi }, "si")).toEqual([]);
+  });
+});
+
+describe("asking for a new password (AUTH-7)", () => {
+  const askedAt = async (id: string) =>
+    (await db.user.findUniqueOrThrow({ where: { id }, select: { newPasswordAskedAt: true } })).newPasswordAskedAt;
+  const waiting = async () => (await newPasswordRequestsNow(db)).count;
+
+  it("opens one request for the account, however the username is typed and however often", async () => {
+    const { user, credentials } = await newOfficer();
+    const before = await waiting();
+
+    expect(await askForNewPassword(db, ` ${credentials.username.toUpperCase()} `)).toBe(user.id);
+    expect(await askForNewPassword(db, credentials.username)).toBeNull();
+
+    expect(await askedAt(user.id)).toBeInstanceOf(Date);
+    expect(await waiting()).toBe(before + 1);
+    const history = await accountHistory(db, user.id);
+    expect(history.filter((h) => h.action === "new_password_asked")).toHaveLength(1);
+    expect(history[0]).toMatchObject({ action: "new_password_asked", actorName: null });
+  });
+
+  it("opens nothing for an unknown username or a disabled account", async () => {
+    const before = await waiting();
+    expect(await askForNewPassword(db, "ds9999-none")).toBeNull();
+
+    const { user, credentials } = await newOfficer();
+    await setAccountDisabled(db, ADMIN, user.id, true);
+    expect(await askForNewPassword(db, credentials.username)).toBeNull();
+    expect(await askedAt(user.id)).toBeNull();
+    expect(await waiting()).toBe(before);
+  });
+
+  it("puts the accounts waiting first on the list, the longest waiting at the top", async () => {
+    const first = await newOfficer();
+    const second = await newOfficer();
+    await askForNewPassword(db, second.credentials.username, new Date("2026-10-01T08:00:00Z"));
+    await askForNewPassword(db, first.credentials.username, new Date("2026-10-02T08:00:00Z"));
+
+    const rows = await listAccounts(db, {}, "si");
+    const waitingRows = rows.filter((row) => row.newPasswordAskedAt !== null);
+    expect(rows.slice(0, waitingRows.length)).toEqual(waitingRows);
+    const ids = waitingRows.map((row) => row.id);
+    expect(ids.indexOf(second.user.id)).toBeLessThan(ids.indexOf(first.user.id));
+    expect(waitingRows.find((row) => row.id === first.user.id)?.mobile).toBe("0710000201");
+    await closeNewPasswordRequest(db, ADMIN, first.user.id);
+    await closeNewPasswordRequest(db, ADMIN, second.user.id);
+  });
+
+  it("is answered by a new password", async () => {
+    const { user, credentials } = await newOfficer();
+    await askForNewPassword(db, credentials.username);
+    const before = await waiting();
+
+    expect((await resetPassword(db, ADMIN, user.id)).ok).toBe(true);
+    expect(await askedAt(user.id)).toBeNull();
+    expect(await waiting()).toBe(before - 1);
+  });
+
+  it("can be closed without a new password, once", async () => {
+    const { user, credentials } = await newOfficer();
+    await askForNewPassword(db, credentials.username);
+    const password = await passwordOf(user.id);
+
+    expect(await closeNewPasswordRequest(db, ADMIN, user.id)).toEqual({ ok: true, value: null });
+    expect(await closeNewPasswordRequest(db, ADMIN, user.id)).toEqual({ ok: true, value: null });
+
+    expect(await askedAt(user.id)).toBeNull();
+    expect(await passwordOf(user.id)).toBe(password);
+    const history = await accountHistory(db, user.id);
+    expect(history.filter((h) => h.action === "new_password_request_closed")).toHaveLength(1);
+    expect(history[0]).toMatchObject({ action: "new_password_request_closed", actorName: "පරිපාලක" });
+    expect(await closeNewPasswordRequest(db, ADMIN, "no-such-account")).toEqual({ ok: false, error: "notFound" });
+  });
+
+  it("is dropped when the account is disabled", async () => {
+    const { user, credentials } = await newOfficer();
+    await askForNewPassword(db, credentials.username);
+
+    await setAccountDisabled(db, ADMIN, user.id, true);
+    expect(await askedAt(user.id)).toBeNull();
+    await setAccountDisabled(db, ADMIN, user.id, false);
+    expect(await askedAt(user.id)).toBeNull();
   });
 });

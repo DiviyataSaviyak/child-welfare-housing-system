@@ -1,6 +1,7 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { transliterate } from "../../src/lib/transliterate";
 import {
+  askForPassword,
   chooseLanguage,
   randomLetters,
   signIn,
@@ -23,6 +24,8 @@ const OFFICES = {
   moveFrom: "මීගමුව",
   moveTo: "කැලණිය",
   disable: "මිනුවන්ගොඩ",
+  askForPassword: "අත්තනගල්ල",
+  closeRequest: "බියගම",
 } as const;
 
 /** Creates a Divisional Secretariat Officer through the admin screens; returns the credentials shown once. */
@@ -168,6 +171,73 @@ test("a new password replaces the old one, and a disabled account can't sign in 
     await signIn(officer, username, secondPassword);
     await expect(signInError(officer)).toHaveText(TEXT.wrongSignIn);
   });
+});
+
+const ASKED = "නව මුරපදයක් ඉල්ලා ඇත";
+
+test("AC-31: an officer who forgot their password asks for one, and the admin calls and gives it (AUTH-7)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  const { username } = await createOfficer(page, OFFICES.askForPassword);
+
+  await asNewOfficer(browser, async (officer) => {
+    await askForPassword(officer, username);
+    // An unknown username gets the same answer.
+    await askForPassword(officer, "ds9999");
+  });
+
+  await page.goto("/admin/users");
+  await expect(page.getByRole("navigation")).toContainText(/නව මුරපදයක් ඉල්ලූ අය \d+/);
+  await expect(page.getByText(/දෙනෙක් ඇතුළු වීමේ පිටුවෙන් නව මුරපදයක් ඉල්ලා ඇත/)).toBeVisible();
+  await openRow(page, username);
+  await expect(page.getByRole("row").nth(1)).toContainText(ASKED);
+  await page.getByRole("button", { name: `නව මුරපදය: ${TEST_OFFICER_NAME}` }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("ඇතුළු වීමේ පිටුවෙන් නව මුරපදයක් ඉල්ලා ඇත");
+  await expect(dialog).toContainText("0710000301");
+  await dialog.getByRole("button", { name: "නව මුරපදය" }).click();
+  await expect(dialog).toContainText("නව මුරපදය සාදන ලදී");
+  const temporary = await dialog.getByTestId("new-password").innerText();
+  await dialog.getByRole("button", { name: "හරි" }).click();
+  await expect(page.getByRole("row").nth(1)).not.toContainText(ASKED);
+
+  await asNewOfficer(browser, async (officer) => {
+    await signIn(officer, username, temporary);
+    await expect(officer).toHaveURL(/\/change-password$/);
+  });
+});
+
+test("the admin can close a request, and signing in with one's password withdraws it (AUTH-7)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  const { username, password } = await createOfficer(page, OFFICES.closeRequest);
+
+  await asNewOfficer(browser, (officer) => askForPassword(officer, username));
+  await openRow(page, username);
+  await page.getByRole("button", { name: `නව මුරපදය: ${TEST_OFFICER_NAME}` }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "ඉල්ලීම වසන්න" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(page.getByRole("row").nth(1)).not.toContainText(ASKED);
+
+  await asNewOfficer(browser, async (officer) => {
+    await askForPassword(officer, username);
+    // The officer remembers it after all.
+    await signIn(officer, username, password);
+    await expect(officer).toHaveURL(/\/change-password$/);
+  });
+  await openRow(page, username);
+  await expect(page.getByRole("row").nth(1)).not.toContainText(ASKED);
+  await page.getByRole("link", { name: `සංස්කරණය: ${TEST_OFFICER_NAME}` }).click();
+  const history = page.getByRole("region", { name: "ගිණුමේ ඉතිහාසය" });
+  await expect(history).toContainText("තමන්ගේම මුරපදයෙන් ඇතුළු වූ නිසා නව මුරපද ඉල්ලීම වැසුණා");
+  await expect(history).toContainText("නව මුරපදයක් නොදී ඉල්ලීම වැසුවා");
+  await expect(history).toContainText("ඇතුළු වීමේ පිටුව");
 });
 
 test("the admin can't disable their own account", async ({ page }) => {
