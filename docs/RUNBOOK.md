@@ -126,6 +126,22 @@ sudo -iu deploy
 
 It prints a username and a temporary password once. Give them to the admin in person. The admin signs in, sets their own password, and creates the Head Office and DS office accounts on the users screen. The account's history says the system created it.
 
+### 7. SMS for forgotten passwords (AUTH-7)
+
+Officers reset a forgotten password with a code sent by SMS to the mobile number in their account. The messages go through an SMS gateway in Sri Lanka, such as Notify.lk or Dialog eSMS, with an account the Ministry pays for. Until one is set, the page for a forgotten password tells officers to call the admin, who gives a new password on the users screen.
+
+1. From the gateway, get its address for sending one message by GET: the one with the account's key, the sender name, the number and the message in it.
+2. Put it in `/opt/diviyata/.env` as `SMS_URL`, in single quotes, with `{to}` in place of the number and `{text}` in place of the message. The app puts in the number as `94XXXXXXXXX`. For Notify.lk:
+
+   ```bash
+   SMS_URL='https://app.notify.lk/api/v1/send?user_id=<id>&api_key=<key>&sender_id=<sender>&to={to}&message={text}'
+   ```
+
+3. Restart the app with it: `dc up -d --wait app`.
+4. Test it: on the sign-in page choose "මුරපදය අමතකද?" and give your own username. The code should arrive within a minute. If it doesn't, `dc logs --since 10m app` shows `sms_failed` with the gateway's answer code (never the number or the message).
+
+Each code is one SMS (two in Sinhala or Tamil, which take more room). An account gets at most 5 codes a day (SEC-4).
+
 ## Everyday
 
 Everything below runs on the server as the deploy user (`sudo -iu deploy`), unless it says root. The deploy user's shell starts in `/opt/diviyata` and has `dc` for `docker compose` with the server's two env files.
@@ -201,6 +217,7 @@ All of them are in `/opt/diviyata/.env` (SEC-9). GitHub holds only the deploy ke
 | `APP_DB_PASSWORD` | Set a new one and run the deploy again; the grants set the new password. |
 | `DB_OWNER_PASSWORD` | `ALTER ROLE diviyata PASSWORD '<new>'` in psql, then set it in `.env`. |
 | `RESTIC_PASSWORD` | `restic key add`, then `restic key remove` the old one, as root with the old value exported. Give the Ministry the new one. |
+| `SMS_URL` (holds the SMS gateway's key) | Make a new key at the gateway, put the new address in `.env` (in single quotes) and run `dc up -d --wait app`. |
 | The deploy key | Run `server-setup.sh` after removing `/home/deploy/.ssh/github-actions.pub` and its line in `authorized_keys`, then update `DEPLOY_SSH_KEY`. |
 
 ## Upgrades

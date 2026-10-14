@@ -134,7 +134,8 @@ Both refuse once the server runs as production.
 | An email: **the disk is 80% full** or more | Run `ssh`, then `docker system df` to see what uses the space, and `docker image prune` to remove leftover images. If it's still full, make the EC2 volume bigger in AWS. |
 | A push to `main` didn't reach the server | Open the failed run under **Actions**, fix the problem in a new commit, and push again |
 | Officers see an error after a deploy | Run `rollback`, then fix the problem in a new commit |
-| An officer forgot their password, or is locked out | Nothing here: the admin resets it on the users screen |
+| An officer forgot their password, or is locked out | Nothing here: the officer resets it with an SMS code from the sign-in page ("මුරපදය අමතකද?"), or the admin gives a new one on the users screen |
+| Officers say the SMS code never comes | Run `logs app` and look for `sms_failed`. The gateway's balance or key is the usual cause. Fix `SMS_URL` as in docs/RUNBOOK.md, "SMS for forgotten passwords" |
 
 ## What's in this folder
 
