@@ -156,7 +156,7 @@ Values used across the system:
   - **Inputs:** full name (required, 2–100 characters), designation (optional, up to 100), mobile (required, `^0\d{9}$` once spaces are removed), email (optional, a valid address) and role (required). A DS officer also needs a district and a DS office, chosen in that order from the lists.
   - **Output:** a generated username (the role prefix `ds`, `ho` or `ad` plus 4 digits, unique) and a 12-character temporary password, shown once.
 - **ADM-3** A DS office may have any number of active DS officer accounts, one for each officer who uses the system (14 Oct 2026; until then an office had at most one). They all see and change the office's cases alike (PRM-1), and each gets the office's notifications (NTF-1).
-  - The form shall offer every active office, and show beside each the names of its active DS officers, so the admin can see whether an officer already has an account.
+  - The form shall offer every active office, by its name only; it shows no officers' names (14 Oct 2026).
   - The lists screen shall show each office's active DS officers by name, or that it has none.
   - When an officer leaves, the admin disables their account (ADM-6). The account and its history stay (ADM-7).
 - **ADM-4** The admin shall be able to change any account detail. Changing a DS officer's office is how a transfer is recorded, and the history keeps both offices.
@@ -445,7 +445,7 @@ Version 1 is accepted when every check below passes on staging with made-up data
 | AC-20 | No Sinhala or Tamil screen shows English interface text, and no English screen shows Sinhala or Tamil interface text; only the language picker names all three. A check in CI finds no hard-coded strings in components. | UI-1, UI-9 |
 | AC-21 | With 5,000 seeded cases, the dashboard loads in under 2 seconds. | PRF-3 |
 | AC-22 | Restoring last night's backup on staging brings back the cases and their files. | SEC-10 |
-| AC-23 | The admin gives a DS office that has an active DS officer a second one; the form shows the first one's name beside the office. Both officers get the office's notifications. | ADM-3, NTF-1 |
+| AC-23 | The admin gives a DS office that has an active DS officer a second one; the form offers the office by its name alone, and the lists screen names both officers. Both officers get the office's notifications. | ADM-3, NTF-1 |
 | AC-24 | Removed with IMP-1 to IMP-7 (2026-10-06). | — |
 | AC-25 | On the check screen, choosing a district and then a DS office lists only that office's cases. After a case is verified, the screen stays on that office, and the release tab opens on that district's letter. | CHK-4 |
 | AC-26 | A letter for two cases releases both, with one letter row and each case's own release and installments; one case not `VERIFIED`, or of another district, releases neither. Correcting the letter from one case's page changes it for both. | REL-2–4 |

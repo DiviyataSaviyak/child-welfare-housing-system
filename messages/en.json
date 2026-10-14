@@ -143,7 +143,7 @@
       "district": "District *",
       "chooseDistrict": "Choose",
       "office": "Divisional Secretariat *",
-      "officersShown": "An office can have more than one account. The names after an office are its officers who already have one. When an officer leaves, disable their account.",
+      "severalOfficers": "An office can have more than one account. When an officer leaves, disable their account.",
       "inactiveOffice": "Inactive",
       "headOfficeNote": "Head Office accounts belong to no DS office.",
       "create": "Create the account",

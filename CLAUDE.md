@@ -93,7 +93,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **A DS office can have several active DS officers (ADM-3, 14 Oct 2026).** The screens call the `DS_OFFICER` role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී).
   - From 29 Sep to 14 Oct an office had at most one, with an `officeTaken` refusal and a partial unique index; migration `20261014090000_several_officers_per_office` dropped the index. Don't bring the limit back unless asked.
   - Cases are scoped by office, never by who entered them, so the office's officers share them; `notifyOffice` tells every active officer.
-  - The account form names each office's other active officers (`officeChoices`), and the lists screen names them all (`officesOfDistrict`).
+  - The account form shows each office by name only, no officers' names (`officeChoices`; the user's choice, 14 Oct). The lists screen names every active officer (`officesOfDistrict`).
   - `banned` is never null, so "active" is simply `banned: false`.
 - **Database test files share one schema per run** and run one after another. A test must not assume it sees only its own rows, and must put back anything shared that it changes. A test that adds a DS officer and wants the office's cases and notices to itself takes a free office from `freeOfficeId()` (`tests/db/client.ts`).
 - **End-to-end tests add data.** `tests/e2e/cleanup.ts` runs before each run:

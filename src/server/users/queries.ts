@@ -128,14 +128,12 @@ export async function getAccount(db: PrismaClient, id: string): Promise<AccountD
   };
 }
 
-export type OfficeOfficer = { id: string; name: string };
-export type OfficeChoice = { id: number; name: string; active: boolean; officers: OfficeOfficer[] };
+export type OfficeChoice = { id: number; name: string; active: boolean };
 export type DistrictChoice = { id: number; name: string; offices: OfficeChoice[] };
 
 /**
- * Districts and their DS offices for the account form, each with its active DS officers, so the admin
- * can see who already has an account (ADM-3). Inactive offices are included only if the account
- * already belongs to one.
+ * Districts and their DS offices for the account form, by name only (ADM-3). Inactive offices are
+ * included only if the account already belongs to one.
  */
 export async function officeChoices(
   db: PrismaClient,
@@ -150,16 +148,7 @@ export async function officeChoices(
       dsOffices: {
         where: { OR: [{ active: true }, ...(keepOfficeId ? [{ id: keepOfficeId }] : [])] },
         orderBy: { id: "asc" },
-        select: {
-          id: true,
-          ...NAMES,
-          active: true,
-          users: {
-            where: { role: "DS_OFFICER", banned: false },
-            orderBy: { name: "asc" },
-            select: { id: true, name: true },
-          },
-        },
+        select: { id: true, ...NAMES, active: true },
       },
     },
   });
@@ -170,7 +159,6 @@ export async function officeChoices(
       id: o.id,
       name: localName(o, locale),
       active: o.active,
-      officers: o.users,
     })),
   }));
 }

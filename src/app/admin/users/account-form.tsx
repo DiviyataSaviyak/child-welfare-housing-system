@@ -179,13 +179,11 @@ export function AccountForm({
             >
               <legend className="mb-2 text-base font-semibold">{t("form.office")}</legend>
               <p id="office-rule" className="text-[15px] text-muted-foreground">
-                {t("form.officersShown")}
+                {t("form.severalOfficers")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {district.offices.map((o) => {
                   const checked = values.dsOfficeId === String(o.id);
-                  // ADM-3: an office can have several officers; the names show who already has an account.
-                  const others = o.officers.filter((officer) => officer.id !== account?.id);
                   return (
                     <label
                       key={o.id}
@@ -203,7 +201,6 @@ export function AccountForm({
                       />
                       <span className="text-base">
                         {o.name}
-                        {others.length > 0 && ` · ${others.map((officer) => officer.name).join(", ")}`}
                         {!o.active && ` · ${t("form.inactiveOffice")}`}
                       </span>
                     </label>

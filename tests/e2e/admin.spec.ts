@@ -96,21 +96,25 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
 test("AC-23: an office that has an officer takes a second one (ADM-3)", async ({ page }) => {
   test.slow();
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  await createOfficer(page, OFFICES.second);
-
-  const office = async () => {
-    await page.goto("/admin/users/new");
-    await page.getByRole("radio", { name: CRPO }).check();
-    await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
-    return page.getByRole("radio", { name: new RegExp(`^${OFFICES.second}`) });
+  const officersOnList = async () => {
+    await page.goto("/admin/lists");
+    await page.getByRole("link", { name: /^ගම්පහ/ }).click();
+    await expect(page.getByRole("heading", { name: "ගම්පහ දිස්ත්‍රික්කය" })).toBeVisible();
+    return page.getByRole("row").filter({ hasText: OFFICES.second }).getByText(TEST_OFFICER_NAME);
   };
-  await expect(await office()).toBeEnabled();
+  await createOfficer(page, OFFICES.second);
+  const before = await (await officersOnList()).count();
+  expect(before).toBeGreaterThan(0);
+
+  // The form still offers the office, by its name alone.
+  await page.goto("/admin/users/new");
+  await page.getByRole("radio", { name: CRPO }).check();
+  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await expect(page.getByText("කාර්යාලයකට ගිණුම් කිහිපයක් තිබිය හැක.")).toBeVisible();
-  await expect(page.getByText(`${OFFICES.second} · ${TEST_OFFICER_NAME}`)).toBeVisible();
+  await expect(page.getByRole("radio", { name: OFFICES.second, exact: true })).toBeEnabled();
 
   await createOfficer(page, OFFICES.second);
-  await expect(await office()).toBeEnabled();
-  await expect(page.getByText(`${OFFICES.second} · ${TEST_OFFICER_NAME}, ${TEST_OFFICER_NAME}`)).toBeVisible();
+  await expect(await officersOnList()).toHaveCount(before + 1);
 });
 
 test("moving an officer to another office is recorded in the account's history (ADM-4)", async ({ page }) => {
