@@ -19,6 +19,7 @@ Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists
 - the DS home's money panel and its full to-do panel
 - Head Office's dashboard, the Excel exports of the case lists, and a load-test data script
 - replacing a beneficiary (12 Oct 2026): Head Office asks for another name when rejecting or stopping, and the DS office's new case is linked to the old one
+- several officer accounts for one DS office (14 Oct 2026)
 - tests and CI
 - the server's files (Phase 9's code tasks): the two production images, the Compose stack behind Caddy, the server setup, automatic deploys from `main` with rollback, the first-admin script, backups, alerts, the runbook, the security tests and the officers' guides
 
@@ -89,15 +90,15 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **Forms keep what was typed.** React 19 resets uncontrolled fields after an action, so forms that can be refused use controlled fields (`account-form.tsx`, `list-forms.tsx`).
 - **A temporary password is shown once.** It comes back in the action's state and is never stored in plain text or put in a URL. Remounting the component (`key`) clears it.
 - **Usernames are generated** as `ds`/`ho`/`ad` plus four digits (`src/server/users/usernames.ts`), and accounts have a placeholder email. Accounts, offices and stages are never deleted, only disabled or deactivated (ADM-7, LST-3).
-- **One active DS officer per DS office (ADM-3).** Each DS has one Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී), the name the screens give the `DS_OFFICER` role.
-  - The account commands refuse a second one with `officeTaken`.
-  - A partial unique index (`app_user_one_active_ds_officer_per_office`, a hand-written migration) enforces it in the database too. Prisma ignores that index, so `migrate dev` won't drop it.
+- **A DS office can have several active DS officers (ADM-3, 14 Oct 2026).** The screens call the `DS_OFFICER` role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී).
+  - From 29 Sep to 14 Oct an office had at most one, with an `officeTaken` refusal and a partial unique index; migration `20261014090000_several_officers_per_office` dropped the index. Don't bring the limit back unless asked.
+  - Cases are scoped by office, never by who entered them, so the office's officers share them; `notifyOffice` tells every active officer.
+  - The account form names each office's other active officers (`officeChoices`), and the lists screen names them all (`officesOfDistrict`).
   - `banned` is never null, so "active" is simply `banned: false`.
-- **Database test files share one schema per run** and run one after another. A test must not assume it sees only its own rows, and must put back anything shared that it changes. A test that adds a DS officer takes a free office from `freeOfficeId()` (`tests/db/client.ts`).
+- **Database test files share one schema per run** and run one after another. A test must not assume it sees only its own rows, and must put back anything shared that it changes. A test that adds a DS officer and wants the office's cases and notices to itself takes a free office from `freeOfficeId()` (`tests/db/client.ts`).
 - **End-to-end tests add data.** `tests/e2e/cleanup.ts` runs before each run:
   - It removes the offices and stages the tests added, which carry `TEST_MARKER`.
-  - It deletes the officer accounts they created, named "ඊ. පරීක්ෂණ", which frees their Gampaha offices. This is the one exception to ADM-7, for test accounts only. Their audit records stay, with an actor id that no longer exists (`audit_log.actor_id` has no foreign key). An account that still holds case records is only disabled.
-  - A sample-account reset disables any other active officer at a sample office.
+  - It deletes the officer accounts they created in the Gampaha offices, named "ඊ. පරීක්ෂණ" (AC-23 gives Wattala two). This is the one exception to ADM-7, for test accounts only. Their audit records stay, with an actor id that no longer exists (`audit_log.actor_id` has no foreign key). An account that still holds case records is only disabled.
 
 ### Cases (Phase 4)
 
@@ -164,7 +165,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
   - **Remove it before the end-to-end tests.** The check queue lists 50 per page, oldest first (CHK-1), and the release test expects its new case on the first page. While load-test cases use a test office or stage that an end-to-end run left behind, `cleanup.ts` leaves that office or stage in place. It is removed on the first run after the load-test cases are gone.
 - **Demo data** (`scripts/seed-demo.ts`, 7 Oct 2026, asked for by the user to fill the screens) reuses the load-test planner: `planCase`, `writePlanned` and `removeMadeUp` in `scripts/seed-load.ts`, which differ by a `Cast` (id prefix, who acts, the made-up person, case ages, release days).
   - It adds 15 cases (every status) to each active DS office that has an active officer and no demo cases yet, so running it again only fills offices whose officer was added since. Ids start with `demo-`.
-  - Each step is credited to the office's own officer or a random active Head Office officer, and written to the audit log as the commands write it, so the case pages' history reads normally; the officer gets the notices, read except the last 7 days'. Each district's letter goes out every 14 days, so letters hold several cases.
+  - Each step is credited to the office's first officer (the oldest active account) or a random active Head Office officer, and written to the audit log as the commands write it, so the case pages' history reads normally; every active officer of the office gets the notices (`Cast.officers`), read except the last 7 days'. Each district's letter goes out every 14 days, so letters hold several cases.
   - People look like hand-entered cases: a mother (or father) and child, or a young care leaver, with an address "අංක N, <road>, <village>, <district>" and a GN division. No documents or photos.
   - `--remove` deletes the cases, their notices and letters and puts the counters back, but their audit records stay (HIS-3); nothing shows them once the case is gone. Its database test is `scripts/seed-demo.db.test.ts`.
 - **The dashboard** (`/ho`, DSH-1) is built from `dashboard()` in `src/server/dashboard/queries.ts`: the totals, each DS office's figures and the stale cases.
@@ -256,7 +257,7 @@ These may not be in `docs/PRD.md` yet. Once the PRD is approved, it overrides th
 - **Platform:** a web app used on office PCs and on phones. Since 28 Sep, screens are designed for desktop first, for DS officers as well as Head Office.
 - **Language and ease of use (28 Sep, widened 7 Oct):** the screens are in Sinhala, Tamil and English; each officer picks one, and Sinhala is the default. Officers are non-technical, and most of their other systems are in Sinhala. Keep screens simple: one main task per screen, plain words, and the sheet's own terms (for example නිවාසගත, අවදානම් දරුවන්, පළමු වාරිකය).
 - **Roles (v1 only):**
-  - AG (Divisional Secretariat) officer: sees their own office only. This is the DS's Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී). Each DS has one, and they run the system for their DS (29 Sep), so a DS has one active officer account.
+  - AG (Divisional Secretariat) officer: sees their own office only. The screens call the role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී). A DS can have more than one active officer account (14 Oct; from 29 Sep it had one).
   - Head Office officer: sees everything and can add and edit beneficiaries.
   - Head Office admin: manages accounts and master lists.
 - **Money:** Rs. 2,000,000 per case, paid as 4 fixed installments of Rs. 500,000. This includes land-only cases.
