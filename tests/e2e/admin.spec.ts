@@ -11,7 +11,7 @@ import {
   TEXT,
 } from "./helpers";
 
-const CRPO = /ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී/;
+const DS_OFFICER = /ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී/;
 
 /**
  * The Gampaha offices have no sample officer. Each test that creates one uses its own office, so it sees
@@ -25,14 +25,14 @@ const OFFICES = {
   disable: "මිනුවන්ගොඩ",
 } as const;
 
-/** Creates a Child Rights Promotion Officer through the admin screens; returns the credentials shown once. */
+/** Creates a Divisional Secretariat Officer through the admin screens; returns the credentials shown once. */
 async function createOfficer(page: Page, office: string): Promise<{ username: string; password: string }> {
   await page.goto("/admin/users");
   await page.getByRole("link", { name: "නව පරිශීලකයෙකු එක් කරන්න" }).click();
   await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
   await page.getByLabel("තනතුර (අවශ්‍ය නම් පමණි)").fill("සංවර්ධන නිලධාරී");
   await page.getByLabel("ජංගම දුරකතන අංකය *").fill("071 000 0301");
-  await page.getByRole("radio", { name: CRPO }).check();
+  await page.getByRole("radio", { name: DS_OFFICER }).check();
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await page.getByRole("radio", { name: new RegExp(`^${office}`) }).check();
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
@@ -84,7 +84,7 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
   await page.goto("/admin/users/new");
   await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
   await page.getByLabel("ජංගම දුරකතන අංකය *").fill("12345");
-  await page.getByRole("radio", { name: CRPO }).check();
+  await page.getByRole("radio", { name: DS_OFFICER }).check();
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
 
   await expect(page.getByText("0 න් පටන් ගන්නා ඉලක්කම් 10ක දුරකතන අංකයක් ඇතුළත් කරන්න.")).toBeVisible();
@@ -108,7 +108,7 @@ test("AC-23: an office that has an officer takes a second one (ADM-3)", async ({
 
   // The form still offers the office, by its name alone.
   await page.goto("/admin/users/new");
-  await page.getByRole("radio", { name: CRPO }).check();
+  await page.getByRole("radio", { name: DS_OFFICER }).check();
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await expect(page.getByText("කාර්යාලයකට ගිණුම් කිහිපයක් තිබිය හැක.")).toBeVisible();
   await expect(page.getByRole("radio", { name: OFFICES.second, exact: true })).toBeEnabled();

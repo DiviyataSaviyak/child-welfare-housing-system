@@ -102,7 +102,7 @@
       "actions": "Actions"
     },
     "roles": {
-      "DS_OFFICER": "Child Rights Promotion Officer",
+      "DS_OFFICER": "Divisional Secretariat Officer",
       "HO_OFFICER": "Head Office officer",
       "ADMIN": "Administrator"
     },
@@ -234,7 +234,7 @@
     "columns": {
       "office": "Divisional Secretariat",
       "code": "Code",
-      "officers": "Child Rights Promotion Officers",
+      "officers": "Divisional Secretariat Officers",
       "status": "Status",
       "actions": "Actions"
     },
@@ -268,8 +268,8 @@
       "RENOVATION": "Renovating a house"
     },
     "kindHints": {
-      "NEW_HOUSE": "Child Rights Promotion Officers record progress in this order.",
-      "RENOVATION": "The stages added here are shown to Child Rights Promotion Officers for recording the progress of renovation beneficiaries."
+      "NEW_HOUSE": "Divisional Secretariat Officers record progress in this order.",
+      "RENOVATION": "The stages added here are shown to Divisional Secretariat Officers for recording the progress of renovation beneficiaries."
     },
     "noStages": "No stages added yet.",
     "newStage": "A new stage",

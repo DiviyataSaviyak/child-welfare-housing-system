@@ -68,7 +68,7 @@ Version 1 has three kinds of login, as decided on 24 Sep. Beneficiaries do not l
 
 | Role | Who they are | What they do | Cases they see |
 | --- | --- | --- | --- |
-| DS officer | An officer of a Divisional Secretariat (the AG office) who runs the system for their DS, working on an office PC. The screens call the role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී). A DS can have more than one | Adds and submits cases, fixes cases sent back, updates installments and stages, adds photos and notes | Their own DS only |
+| DS officer | An officer of a Divisional Secretariat (the AG office) who runs the system for their DS, working on an office PC. The screens call the role Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී); it was Child Rights Promotion Officer until 14 Oct 2026, but not every officer of a DS is one. A DS can have more than one | Adds and submits cases, fixes cases sent back, updates installments and stages, adds photos and notes | Their own DS only |
 | Head Office officer | Ministry programme staff | Verifies, sends back or rejects cases, records each Rs. 2M release, adds and edits cases, follows progress, runs reports | All cases |
 | Head Office admin | Ministry staff who run the system | Creates and disables accounts, resets passwords, keeps the lists of districts, DS divisions and stages | None: accounts and lists only |
 

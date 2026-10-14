@@ -60,7 +60,7 @@ Rules for the stack:
 
 ## 4. Roles and permissions
 
-Every account has exactly one role. A DS officer runs the system for their DS; the screens call the role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී). A DS officer belongs to exactly one DS office, and a DS office can have more than one active DS officer, who all work on its cases alike (ADM-3). Head Office officers and admins belong to none.
+Every account has exactly one role. A DS officer runs the system for their DS; the screens call the role Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී), in Tamil பிரதேச செயலக உத்தியோகத்தர் (14 Oct 2026; it was Child Rights Promotion Officer, but an office's officers are not all one). A DS officer belongs to exactly one DS office, and a DS office can have more than one active DS officer, who all work on its cases alike (ADM-3). Head Office officers and admins belong to none.
 
 | Action | DS officer | Head Office officer | Admin |
 | --- | --- | --- | --- |

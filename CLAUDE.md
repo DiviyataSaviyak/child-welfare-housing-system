@@ -90,7 +90,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **Forms keep what was typed.** React 19 resets uncontrolled fields after an action, so forms that can be refused use controlled fields (`account-form.tsx`, `list-forms.tsx`).
 - **A temporary password is shown once.** It comes back in the action's state and is never stored in plain text or put in a URL. Remounting the component (`key`) clears it.
 - **Usernames are generated** as `ds`/`ho`/`ad` plus four digits (`src/server/users/usernames.ts`), and accounts have a placeholder email. Accounts, offices and stages are never deleted, only disabled or deactivated (ADM-7, LST-3).
-- **A DS office can have several active DS officers (ADM-3, 14 Oct 2026).** The screens call the `DS_OFFICER` role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී).
+- **A DS office can have several active DS officers (ADM-3, 14 Oct 2026).** The screens call the `DS_OFFICER` role Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී), in Tamil பிரதேச செயலக உத்தியோகத்தர். Until 14 Oct it was Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී); the user renamed it because an office's officers are not all Child Rights Promotion Officers.
   - From 29 Sep to 14 Oct an office had at most one, with an `officeTaken` refusal and a partial unique index; migration `20261014090000_several_officers_per_office` dropped the index. Don't bring the limit back unless asked.
   - Cases are scoped by office, never by who entered them, so the office's officers share them; `notifyOffice` tells every active officer.
   - The account form shows each office by name only, no officers' names (`officeChoices`; the user's choice, 14 Oct). The lists screen names every active officer (`officesOfDistrict`).
@@ -257,7 +257,7 @@ These may not be in `docs/PRD.md` yet. Once the PRD is approved, it overrides th
 - **Platform:** a web app used on office PCs and on phones. Since 28 Sep, screens are designed for desktop first, for DS officers as well as Head Office.
 - **Language and ease of use (28 Sep, widened 7 Oct):** the screens are in Sinhala, Tamil and English; each officer picks one, and Sinhala is the default. Officers are non-technical, and most of their other systems are in Sinhala. Keep screens simple: one main task per screen, plain words, and the sheet's own terms (for example නිවාසගත, අවදානම් දරුවන්, පළමු වාරිකය).
 - **Roles (v1 only):**
-  - AG (Divisional Secretariat) officer: sees their own office only. The screens call the role Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී). A DS can have more than one active officer account (14 Oct; from 29 Sep it had one).
+  - AG (Divisional Secretariat) officer: sees their own office only. The screens call the role Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී) (14 Oct; it was Child Rights Promotion Officer). A DS can have more than one active officer account (14 Oct; from 29 Sep it had one).
   - Head Office officer: sees everything and can add and edit beneficiaries.
   - Head Office admin: manages accounts and master lists.
 - **Money:** Rs. 2,000,000 per case, paid as 4 fixed installments of Rs. 500,000. This includes land-only cases.
