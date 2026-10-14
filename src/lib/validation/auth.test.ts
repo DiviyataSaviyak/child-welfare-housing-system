@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAskForPasswordForm, checkNewPassword, checkSignInForm } from "./auth";
+import { checkChosenPassword, checkNewPassword, checkResetCodeForm, checkSignInForm, readResetCode } from "./auth";
 
 describe("sign-in form", () => {
   it("needs both fields", () => {
@@ -13,10 +13,21 @@ describe("sign-in form", () => {
   });
 });
 
-describe("asking for a new password (AUTH-7)", () => {
-  it("needs only the username", () => {
-    expect(checkAskForPasswordForm({ username: "  " })).toBe("required");
-    expect(checkAskForPasswordForm({ username: "ds0101" })).toBeNull();
+describe("resetting a forgotten password by SMS (AUTH-7)", () => {
+  it("takes the code's six digits, with or without spaces", () => {
+    expect(checkResetCodeForm(readResetCode(" 123 456 "))).toBeNull();
+    expect(checkResetCodeForm(readResetCode("  "))).toBe("required");
+    expect(checkResetCodeForm("12345")).toBe("format");
+    expect(checkResetCodeForm("1234567")).toBe("format");
+    expect(checkResetCodeForm("12345a")).toBe("format");
+  });
+
+  it("checks the new password by AUTH-3's rules, with no current password", () => {
+    expect(checkChosenPassword({ next: "", confirm: "" })).toBe("required");
+    expect(checkChosenPassword({ next: "short", confirm: "short" })).toBe("tooShort");
+    expect(checkChosenPassword({ next: "x".repeat(129), confirm: "x".repeat(129) })).toBe("tooLong");
+    expect(checkChosenPassword({ next: "my-new-pass-99", confirm: "my-new-pass-98" })).toBe("mismatch");
+    expect(checkChosenPassword({ next: "my-new-pass-99", confirm: "my-new-pass-99" })).toBeNull();
   });
 });
 

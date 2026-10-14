@@ -54,7 +54,6 @@ export async function AppShell({
           exact: entry.exact,
           alsoActive: entry.alsoActive,
           count: entry.count,
-          countKey: entry.countKey,
         }))}
       />
       <main className="flex-1 px-8 pt-7 pb-10">{children}</main>

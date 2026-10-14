@@ -27,8 +27,7 @@
     "adminLists": "Lists",
     "hoCases": "Beneficiaries",
     "hoCheck": "Checking and releasing allocations",
-    "waiting": "Beneficiaries waiting: {count}",
-    "newPasswordRequests": "Asking for a new password: {count}"
+    "waiting": "Beneficiaries waiting: {count}"
   },
   "shell": {
     "signedInAs": "Signed in as",
@@ -43,6 +42,7 @@
     "submit": "Sign in",
     "submitting": "Signing in...",
     "forgot": "Forgot your password?",
+    "passwordReset": "Your new password is set. Sign in with it.",
     "help": "If you have no account or have forgotten your username, contact the administrator at Head Office.",
     "errors": {
       "required": "Enter both your username and your password.",
@@ -73,17 +73,50 @@
   },
   "forgotPassword": {
     "title": "Forgot your password?",
-    "intro": "Enter your username and send the request. The administrator at Head Office will call you on the mobile number in your account and give you a temporary password. When you sign in with it, you set a new password of your own.",
+    "intro": "Enter your username. A 6-digit code will be sent by SMS to the mobile number in your account, and with it you can set a new password.",
     "username": "Username",
-    "submit": "Ask for a new password",
+    "submit": "Send the code",
     "submitting": "Sending...",
-    "noUsername": "If you have forgotten your username too, contact the administrator at Head Office.",
-    "sent": "Your request has been sent to the administrator.",
-    "sentNext": "If the username is right, the administrator will call you on the mobile number in your account and give you a temporary password. If no one has called by the end of the next working day, call Head Office.",
+    "noUsername": "If you have forgotten your username, or your mobile number has changed, contact the administrator at Head Office.",
     "backToSignIn": "Back to sign in",
+    "startAgain": "Start again",
+    "sms": "Diviyata Sawiyak: your code to reset your password is {code}. It is valid for 15 minutes. Don't tell it to anyone.",
+    "code": {
+      "sent": "If the username is right, a code has been sent by SMS to the mobile number in the account. It is valid for 15 minutes.",
+      "label": "Code from the SMS",
+      "help": "6 digits",
+      "submit": "Continue",
+      "submitting": "Checking...",
+      "sendAgain": "Send a new code",
+      "noSms": "If no SMS arrives within a few minutes, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at Head Office."
+    },
+    "password": {
+      "intro": "The code is right. Now set your new password.",
+      "next": "New password",
+      "nextHelp": "At least 8 characters",
+      "confirm": "New password again",
+      "submit": "Save",
+      "submitting": "Saving..."
+    },
     "errors": {
       "required": "Enter your username.",
-      "tooMany": "Too many requests from this computer. Try again in 15 minutes."
+      "tooMany": "Too many requests from this computer. Try again in 15 minutes.",
+      "smsFailed": "The SMS couldn't be sent. Try again in a little while, or contact the administrator at Head Office.",
+      "smsOff": "Resetting a password by SMS isn't switched on yet. For a new password, contact the administrator at Head Office."
+    },
+    "codeErrors": {
+      "required": "Enter the code from the SMS.",
+      "format": "The code has 6 digits. Type it as it is in the SMS.",
+      "wrong": "The code is wrong. {count, plural, one {# try} other {# tries}} left.",
+      "tooManyTries": "5 wrong codes were entered, so this code no longer works. Ask for a new code.",
+      "expired": "This code has expired, or a newer one was sent. Ask for a new code."
+    },
+    "passwordErrors": {
+      "required": "Fill in both boxes.",
+      "tooShort": "The new password must have at least 8 characters.",
+      "tooLong": "The new password can't be longer than 128 characters.",
+      "mismatch": "Enter the same new password both times.",
+      "expired": "The code has expired. Start again and ask for a new code."
     }
   },
   "passwordField": {
@@ -135,8 +168,6 @@
     "active": "Active",
     "disabled": "Disabled",
     "you": "(you)",
-    "newPasswordRequests": "{count, plural, one {# person has} other {# people have}} asked for a new password on the sign-in page. They are at the top of the list. Before you give a new password, call each one on the mobile number in their account to make sure they asked.",
-    "askedOn": "Asked for a new password · {date}",
     "edit": "Edit",
     "editLabel": "Edit: {name}",
     "resetPassword": "New password",
@@ -205,11 +236,6 @@
       "resetText": "{name}'s old password will stop working. A new temporary password will be shown to you.",
       "resetDone": "New password created",
       "resetDoneText": "Give {name} this temporary password.",
-      "mobile": "Mobile number: {mobile}",
-      "askedText": "{name} asked for a new password on the sign-in page on {date}.",
-      "callFirst": "Before you give one, call them on {mobile} to make sure they asked.",
-      "callFirstNoMobile": "Before you give one, call them to make sure they asked.",
-      "closeRequest": "Close the request",
       "cancel": "Cancel",
       "close": "OK",
       "working": "Working..."
@@ -227,9 +253,8 @@
         "account_disabled": "Account disabled",
         "account_enabled": "Account enabled again",
         "account_locked": "Account locked for 15 minutes after 5 wrong passwords",
-        "new_password_asked": "A new password was asked for on the sign-in page",
-        "new_password_request_closed": "The request for a new password was closed without one",
-        "new_password_request_withdrawn": "Signed in with their own password, so the request for a new password was closed",
+        "reset_code_sent": "An SMS code to reset the password was sent",
+        "password_reset_by_code": "The officer set a new password with an SMS code",
         "other": "A change was made"
       },
       "fields": {

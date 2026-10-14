@@ -6,35 +6,21 @@ import { useActionState, useState } from "react";
 import { CredentialsBox } from "@/components/credentials-box";
 import { FormError } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
-import {
-  type CloseRequestState,
-  closeRequestAction,
-  type DisableState,
-  type ResetState,
-  resetPasswordAction,
-  setDisabledAction,
-} from "./actions";
+import { type DisableState, type ResetState, resetPasswordAction, setDisabledAction } from "./actions";
 
 const rowButton = "h-11 rounded-lg border px-3.5 text-[15px] font-semibold";
 
-/**
- * Edit, new password, and disable/enable for one row of the users list (ADM-4 to ADM-6). `askedOn` is
- * the day someone asked for a new password on the sign-in page, while that request waits (AUTH-7).
- */
+/** Edit, new password, and disable/enable for one row of the users list (ADM-4 to ADM-6). */
 export function AccountActions({
   id,
   name,
-  mobile,
   active,
   isSelf,
-  askedOn,
 }: {
   id: string;
   name: string;
-  mobile: string | null;
   active: boolean;
   isSelf: boolean;
-  askedOn: string | null;
 }) {
   const t = useTranslations("users");
   // A new key after each password reset starts the next one with a clean state, so a password is never shown twice.
@@ -49,54 +35,20 @@ export function AccountActions({
       >
         {t("edit")}
       </Link>
-      {active && (
-        <ResetPassword
-          key={resetRound}
-          id={id}
-          name={name}
-          mobile={mobile}
-          askedOn={askedOn}
-          onFinished={() => setResetRound((n) => n + 1)}
-        />
-      )}
+      {active && <ResetPassword key={resetRound} id={id} name={name} onFinished={() => setResetRound((n) => n + 1)} />}
       {/* A new key when the status flips closes the pop-up and clears its state; on error it stays open. */}
       {!isSelf && <ToggleAccount key={String(active)} id={id} name={name} active={active} />}
     </div>
   );
 }
 
-/**
- * The new-password pop-up. While a request from the sign-in page waits, it asks the admin to call the
- * officer first, and can close the request instead of giving a password (AUTH-7).
- */
-function ResetPassword({
-  id,
-  name,
-  mobile,
-  askedOn,
-  onFinished,
-}: {
-  id: string;
-  name: string;
-  mobile: string | null;
-  askedOn: string | null;
-  onFinished: () => void;
-}) {
+function ResetPassword({ id, name, onFinished }: { id: string; name: string; onFinished: () => void }) {
   const t = useTranslations("users");
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState<ResetState, FormData>(resetPasswordAction.bind(null, id), {
     error: null,
     credentials: null,
   });
-  const [closeState, closeRequest, closing] = useActionState<CloseRequestState, FormData>(
-    async () => {
-      const result = await closeRequestAction(id);
-      if (!result.error) setOpen(false);
-      return result;
-    },
-    { error: null },
-  );
-  const error = state.error ?? closeState.error;
   const close = () => {
     setOpen(false);
     if (state.credentials) onFinished();
@@ -108,19 +60,17 @@ function ResetPassword({
         type="button"
         onClick={() => setOpen(true)}
         aria-label={t("resetLabel", { name })}
-        className={`${rowButton} ${askedOn ? "border-primary bg-primary text-primary-foreground" : "border-input"}`}
+        className={`${rowButton} border-input`}
       >
         {t("resetPassword")}
       </button>
-      {/* Wide while a request waits, so its three buttons fit on one line. */}
-      <Modal open={open} onClose={close} labelledBy={`reset-${id}`} size={askedOn ? "wide" : "normal"}>
+      <Modal open={open} onClose={close} labelledBy={`reset-${id}`}>
         {state.credentials ? (
           <>
             <h2 id={`reset-${id}`} className="text-[22px] font-bold">
               {t("confirm.resetDone")}
             </h2>
             <p>{t("confirm.resetDoneText", { name })}</p>
-            {mobile && <p className="font-semibold">{t("confirm.mobile", { mobile })}</p>}
             <CredentialsBox
               username={state.credentials.username}
               temporaryPassword={state.credentials.temporaryPassword}
@@ -138,15 +88,9 @@ function ResetPassword({
             <h2 id={`reset-${id}`} className="text-[22px] font-bold">
               {t("confirm.resetTitle")}
             </h2>
-            {askedOn && (
-              <div className="flex flex-col gap-1 rounded-lg bg-notice px-4 py-3 text-notice-foreground">
-                <p className="font-semibold">{t("confirm.askedText", { name, date: askedOn })}</p>
-                <p>{mobile ? t("confirm.callFirst", { mobile }) : t("confirm.callFirstNoMobile")}</p>
-              </div>
-            )}
             <p>{t("confirm.resetText", { name })}</p>
-            {error && <FormError id={`reset-error-${id}`} message={t(`form.errors.${error}`)} />}
-            <div className="flex flex-wrap justify-end gap-3">
+            {state.error && <FormError id={`reset-error-${id}`} message={t(`form.errors.${state.error}`)} />}
+            <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={close}
@@ -154,19 +98,9 @@ function ResetPassword({
               >
                 {t("confirm.cancel")}
               </button>
-              {askedOn && (
-                <button
-                  type="submit"
-                  formAction={closeRequest}
-                  disabled={pending || closing}
-                  className="h-12 rounded-lg border border-input px-6 text-[17px] font-semibold"
-                >
-                  {closing ? t("confirm.working") : t("confirm.closeRequest")}
-                </button>
-              )}
               <button
                 type="submit"
-                disabled={pending || closing}
+                disabled={pending}
                 className="h-12 rounded-lg bg-primary px-6 text-[17px] font-semibold text-primary-foreground"
               >
                 {pending ? t("confirm.working") : t("resetPassword")}

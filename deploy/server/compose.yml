@@ -9,6 +9,8 @@ x-app-env: &app-env
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
   BETTER_AUTH_URL: https://${SITE_DOMAIN:?set SITE_DOMAIN in .env}
   FILES_DIR: /data/files
+  # The SMS gateway for password reset codes (AUTH-7); empty means officers ask the admin instead.
+  SMS_URL: ${SMS_URL:-}
   TZ: Asia/Colombo
 
 services:

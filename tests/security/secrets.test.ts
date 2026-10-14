@@ -39,7 +39,7 @@ describe("the repository holds no secrets (SEC-9)", () => {
 
   it("leaves every secret empty in the server's env template", () => {
     const template = readFileSync("deploy/server/env.example", "utf8");
-    for (const key of ["DB_OWNER_PASSWORD", "APP_DB_PASSWORD", "BETTER_AUTH_SECRET", "RESTIC_PASSWORD"]) {
+    for (const key of ["DB_OWNER_PASSWORD", "APP_DB_PASSWORD", "BETTER_AUTH_SECRET", "RESTIC_PASSWORD", "SMS_URL"]) {
       expect(template).toMatch(new RegExp(`^${key}=$`, "m"));
     }
   });

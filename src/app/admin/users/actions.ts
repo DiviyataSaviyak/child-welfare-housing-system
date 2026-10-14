@@ -7,7 +7,6 @@ import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import {
   type AccountCommandError,
-  closeNewPasswordRequest,
   type Credentials,
   createAccount,
   resetPassword,
@@ -55,31 +54,14 @@ export async function updateAccountAction(
   redirect(`/admin/users?notice=${result.value.changed.includes("dsOfficeId") ? "transferred" : "saved"}`);
 }
 
-/**
- * Answering or dropping a request for a new password changes the menu's count (AUTH-7), so these
- * actions refresh the whole admin layout, not only the list.
- */
-const refreshAdmin = () => revalidatePath("/admin", "layout");
-
 export type ResetState = { error: AccountCommandError | null; credentials: Credentials | null };
 
 export async function resetPasswordAction(id: string): Promise<ResetState> {
   const admin = await requireRole("ADMIN");
   const result = await resetPassword(db, admin.userId, id);
   if (!result.ok) return { error: result.error, credentials: null };
-  refreshAdmin();
+  revalidatePath("/admin/users");
   return { error: null, credentials: result.value };
-}
-
-export type CloseRequestState = { error: AccountCommandError | null };
-
-/** AUTH-7: closes a request for a new password without giving one. */
-export async function closeRequestAction(id: string): Promise<CloseRequestState> {
-  const admin = await requireRole("ADMIN");
-  const result = await closeNewPasswordRequest(db, admin.userId, id);
-  if (!result.ok) return { error: result.error };
-  refreshAdmin();
-  return { error: null };
 }
 
 export type DisableState = { error: AccountCommandError | null; done: boolean };
@@ -89,6 +71,6 @@ export async function setDisabledAction(id: string, disabled: boolean): Promise<
   const admin = await requireRole("ADMIN");
   const result = await setAccountDisabled(db, admin.userId, id, disabled);
   if (!result.ok) return { error: result.error, done: false };
-  refreshAdmin();
+  revalidatePath("/admin/users");
   return { error: null, done: true };
 }

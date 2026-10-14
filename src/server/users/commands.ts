@@ -143,9 +143,22 @@ export async function updateAccount(
   return { ok: true, value: { changed } };
 }
 
+/** Stores a password hash where Better Auth reads it: the account's "credential" row. */
+export async function savePasswordHash(tx: Prisma.TransactionClient, userId: string, passwordHash: string) {
+  const updated = await tx.account.updateMany({
+    where: { userId, providerId: "credential" },
+    data: { password: passwordHash },
+  });
+  if (updated.count === 0) {
+    await tx.account.create({
+      data: { id: randomUUID(), accountId: userId, providerId: "credential", userId, password: passwordHash },
+    });
+  }
+}
+
 /**
- * ADM-5: issues a new temporary password, shown once. It also clears a lock, answers a request for a
- * new password (AUTH-7), and ends every open session of the account.
+ * ADM-5: issues a new temporary password, shown once. It also clears a lock, and ends every open
+ * session of the account.
  */
 export async function resetPassword(db: PrismaClient, actorId: string, id: string): Promise<Result<Credentials>> {
   const user = await db.user.findUnique({ where: { id }, select: { username: true } });
@@ -155,24 +168,10 @@ export async function resetPassword(db: PrismaClient, actorId: string, id: strin
   const passwordHash = await hashPassword(temporaryPassword);
 
   await db.$transaction(async (tx) => {
-    const updated = await tx.account.updateMany({
-      where: { userId: id, providerId: "credential" },
-      data: { password: passwordHash },
-    });
-    if (updated.count === 0) {
-      await tx.account.create({
-        data: { id: randomUUID(), accountId: id, providerId: "credential", userId: id, password: passwordHash },
-      });
-    }
+    await savePasswordHash(tx, id, passwordHash);
     await tx.user.update({
       where: { id },
-      data: {
-        mustChangePassword: true,
-        temporaryPasswordSetAt: new Date(),
-        failedSignIns: 0,
-        lockedUntil: null,
-        newPasswordAskedAt: null,
-      },
+      data: { mustChangePassword: true, temporaryPasswordSetAt: new Date(), failedSignIns: 0, lockedUntil: null },
     });
     await tx.session.deleteMany({ where: { userId: id } });
     await writeAudit(tx, { actorId, action: "password_reset", entityType: "user", entityId: id });
@@ -180,10 +179,7 @@ export async function resetPassword(db: PrismaClient, actorId: string, id: strin
   return { ok: true, value: { username: user.username, temporaryPassword } };
 }
 
-/**
- * ADM-6: disables or re-enables an account. Disabling ends its sessions at once (AUTH-5) and drops a
- * waiting request for a new password (AUTH-7).
- */
+/** ADM-6: disables or re-enables an account. Disabling ends its sessions at once (AUTH-5). */
 export async function setAccountDisabled(
   db: PrismaClient,
   actorId: string,
@@ -203,10 +199,7 @@ export async function setAccountDisabled(
   }
 
   await db.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id },
-      data: disabled ? { banned: true, newPasswordAskedAt: null } : { banned: false },
-    });
+    await tx.user.update({ where: { id }, data: { banned: disabled } });
     if (disabled) await tx.session.deleteMany({ where: { userId: id } });
     await writeAudit(tx, {
       actorId,
@@ -214,25 +207,6 @@ export async function setAccountDisabled(
       entityType: "user",
       entityId: id,
     });
-  });
-  return { ok: true, value: null };
-}
-
-/**
- * AUTH-7: the admin closes a request for a new password without giving one, for example when the officer
- * says on the phone that they didn't ask. Closing one that is already closed changes nothing.
- */
-export async function closeNewPasswordRequest(db: PrismaClient, actorId: string, id: string): Promise<Result<null>> {
-  const user = await db.user.findUnique({ where: { id }, select: { id: true } });
-  if (!user) return { ok: false, error: "notFound" };
-
-  await db.$transaction(async (tx) => {
-    const closed = await tx.user.updateMany({
-      where: { id, newPasswordAskedAt: { not: null } },
-      data: { newPasswordAskedAt: null },
-    });
-    if (closed.count === 0) return;
-    await writeAudit(tx, { actorId, action: "new_password_request_closed", entityType: "user", entityId: id });
   });
   return { ok: true, value: null };
 }

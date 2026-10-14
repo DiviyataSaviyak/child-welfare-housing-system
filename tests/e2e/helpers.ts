@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";
 
 /** The sample accounts' passwords, from prisma/seed-users.ts (development and tests only). */
@@ -84,17 +85,33 @@ export async function signIn(page: Page, username: string, password = PASSWORD) 
 }
 
 /**
- * Asks for a new password from the sign-in page's link (AUTH-7) and waits for the answer, which reads
- * the same for any username. The page gets its own address, as for a sign-in, because of the rate limit.
+ * Asks for a code on the page for a forgotten password, reached from the sign-in page's link (AUTH-7), and
+ * waits for the next step, which reads the same for any username. The page gets its own address, as for a
+ * sign-in, because of the rate limit.
  */
-export async function askForPassword(page: Page, username: string) {
+export async function askForCode(page: Page, username: string) {
   await giveOwnAddress(page);
   await page.goto("/login");
   await page.getByRole("link", { name: "මුරපදය අමතකද?" }).click();
   await expect(page).toHaveURL(/\/forgot-password$/);
   await page.getByLabel(TEXT.username).fill(username);
-  await page.getByRole("button", { name: "නව මුරපදයක් ඉල්ලන්න" }).click();
-  await expect(page.getByRole("status")).toHaveText("ඔබේ ඉල්ලීම පරිපාලක වෙත යවන ලදී.");
+  await page.getByRole("button", { name: "කේතය එවන්න" }).click();
+  await expect(page.getByRole("status")).toContainText("ජංගම දුරකතන අංකයට කේතයක් කෙටි පණිවිඩයකින් එවන ලදී");
+}
+
+/**
+ * The code in the last text message to this number. In development and CI the app writes messages to
+ * SMS_OUTBOX instead of sending them (src/server/sms.ts); playwright.config.ts sets the file.
+ */
+export async function lastCodeSentTo(mobile: string): Promise<string> {
+  const file = process.env.SMS_OUTBOX;
+  if (!file) throw new Error("SMS_OUTBOX is not set");
+  const lines = (await readFile(file, "utf8")).split("\n").filter(Boolean);
+  const messages = lines.map((line) => JSON.parse(line) as { to: string; text: string });
+  const text = messages.filter((message) => message.to === mobile).at(-1)?.text;
+  const code = text?.match(/\d{6}/)?.[0];
+  if (!code) throw new Error(`No code was sent to ${mobile}`);
+  return code;
 }
 
 /** Signs in and waits for the page the account lands on. */

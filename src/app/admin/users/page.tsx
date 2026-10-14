@@ -5,7 +5,7 @@ import { formatDate } from "@/lib/dates";
 import { isRole, ROLES } from "@/server/auth/roles";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { accountCounts, listAccounts, newPasswordRequestsNow } from "@/server/users/queries";
+import { accountCounts, listAccounts } from "@/server/users/queries";
 import { AccountActions } from "./account-actions";
 
 const NOTICES = ["saved", "transferred"] as const;
@@ -22,11 +22,10 @@ export default async function AdminUsersPage({
   const role = isRole(params.role) ? params.role : undefined;
   const notice = NOTICES.find((n) => n === params.notice);
 
-  const [t, rows, counts, requests] = await Promise.all([
+  const [t, rows, counts] = await Promise.all([
     getTranslations("users"),
     listAccounts(db, { q, role }, locale),
     accountCounts(db),
-    newPasswordRequestsNow(db),
   ]);
 
   return (
@@ -45,12 +44,6 @@ export default async function AdminUsersPage({
       </div>
 
       {notice && <FormNotice message={t(`notices.${notice}`)} />}
-
-      {requests.count > 0 && (
-        <p className="rounded-lg bg-notice px-4 py-3 text-[15px] font-semibold text-notice-foreground">
-          {t("newPasswordRequests", { count: requests.count })}
-        </p>
-      )}
 
       <section aria-label={t("title")} className="overflow-hidden rounded-xl border bg-card">
         <form method="get" className="flex flex-wrap items-end gap-4 border-b px-5 py-4">
@@ -150,28 +143,14 @@ export default async function AdminUsersPage({
                     {row.lastSignInAt ? formatDate(row.lastSignInAt) : t("never")}
                   </td>
                   <td className="px-3 py-2.5">
-                    <span className="flex flex-col items-start gap-1">
-                      <span
-                        className={`inline-block rounded-full px-3 py-0.5 text-sm font-semibold ${row.active ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}
-                      >
-                        {row.active ? t("active") : t("disabled")}
-                      </span>
-                      {row.newPasswordAskedAt && (
-                        <span className="rounded-lg bg-notice px-3 py-0.5 text-sm font-semibold text-notice-foreground">
-                          {t("askedOn", { date: formatDate(row.newPasswordAskedAt) })}
-                        </span>
-                      )}
+                    <span
+                      className={`inline-block rounded-full px-3 py-0.5 text-sm font-semibold ${row.active ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}
+                    >
+                      {row.active ? t("active") : t("disabled")}
                     </span>
                   </td>
                   <td className="px-5 py-2.5">
-                    <AccountActions
-                      id={row.id}
-                      name={row.name}
-                      mobile={row.mobile}
-                      active={row.active}
-                      isSelf={row.id === admin.userId}
-                      askedOn={row.newPasswordAskedAt ? formatDate(row.newPasswordAskedAt) : null}
-                    />
+                    <AccountActions id={row.id} name={row.name} active={row.active} isSelf={row.id === admin.userId} />
                   </td>
                 </tr>
               ))}

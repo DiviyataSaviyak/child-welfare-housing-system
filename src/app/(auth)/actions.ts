@@ -2,19 +2,24 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { askForNewPassword } from "@/server/auth/new-password";
-import { clientIp, newPasswordLimiter, signInLimiter } from "@/server/auth/rate-limit";
+import { getTranslations } from "next-intl/server";
+import { checkResetCode, resetPasswordWithCode, sendResetCode } from "@/server/auth/password-reset";
+import { clientIp, resetCodeLimiter, signInLimiter } from "@/server/auth/rate-limit";
 import { homeFor, safeReturnPath } from "@/server/auth/roles";
 import { attemptSignIn, changeOwnPassword, signOutCurrentSession } from "@/server/auth/sign-in";
 import { requireSignedIn } from "@/server/context";
 import { db } from "@/server/db";
 import { logEvent } from "@/server/log";
+import { sendSms, smsSetup } from "@/server/sms";
 import {
-  type AskForPasswordError,
-  checkAskForPasswordForm,
+  checkChosenPassword,
   checkNewPassword,
+  checkResetCodeForm,
   checkSignInForm,
+  type ChosenPasswordError,
   type NewPasswordError,
+  readResetCode,
+  type ResetCodeFormError,
   type SignInFormError,
 } from "@/lib/validation/auth";
 
@@ -55,27 +60,69 @@ export async function signIn(_previous: SignInState, form: FormData): Promise<Si
   redirect(safeReturnPath(text(form, "next"), result.role) ?? homeFor(result.role));
 }
 
-export type AskForPasswordState = { error: AskForPasswordError | null; username: string; sent: boolean };
+export type AskForCodeState = {
+  error: "required" | "tooMany" | "smsFailed" | "smsOff" | null;
+  username: string;
+  /** Carries the officer from step to step; never shown or put in an address, and stored only as a hash. */
+  ticket: string | null;
+};
 
 /**
- * AUTH-7: asks the admin for a new password. The answer is "sent" whether or not the username exists,
- * so the page never shows which usernames do; only the rate limit and an empty box are refused.
+ * AUTH-7, step 1: sends a code by SMS to the mobile number in the account. The answer is the same for any
+ * username (src/server/auth/password-reset.ts); only an empty box, the rate limit, a server with no SMS
+ * gateway and an SMS that didn't go are refused. The SMS is in the screen's language.
  */
-export async function askForPassword(_previous: AskForPasswordState, form: FormData): Promise<AskForPasswordState> {
-  const username = text(form, "username");
+export async function askForCode(_previous: AskForCodeState, form: FormData): Promise<AskForCodeState> {
+  const username = text(form, "username").trim();
+  if (username === "") return { error: "required", username, ticket: null };
+  if (!smsSetup()) return { error: "smsOff", username, ticket: null };
 
-  const problem = checkAskForPasswordForm({ username });
-  if (problem) return { error: problem, username, sent: false };
-
-  if (!newPasswordLimiter.allow(clientIp(await headers()))) {
-    logEvent("new_password_refused", { reason: "rate_limited" });
-    return { error: "tooMany", username, sent: false };
+  if (!resetCodeLimiter.allow(clientIp(await headers()))) {
+    logEvent("reset_code_refused", { reason: "rate_limited" });
+    return { error: "tooMany", username, ticket: null };
   }
 
-  // No username is longer than 64 characters (ADM-2), so a longer one opens nothing.
-  const userId = username.length > 64 ? null : await askForNewPassword(db, username);
-  logEvent("new_password_asked", { userId });
-  return { error: null, username: "", sent: true };
+  const t = await getTranslations("forgotPassword");
+  const result = await sendResetCode(db, username, (mobile, code) => sendSms(mobile, t("sms", { code })));
+  if (!result.ok) {
+    logEvent("reset_code_refused", { reason: "sms_failed" });
+    return { error: "smsFailed", username, ticket: null };
+  }
+  logEvent("reset_code_sent", { userId: result.userId });
+  return { error: null, username, ticket: result.ticket };
+}
+
+export type CheckCodeState = {
+  error: ResetCodeFormError | "wrong" | "tooManyTries" | "expired" | null;
+  /** With "wrong": tries left before the code stops working. */
+  count?: number;
+  checked: boolean;
+};
+
+/** AUTH-7, step 2: the code from the SMS. */
+export async function checkCode(_previous: CheckCodeState, form: FormData): Promise<CheckCodeState> {
+  const code = readResetCode(text(form, "code"));
+  const problem = checkResetCodeForm(code);
+  if (problem) return { error: problem, checked: false };
+
+  const result = await checkResetCode(db, text(form, "ticket"), code);
+  if (result.ok) return { error: null, checked: true };
+  if (result.error === "wrong") return { error: "wrong", count: result.triesLeft, checked: false };
+  return { error: result.error, checked: false };
+}
+
+export type SetNewPasswordState = { error: ChosenPasswordError | "expired" | null };
+
+/** AUTH-7, step 3: the new password. Then the officer signs in with it. */
+export async function setNewPassword(_previous: SetNewPasswordState, form: FormData): Promise<SetNewPasswordState> {
+  const input = { next: text(form, "next"), confirm: text(form, "confirm") };
+  const problem = checkChosenPassword(input);
+  if (problem) return { error: problem };
+
+  const result = await resetPasswordWithCode(db, text(form, "ticket"), input.next);
+  if (!result.ok) return { error: "expired" };
+  logEvent("password_reset_by_code", { userId: result.userId });
+  redirect("/login?notice=passwordReset");
 }
 
 export type ChangePasswordState = { error: NewPasswordError | "currentWrong" | null };

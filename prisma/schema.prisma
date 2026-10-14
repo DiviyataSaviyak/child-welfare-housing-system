@@ -191,9 +191,6 @@ model User {
   failedSignIns          Int             @default(0) @map("failed_sign_ins")
   lockedUntil            DateTime?       @map("locked_until")
   lastSignInAt           DateTime?       @map("last_sign_in_at")
-  /// When someone asked for a new password on the sign-in page (AUTH-7). Emptied when the admin gives one
-  /// or closes the request, or the officer signs in with their own password.
-  newPasswordAskedAt     DateTime?       @map("new_password_asked_at")
   sessions               Session[]
   accounts               Account[]
   casesCreated           Case[]
@@ -203,6 +200,7 @@ model User {
   releaseLetters         ReleaseLetter[]
   notifications          Notification[]
   stageUpdates           StageUpdate[]
+  resetCodes             ResetCode[]
 
   @@index([dsOfficeId])
   @@map("app_user")
@@ -258,6 +256,27 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+/// A code sent by SMS to reset a forgotten password (AUTH-7). The browser holds a random ticket; the
+/// row's id is the ticket's SHA-256 and the code is kept only as an HMAC. A ticket for an unknown
+/// username, a disabled account, one with no mobile number or one over its daily limit has no user and
+/// no SMS goes out, so the page acts the same for any username.
+model ResetCode {
+  id        String    @id
+  userId    String?   @map("user_id")
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @map("code_hash")
+  createdAt DateTime  @default(now()) @map("created_at")
+  /// 15 minutes after sending, for typing the code and setting the new password.
+  expiresAt DateTime  @map("expires_at")
+  /// Wrong codes typed so far; at 5 the ticket stops working.
+  tries     Int       @default(0)
+  /// When the right code was typed; the new password may then be set until it expires.
+  checkedAt DateTime? @map("checked_at")
+
+  @@index([userId, createdAt])
+  @@map("password_reset_code")
 }
 
 // ---------------------------------------------------------------------------

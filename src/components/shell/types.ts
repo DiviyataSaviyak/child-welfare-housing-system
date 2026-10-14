@@ -2,11 +2,8 @@ import type messages from "../../../messages/si.json";
 
 export type Area = keyof (typeof messages)["areas"];
 
-/** What a menu badge counts, as its screen-reader words' key under "nav" in messages/si.json. */
-export type CountKey = "waiting" | "newPasswordRequests";
-
 /** A menu entry's label key under "nav" in messages/si.json. */
-export type NavKey = Exclude<keyof (typeof messages)["nav"], "label" | CountKey>;
+export type NavKey = Exclude<keyof (typeof messages)["nav"], "label" | "waiting">;
 
 /**
  * A number in the header or menu (NTF-1): the count, when the server read it (milliseconds), and the
@@ -24,6 +21,4 @@ export type NavEntry = {
   alsoActive?: string[];
   /** How many cases wait there (NTF-1); a badge shows when it is more than 0. */
   count?: LiveCount;
-  /** What the badge counts, for screen readers; cases waiting unless said. */
-  countKey?: CountKey;
 };

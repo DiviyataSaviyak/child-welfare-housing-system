@@ -98,9 +98,12 @@ const ADMIN: Rule = { role: "ADMIN" };
 const RULES: Record<string, Record<string, Rule>> = {
   "src/app/(auth)/actions.ts": {
     signIn: { anyone: "the sign-in form, behind the rate limit and lockout (SEC-4, AUTH-2)" },
-    askForPassword: {
-      anyone: "asks the admin for a new password, behind its own rate limit; says the same for any username (AUTH-7)",
+    askForCode: {
+      anyone:
+        "sends a reset code by SMS to the account's own number, behind its own rate limits; same answer for any username (AUTH-7)",
     },
+    checkCode: { anyone: "checks a reset code against its ticket, with 5 tries per code (AUTH-7)" },
+    setNewPassword: { anyone: "sets a password only with a ticket whose SMS code was right (AUTH-7)" },
     changePassword: { signedIn: "temporaryAllowed" },
     signOut: { anyone: "ends only the caller's own session" },
   },
@@ -119,10 +122,8 @@ const RULES: Record<string, Record<string, Rule>> = {
     createAccountAction: ADMIN,
     updateAccountAction: ADMIN,
     resetPasswordAction: ADMIN,
-    closeRequestAction: ADMIN,
     setDisabledAction: ADMIN,
   },
-  "src/app/admin/waiting/route.ts": { GET: ADMIN },
   "src/app/ds/cases/actions.ts": {
     saveCaseAction: DS,
     uploadDocumentAction: DS,

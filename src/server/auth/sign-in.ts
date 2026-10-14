@@ -67,7 +67,6 @@ export async function attemptSignIn(
       lockedUntil: true,
       mustChangePassword: true,
       temporaryPasswordSetAt: true,
-      newPasswordAskedAt: true,
     },
   });
 
@@ -131,21 +130,7 @@ export async function attemptSignIn(
   // A missing role is refused again by getContext().
   if (!isRole(user.role)) return refusalFor(user, now);
 
-  await db.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: user.id },
-      data: { ...AFTER_SUCCESSFUL_SIGN_IN, lastSignInAt: now, newPasswordAskedAt: null },
-    });
-    // The officer knows their password after all, so a request for a new one no longer waits (AUTH-7).
-    if (user.newPasswordAskedAt) {
-      await writeAudit(tx, {
-        actorId: user.id,
-        action: "new_password_request_withdrawn",
-        entityType: "user",
-        entityId: user.id,
-      });
-    }
-  });
+  await db.user.update({ where: { id: user.id }, data: { ...AFTER_SUCCESSFUL_SIGN_IN, lastSignInAt: now } });
   logEvent("sign_in", { userId: user.id });
   return { ok: true, role: user.role, mustChangePassword: user.mustChangePassword };
 }

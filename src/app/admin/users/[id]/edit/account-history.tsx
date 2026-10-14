@@ -11,9 +11,8 @@ const KNOWN_ACTIONS = [
   "account_disabled",
   "account_enabled",
   "account_locked",
-  "new_password_asked",
-  "new_password_request_closed",
-  "new_password_request_withdrawn",
+  "reset_code_sent",
+  "password_reset_by_code",
 ] as const;
 type KnownAction = (typeof KNOWN_ACTIONS)[number];
 
@@ -81,8 +80,9 @@ export async function AccountHistory({
                     </span>
                   ))}
                   <span className="text-sm text-muted-foreground">
+                    {/* A code is sent when someone asks on the sign-in page (AUTH-7), so no one is signed in. */}
                     {entry.actorName ??
-                      (entry.action === "new_password_asked" ? t("history.signInPage") : t("history.system"))}
+                      (entry.action === "reset_code_sent" ? t("history.signInPage") : t("history.system"))}
                   </span>
                 </span>
               </li>
