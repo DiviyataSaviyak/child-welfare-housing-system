@@ -32,7 +32,7 @@ export function checkNewPassword(input: { current: string; next: string; confirm
   return input.next === input.current ? "sameAsCurrent" : null;
 }
 
-/** AUTH-7: the code sent by SMS, as typed, without spaces. */
+/** AUTH-7: the code sent by email, as typed, without spaces. */
 export const readResetCode = (typed: string) => typed.replace(/\s/g, "");
 
 export type ResetCodeFormError = "required" | "format";

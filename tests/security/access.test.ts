@@ -100,10 +100,10 @@ const RULES: Record<string, Record<string, Rule>> = {
     signIn: { anyone: "the sign-in form, behind the rate limit and lockout (SEC-4, AUTH-2)" },
     askForCode: {
       anyone:
-        "sends a reset code by SMS to the account's own number, behind its own rate limits; same answer for any username (AUTH-7)",
+        "sends a reset code by email to the account's own address, behind its own rate limits; same answer for any username (AUTH-7)",
     },
     checkCode: { anyone: "checks a reset code against its ticket, with 5 tries per code (AUTH-7)" },
-    setNewPassword: { anyone: "sets a password only with a ticket whose SMS code was right (AUTH-7)" },
+    setNewPassword: { anyone: "sets a password only with a ticket whose emailed code was right (AUTH-7)" },
     changePassword: { signedIn: "temporaryAllowed" },
     signOut: { anyone: "ends only the caller's own session" },
   },

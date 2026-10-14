@@ -13,7 +13,7 @@ describe("sign-in form", () => {
   });
 });
 
-describe("resetting a forgotten password by SMS (AUTH-7)", () => {
+describe("resetting a forgotten password by email (AUTH-7)", () => {
   it("takes the code's six digits, with or without spaces", () => {
     expect(checkResetCodeForm(readResetCode(" 123 456 "))).toBeNull();
     expect(checkResetCodeForm(readResetCode("  "))).toBe("required");

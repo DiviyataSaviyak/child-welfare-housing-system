@@ -6,8 +6,8 @@ import { savePasswordHash } from "../users/commands";
 import { normaliseUsername } from "./accounts";
 
 /**
- * AUTH-7: an officer who has forgotten their password sets a new one with a code sent by SMS to the
- * mobile number in their account, in three steps: the username (sendResetCode), the code
+ * AUTH-7: an officer who has forgotten their password sets a new one with a code sent by email to the
+ * address in their account, in three steps: the username (sendResetCode), the code
  * (checkResetCode), then the new password (resetPasswordWithCode). The browser carries a random ticket
  * from step to step; the database keeps only its SHA-256 and an HMAC of the code.
  */
@@ -31,16 +31,16 @@ function codeHash(id: string, code: string): string {
 
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-/** Sends the code to a mobile number and says whether the SMS went. */
-export type SendCode = (mobile: string, code: string) => Promise<boolean>;
+/** Sends the code to an email address and says whether the email went. */
+export type SendCode = (email: string, code: string) => Promise<boolean>;
 
-export type SendResult = { ok: true; ticket: string; userId: string | null } | { ok: false; error: "smsFailed" };
+export type SendResult = { ok: true; ticket: string; userId: string | null } | { ok: false; error: "emailFailed" };
 
 /**
  * Step 1. Every username gets a ticket, so the page reads the same whether or not it exists (as for
- * AUTH-2). Only an active account with a mobile number, sent fewer than CODES_PER_DAY codes in the last
- * 24 hours, gets an SMS, and only such a ticket can lead to a new password; the others hold a code
- * nobody was sent. A new code ends the account's earlier ones. The one refusal is an SMS that didn't
+ * AUTH-2). Only an active account with an email address, sent fewer than CODES_PER_DAY codes in the last
+ * 24 hours, gets an email, and only such a ticket can lead to a new password; the others hold a code
+ * nobody was sent. A new code ends the account's earlier ones. The one refusal is an email that didn't
  * go, because the officer then needs to know to try later or call the admin. `userId` is for the log.
  */
 export async function sendResetCode(
@@ -68,21 +68,21 @@ export async function sendResetCode(
       ? null
       : await db.user.findUnique({
           where: { username: normaliseUsername(username) },
-          select: { id: true, role: true, banned: true, mobile: true },
+          select: { id: true, role: true, banned: true, contactEmail: true },
         });
   const sentToday = user
     ? await db.resetCode.count({ where: { userId: user.id, createdAt: { gt: new Date(now.getTime() - DAY_MS) } } })
     : 0;
-  if (!user?.role || user.banned || !user.mobile || sentToday >= CODES_PER_DAY) {
+  if (!user?.role || user.banned || !user.contactEmail || sentToday >= CODES_PER_DAY) {
     await db.resetCode.create({ data: { ...row, userId: null } });
     return { ok: true, ticket, userId: null };
   }
 
   // Saved before sending, so the code works the moment it arrives.
   await db.resetCode.create({ data: { ...row, userId: user.id } });
-  if (!(await send(user.mobile, code))) {
+  if (!(await send(user.contactEmail, code))) {
     await db.resetCode.delete({ where: { id } });
-    return { ok: false, error: "smsFailed" };
+    return { ok: false, error: "emailFailed" };
   }
   await db.$transaction(async (tx) => {
     await tx.resetCode.updateMany({

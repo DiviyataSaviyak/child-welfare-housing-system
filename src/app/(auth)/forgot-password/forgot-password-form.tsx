@@ -20,7 +20,7 @@ const backLink = "self-start text-base font-semibold text-primary underline unde
 const mainButton = "h-12 gap-2 rounded-lg bg-sign-in text-[17px] font-semibold text-white hover:bg-sign-in/90";
 
 /**
- * AUTH-7: the username, then the code sent by SMS, then the new password. Each step's state lives here
+ * AUTH-7: the username, then the code sent by email, then the new password. Each step's state lives here
  * only, so leaving the page starts again from the username; "start again" does the same.
  */
 export function ForgotPasswordForm() {
@@ -140,7 +140,7 @@ function CodeStep({
           {asking ? t("submitting") : t("code.sendAgain")}
         </Button>
       </form>
-      <p className="text-[15px] text-muted-foreground">{t("code.noSms")}</p>
+      <p className="text-[15px] text-muted-foreground">{t("code.noEmail")}</p>
       <button type="button" onClick={onRestart} className={backLink}>
         {t("startAgain")}
       </button>

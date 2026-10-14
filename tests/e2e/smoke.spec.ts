@@ -29,7 +29,7 @@ test("the page for a forgotten password is in Sinhala only, at both steps (AUTH-
   await page.goto("/forgot-password");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("මුරපදය අමතකද?");
   expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
-  // The code step, with "SMS" written in Sinhala words.
+  // The code step, with "email" written in Sinhala letters.
   await askForCode(page, "ds9999");
   expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
 });

@@ -73,22 +73,25 @@
   },
   "forgotPassword": {
     "title": "Forgot your password?",
-    "intro": "Enter your username. A 6-digit code will be sent by SMS to the mobile number in your account, and with it you can set a new password.",
+    "intro": "Enter your username. A 6-digit code will be sent to the email address in your account, and with it you can set a new password.",
     "username": "Username",
     "submit": "Send the code",
     "submitting": "Sending...",
-    "noUsername": "If you have forgotten your username, or your mobile number has changed, contact the administrator at Head Office.",
+    "noUsername": "If you have forgotten your username, or your account has no email address or yours has changed, contact the administrator at Head Office.",
     "backToSignIn": "Back to sign in",
     "startAgain": "Start again",
-    "sms": "Diviyata Sawiyak: your code to reset your password is {code}. It is valid for 15 minutes. Don't tell it to anyone.",
+    "email": {
+      "subject": "Diviyata Sawiyak: your code to reset your password",
+      "body": "Your code to reset your password is {code}. It is valid for 15 minutes. Don't tell it to anyone.\n\nIf you didn't ask for it, ignore this email. Your password stays the same."
+    },
     "code": {
-      "sent": "If the username is right, a code has been sent by SMS to the mobile number in the account. It is valid for 15 minutes.",
-      "label": "Code from the SMS",
+      "sent": "If the username is right, a code has been sent to the email address in the account. It is valid for 15 minutes.",
+      "label": "Code from the email",
       "help": "6 digits",
       "submit": "Continue",
       "submitting": "Checking...",
       "sendAgain": "Send a new code",
-      "noSms": "If no SMS arrives within a few minutes, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at Head Office."
+      "noEmail": "If no email arrives within a few minutes, look in the spam folder too. If it isn't there, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at Head Office."
     },
     "password": {
       "intro": "The code is right. Now set your new password.",
@@ -101,12 +104,12 @@
     "errors": {
       "required": "Enter your username.",
       "tooMany": "Too many requests from this computer. Try again in 15 minutes.",
-      "smsFailed": "The SMS couldn't be sent. Try again in a little while, or contact the administrator at Head Office.",
-      "smsOff": "Resetting a password by SMS isn't switched on yet. For a new password, contact the administrator at Head Office."
+      "emailFailed": "The email couldn't be sent. Try again in a little while, or contact the administrator at Head Office.",
+      "emailOff": "Resetting a password by email isn't switched on yet. For a new password, contact the administrator at Head Office."
     },
     "codeErrors": {
-      "required": "Enter the code from the SMS.",
-      "format": "The code has 6 digits. Type it as it is in the SMS.",
+      "required": "Enter the code from the email.",
+      "format": "The code has 6 digits. Type it as it is in the email.",
       "wrong": "The code is wrong. {count, plural, one {# try} other {# tries}} left.",
       "tooManyTries": "5 wrong codes were entered, so this code no longer works. Ask for a new code.",
       "expired": "This code has expired, or a newer one was sent. Ask for a new code."
@@ -189,6 +192,7 @@
       "designationHint": "e.g. Development Officer",
       "mobile": "Mobile number *",
       "contactEmail": "Email (optional)",
+      "contactEmailHint": "If the officer forgets their password, the code to reset it is sent to this address.",
       "role": "Role *",
       "district": "District *",
       "chooseDistrict": "Choose",
@@ -253,8 +257,8 @@
         "account_disabled": "Account disabled",
         "account_enabled": "Account enabled again",
         "account_locked": "Account locked for 15 minutes after 5 wrong passwords",
-        "reset_code_sent": "An SMS code to reset the password was sent",
-        "password_reset_by_code": "The officer set a new password with an SMS code",
+        "reset_code_sent": "A code to reset the password was sent by email",
+        "password_reset_by_code": "The officer set a new password with a code sent by email",
         "other": "A change was made"
       },
       "fields": {

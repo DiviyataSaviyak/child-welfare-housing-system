@@ -1,6 +1,6 @@
 /**
  * Application log lines, one JSON object each. SEC-8: never pass names, NICs, addresses, phone
- * numbers or usernames here. Log IDs and outcomes only. Values are limited to plain primitives,
+ * numbers, email addresses or usernames here. Log IDs and outcomes only. Values are limited to plain primitives,
  * so a whole record can't be logged by accident.
  */
 type Field = string | number | boolean | null;

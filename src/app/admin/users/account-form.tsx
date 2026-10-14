@@ -112,6 +112,7 @@ export function AccountForm({
           name="contactEmail"
           type="email"
           label={t("form.contactEmail")}
+          help={t("form.contactEmailHint")}
           value={values.contactEmail}
           onChange={set("contactEmail")}
           error={error("contactEmail")}

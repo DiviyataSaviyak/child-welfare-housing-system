@@ -18,12 +18,12 @@ const ADMIN = "reset-test-admin";
 const MINUTE = 60_000;
 
 /** A Head Office officer with a temporary password, as the admin makes one. */
-async function newAccount(mobile = "0710000401") {
+async function newAccount(contactEmail: string | null = "officer401@example.com") {
   const created = await createAccount(db, ADMIN, {
     name: "කේ. පරීක්ෂණ",
     designation: null,
-    mobile,
-    contactEmail: null,
+    mobile: "0710000401",
+    contactEmail,
     role: "HO_OFFICER",
     dsOfficeId: null,
   });
@@ -32,11 +32,11 @@ async function newAccount(mobile = "0710000401") {
   return { user, username: created.value.username };
 }
 
-/** Records each SMS instead of sending it. */
-function smsBox(works = true) {
-  const sent: { mobile: string; code: string }[] = [];
-  const send: SendCode = async (mobile, code) => {
-    sent.push({ mobile, code });
+/** Records each email instead of sending it. */
+function mailBox(works = true) {
+  const sent: { email: string; code: string }[] = [];
+  const send: SendCode = async (email, code) => {
+    sent.push({ email, code });
     return works;
   };
   return { sent, send };
@@ -56,8 +56,8 @@ beforeAll(async () => {
 
 afterAll(() => db.$disconnect());
 
-describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
-  it("sends a code to the account's number, and the right code lets the officer set their own password", async () => {
+describe("resetting a forgotten password with a code sent by email (AUTH-7)", () => {
+  it("sends a code to the account's email address, and the right code lets the officer set their own password", async () => {
     const { user, username } = await newAccount();
     await db.user.update({
       where: { id: user.id },
@@ -71,12 +71,12 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
         expiresAt: new Date(Date.now() + 60 * MINUTE),
       },
     });
-    const { sent, send } = smsBox();
+    const { sent, send } = mailBox();
 
     const result = await sendResetCode(db, ` ${username.toUpperCase()} `, send);
     if (!result.ok) throw new Error(result.error);
     expect(result.userId).toBe(user.id);
-    expect(sent).toEqual([{ mobile: "0710000401", code: expect.stringMatching(/^\d{6}$/) }]);
+    expect(sent).toEqual([{ email: "officer401@example.com", code: expect.stringMatching(/^\d{6}$/) }]);
     const { code } = sent[0];
 
     // Neither the ticket nor the code is stored as it is.
@@ -111,14 +111,13 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
     expect(history[1]).toMatchObject({ action: "reset_code_sent", actorName: null });
   });
 
-  it("answers the same for an unknown username, a disabled account and one with no number, and sends nothing", async () => {
+  it("answers the same for an unknown username, a disabled account and one with no email address, and sends nothing", async () => {
     const disabled = await newAccount();
     await setAccountDisabled(db, ADMIN, disabled.user.id, true);
-    const noNumber = await newAccount();
-    await db.user.update({ where: { id: noNumber.user.id }, data: { mobile: null } });
-    const { sent, send } = smsBox();
+    const noEmail = await newAccount(null);
+    const { sent, send } = mailBox();
 
-    for (const username of ["ds9999-none", disabled.username, noNumber.username, "x".repeat(65)]) {
+    for (const username of ["ds9999-none", disabled.username, noEmail.username, "x".repeat(65)]) {
       const result = await sendResetCode(db, username, send);
       expect(result).toMatchObject({ ok: true, userId: null, ticket: expect.any(String) });
       if (!result.ok) continue;
@@ -132,7 +131,7 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
 
   it("ends a code after its fifth wrong try", async () => {
     const { username } = await newAccount();
-    const { sent, send } = smsBox();
+    const { sent, send } = mailBox();
     const result = await sendResetCode(db, username, send);
     if (!result.ok) throw new Error(result.error);
     const wrong = sent[0].code === "000000" ? "111111" : "000000";
@@ -146,7 +145,7 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
 
   it(`keeps a code for ${CODE_MINUTES} minutes, for the code and the new password both`, async () => {
     const { username } = await newAccount();
-    const { sent, send } = smsBox();
+    const { sent, send } = mailBox();
     const start = new Date();
     const result = await sendResetCode(db, username, send, start);
     if (!result.ok) throw new Error(result.error);
@@ -166,7 +165,7 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
 
   it("ends the earlier code when a new one is sent", async () => {
     const { username } = await newAccount();
-    const { sent, send } = smsBox();
+    const { sent, send } = mailBox();
     const first = await sendResetCode(db, username, send);
     const second = await sendResetCode(db, username, send);
     if (!first.ok || !second.ok) throw new Error("not sent");
@@ -177,7 +176,7 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
 
   it(`sends an account at most ${CODES_PER_DAY} codes in 24 hours`, async () => {
     const { user, username } = await newAccount();
-    const { sent, send } = smsBox();
+    const { sent, send } = mailBox();
     const start = new Date();
     const at = (minutes: number) => new Date(start.getTime() + minutes * MINUTE);
 
@@ -189,11 +188,11 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
     expect(sent).toHaveLength(CODES_PER_DAY + 1);
   });
 
-  it("refuses when the SMS didn't go, and keeps nothing of it", async () => {
+  it("refuses when the email didn't go, and keeps nothing of it", async () => {
     const { user, username } = await newAccount();
-    const { sent, send } = smsBox(false);
+    const { sent, send } = mailBox(false);
 
-    expect(await sendResetCode(db, username, send)).toEqual({ ok: false, error: "smsFailed" });
+    expect(await sendResetCode(db, username, send)).toEqual({ ok: false, error: "emailFailed" });
     expect(sent).toHaveLength(1);
     expect(await codesOf(user.id)).toBe(0);
     expect(await actions(user.id)).not.toContain("reset_code_sent");
@@ -201,7 +200,7 @@ describe("resetting a forgotten password with an SMS code (AUTH-7)", () => {
 
   it("sets no password on an account disabled after its code was checked", async () => {
     const { user, username } = await newAccount();
-    const { sent, send } = smsBox();
+    const { sent, send } = mailBox();
     const result = await sendResetCode(db, username, send);
     if (!result.ok) throw new Error(result.error);
     expect(await checkResetCode(db, result.ticket, sent[0].code)).toEqual({ ok: true });

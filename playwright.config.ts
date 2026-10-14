@@ -4,9 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
-// The app writes text messages to this file instead of sending them (src/server/sms.ts), and the tests
-// read the codes from it (AUTH-7). The dev server's default is the same file.
-process.env.SMS_OUTBOX ??= resolve("data", "sms-outbox.jsonl");
+// The app writes emails to this file instead of sending them (src/server/mail.ts), and the tests read
+// the codes from it (AUTH-7). The dev server's default is the same file.
+process.env.MAIL_OUTBOX ??= resolve("data", "mail-outbox.jsonl");
 
 export default defineConfig({
   testDir: "tests",
@@ -35,7 +35,7 @@ export default defineConfig({
   webServer: {
     // CI tests the standalone production build (run `npm run build` first); locally the dev server is used.
     command: process.env.CI ? "npm run start:standalone" : `npm run dev -- -p ${PORT}`,
-    env: { PORT: String(PORT), HOSTNAME: "127.0.0.1", BETTER_AUTH_URL: BASE_URL, SMS_OUTBOX: process.env.SMS_OUTBOX },
+    env: { PORT: String(PORT), HOSTNAME: "127.0.0.1", BETTER_AUTH_URL: BASE_URL, MAIL_OUTBOX: process.env.MAIL_OUTBOX },
     url: `${BASE_URL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

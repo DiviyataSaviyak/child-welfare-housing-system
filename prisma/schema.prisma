@@ -179,7 +179,7 @@ model User {
   banExpires             DateTime?       @map("ban_expires")
   designation            String?
   mobile                 String?
-  /// The officer's real email address, if they have one.
+  /// The officer's real email address, if they have one. Codes for a forgotten password go to it (AUTH-7).
   contactEmail           String?         @map("contact_email")
   /// Required for DS officers, empty for everyone else (checked by the database). An office can have
   /// several active DS officers (ADM-3).
@@ -258,10 +258,10 @@ model Verification {
   @@map("verification")
 }
 
-/// A code sent by SMS to reset a forgotten password (AUTH-7). The browser holds a random ticket; the
+/// A code sent by email to reset a forgotten password (AUTH-7). The browser holds a random ticket; the
 /// row's id is the ticket's SHA-256 and the code is kept only as an HMAC. A ticket for an unknown
-/// username, a disabled account, one with no mobile number or one over its daily limit has no user and
-/// no SMS goes out, so the page acts the same for any username.
+/// username, a disabled account, one with no email address or one over its daily limit has no user and
+/// no email goes out, so the page acts the same for any username.
 model ResetCode {
   id        String    @id
   userId    String?   @map("user_id")

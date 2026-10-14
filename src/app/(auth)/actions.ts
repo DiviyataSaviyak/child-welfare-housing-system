@@ -10,7 +10,7 @@ import { attemptSignIn, changeOwnPassword, signOutCurrentSession } from "@/serve
 import { requireSignedIn } from "@/server/context";
 import { db } from "@/server/db";
 import { logEvent } from "@/server/log";
-import { sendSms, smsSetup } from "@/server/sms";
+import { mailSetup, sendMail } from "@/server/mail";
 import {
   checkChosenPassword,
   checkNewPassword,
@@ -61,21 +61,21 @@ export async function signIn(_previous: SignInState, form: FormData): Promise<Si
 }
 
 export type AskForCodeState = {
-  error: "required" | "tooMany" | "smsFailed" | "smsOff" | null;
+  error: "required" | "tooMany" | "emailFailed" | "emailOff" | null;
   username: string;
   /** Carries the officer from step to step; never shown or put in an address, and stored only as a hash. */
   ticket: string | null;
 };
 
 /**
- * AUTH-7, step 1: sends a code by SMS to the mobile number in the account. The answer is the same for any
- * username (src/server/auth/password-reset.ts); only an empty box, the rate limit, a server with no SMS
- * gateway and an SMS that didn't go are refused. The SMS is in the screen's language.
+ * AUTH-7, step 1: sends a code by email to the address in the account. The answer is the same for any
+ * username (src/server/auth/password-reset.ts); only an empty box, the rate limit, a server with no mail
+ * server and an email that didn't go are refused. The email is in the screen's language.
  */
 export async function askForCode(_previous: AskForCodeState, form: FormData): Promise<AskForCodeState> {
   const username = text(form, "username").trim();
   if (username === "") return { error: "required", username, ticket: null };
-  if (!smsSetup()) return { error: "smsOff", username, ticket: null };
+  if (!mailSetup()) return { error: "emailOff", username, ticket: null };
 
   if (!resetCodeLimiter.allow(clientIp(await headers()))) {
     logEvent("reset_code_refused", { reason: "rate_limited" });
@@ -83,10 +83,12 @@ export async function askForCode(_previous: AskForCodeState, form: FormData): Pr
   }
 
   const t = await getTranslations("forgotPassword");
-  const result = await sendResetCode(db, username, (mobile, code) => sendSms(mobile, t("sms", { code })));
+  const result = await sendResetCode(db, username, (email, code) =>
+    sendMail(email, { subject: t("email.subject"), text: t("email.body", { code }) }),
+  );
   if (!result.ok) {
-    logEvent("reset_code_refused", { reason: "sms_failed" });
-    return { error: "smsFailed", username, ticket: null };
+    logEvent("reset_code_refused", { reason: "email_failed" });
+    return { error: "emailFailed", username, ticket: null };
   }
   logEvent("reset_code_sent", { userId: result.userId });
   return { error: null, username, ticket: result.ticket };
@@ -99,7 +101,7 @@ export type CheckCodeState = {
   checked: boolean;
 };
 
-/** AUTH-7, step 2: the code from the SMS. */
+/** AUTH-7, step 2: the code from the email. */
 export async function checkCode(_previous: CheckCodeState, form: FormData): Promise<CheckCodeState> {
   const code = readResetCode(text(form, "code"));
   const problem = checkResetCodeForm(code);

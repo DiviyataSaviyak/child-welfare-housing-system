@@ -56,8 +56,8 @@ next-env.d.ts
 # uploaded files never belong in git (SEC-11)
 /data/files/
 
-# text messages written instead of sent in development and CI (src/server/sms.ts)
-/data/sms-outbox.jsonl
+# emails written instead of sent in development and CI (src/server/mail.ts)
+/data/mail-outbox.jsonl
 
 # deploy/ops.sh's settings (deploy/settings.example.env)
 /deploy/settings.env

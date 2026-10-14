@@ -96,21 +96,21 @@ export async function askForCode(page: Page, username: string) {
   await expect(page).toHaveURL(/\/forgot-password$/);
   await page.getByLabel(TEXT.username).fill(username);
   await page.getByRole("button", { name: "කේතය එවන්න" }).click();
-  await expect(page.getByRole("status")).toContainText("ජංගම දුරකතන අංකයට කේතයක් කෙටි පණිවිඩයකින් එවන ලදී");
+  await expect(page.getByRole("status")).toContainText("ගිණුමේ ඇති ඊමේල් ලිපිනයට කේතයක් එවන ලදී");
 }
 
 /**
- * The code in the last text message to this number. In development and CI the app writes messages to
- * SMS_OUTBOX instead of sending them (src/server/sms.ts); playwright.config.ts sets the file.
+ * The code in the last email to this address. In development and CI the app writes emails to MAIL_OUTBOX
+ * instead of sending them (src/server/mail.ts); playwright.config.ts sets the file.
  */
-export async function lastCodeSentTo(mobile: string): Promise<string> {
-  const file = process.env.SMS_OUTBOX;
-  if (!file) throw new Error("SMS_OUTBOX is not set");
+export async function lastCodeSentTo(email: string): Promise<string> {
+  const file = process.env.MAIL_OUTBOX;
+  if (!file) throw new Error("MAIL_OUTBOX is not set");
   const lines = (await readFile(file, "utf8")).split("\n").filter(Boolean);
-  const messages = lines.map((line) => JSON.parse(line) as { to: string; text: string });
-  const text = messages.filter((message) => message.to === mobile).at(-1)?.text;
+  const emails = lines.map((line) => JSON.parse(line) as { to: string; text: string });
+  const text = emails.filter((mail) => mail.to === email).at(-1)?.text;
   const code = text?.match(/\d{6}/)?.[0];
-  if (!code) throw new Error(`No code was sent to ${mobile}`);
+  if (!code) throw new Error(`No code was sent to ${email}`);
   return code;
 }
 

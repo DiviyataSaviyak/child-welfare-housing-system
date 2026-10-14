@@ -20,7 +20,7 @@ export default async function LoginPage({
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-[26px] leading-snug font-bold">{t("title")}</h1>
-      {/* After a forgotten password was reset with an SMS code (AUTH-7). */}
+      {/* After a forgotten password was reset with a code sent by email (AUTH-7). */}
       {notice === "passwordReset" && <FormNotice message={t("passwordReset")} />}
       <SignInForm next={typeof next === "string" ? next : ""} />
       <Link

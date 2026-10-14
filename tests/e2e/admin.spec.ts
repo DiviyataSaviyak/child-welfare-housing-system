@@ -25,20 +25,17 @@ const OFFICES = {
   moveFrom: "මීගමුව",
   moveTo: "කැලණිය",
   disable: "මිනුවන්ගොඩ",
-  resetBySms: "අත්තනගල්ල",
+  resetByEmail: "අත්තනගල්ල",
 } as const;
 
 /** Creates a Divisional Secretariat Officer through the admin screens; returns the credentials shown once. */
-async function createOfficer(
-  page: Page,
-  office: string,
-  mobile = "071 000 0301",
-): Promise<{ username: string; password: string }> {
+async function createOfficer(page: Page, office: string, email = ""): Promise<{ username: string; password: string }> {
   await page.goto("/admin/users");
   await page.getByRole("link", { name: "නව පරිශීලකයෙකු එක් කරන්න" }).click();
   await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
   await page.getByLabel("තනතුර (අවශ්‍ය නම් පමණි)").fill("සංවර්ධන නිලධාරී");
-  await page.getByLabel("ජංගම දුරකතන අංකය *").fill(mobile);
+  await page.getByLabel("ජංගම දුරකතන අංකය *").fill("071 000 0301");
+  await page.getByLabel("ඊමේල් (අවශ්‍ය නම් පමණි)").fill(email);
   await page.getByRole("radio", { name: DS_OFFICER }).check();
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await page.getByRole("radio", { name: new RegExp(`^${office}`) }).check();
@@ -177,24 +174,24 @@ test("a new password replaces the old one, and a disabled account can't sign in 
   });
 });
 
-test("AC-31: an officer who forgot their password sets a new one with a code sent by SMS (AUTH-7)", async ({
+test("AC-31: an officer who forgot their password sets a new one with a code sent by email (AUTH-7)", async ({
   page,
   browser,
 }) => {
   test.slow();
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  // A number of its own, so the test finds its own message among other tests' messages.
-  const mobile = `079${String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0")}`;
-  const { username } = await createOfficer(page, OFFICES.resetBySms, mobile);
-  const newPassword = "Reset-By-Sms-2026";
+  // An address of its own, so the test finds its own email among other tests' emails.
+  const email = `reset-${Date.now()}-${randomLetters(6).toLowerCase()}@example.com`;
+  const { username } = await createOfficer(page, OFFICES.resetByEmail, email);
+  const newPassword = "Reset-By-Email-2026";
 
   await asNewOfficer(browser, async (officer) => {
     // An unknown username gets the same next step.
     await askForCode(officer, "ds9999");
     await askForCode(officer, username);
-    const code = await lastCodeSentTo(mobile);
+    const code = await lastCodeSentTo(email);
 
-    const codeField = officer.getByLabel("කෙටි පණිවිඩයේ කේතය");
+    const codeField = officer.getByLabel("ඊමේල් පණිවිඩයේ කේතය");
     await codeField.fill(code === "000000" ? "111111" : "000000");
     await officer.getByRole("button", { name: "ඉදිරියට" }).click();
     await expect(officer.locator("#reset-code-error")).toHaveText("කේතය වැරදියි. තවත් උත්සාහ 4ක් ඉතිරිව ඇත.");
@@ -216,9 +213,9 @@ test("AC-31: an officer who forgot their password sets a new one with a code sen
   await openRow(page, username);
   await page.getByRole("link", { name: `සංස්කරණය: ${TEST_OFFICER_NAME}` }).click();
   const history = page.getByRole("region", { name: "ගිණුමේ ඉතිහාසය" });
-  await expect(history).toContainText("මුරපදය නැවත සැකසීමට කෙටි පණිවිඩයකින් කේතයක් යැව්වා");
+  await expect(history).toContainText("මුරපදය නැවත සැකසීමට ඊමේල් මගින් කේතයක් යැව්වා");
   await expect(history).toContainText("ඇතුළු වීමේ පිටුව");
-  await expect(history).toContainText("කෙටි පණිවිඩයේ කේතයෙන් නිලධාරියා නව මුරපදයක් සැකසුවා");
+  await expect(history).toContainText("ඊමේල් කේතයෙන් නිලධාරියා නව මුරපදයක් සැකසුවා");
 });
 
 test("the admin can't disable their own account", async ({ page }) => {
