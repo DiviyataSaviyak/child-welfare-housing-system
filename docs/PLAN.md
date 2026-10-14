@@ -105,13 +105,14 @@ docker-compose.dev.yml  the development database
 | # | Task | SPEC | Files |
 | --- | --- | --- | --- |
 | 3.1 | Users list with search and role filter | ADM-1 | `src/app/admin/users/page.tsx`, `src/server/users/*` |
-| 3.2 | Create account: form, district → DS choice, usernames, 12-character temporary password shown once, one active DS officer (the Child Rights Promotion Officer) per office, enforced by the database too | ADM-2, ADM-3 | `src/app/admin/users/*`, `src/lib/validation/user.ts`, `prisma/migrations/*` |
+| 3.2 | Create account: form, district → DS choice, usernames, 12-character temporary password shown once, one active DS officer (the Child Rights Promotion Officer) per office, enforced by the database too (until 2026-10-14, see 3.7) | ADM-2, ADM-3 | `src/app/admin/users/*`, `src/lib/validation/user.ts`, `prisma/migrations/*` |
 | 3.3 | Edit account and transfer to another office, with history | ADM-4, PRM-3 | `src/server/users/*` |
 | 3.4 | Reset password, disable and enable, with the "last admin" and "not yourself" rules | ADM-5, ADM-6, ADM-7 | `src/server/users/*` |
 | 3.5 | Lists: districts and DS offices (add, rename, deactivate) | LST-2, LST-3 | `src/app/admin/lists/*`, `src/server/lists/*` |
 | 3.6 | Lists: stages per kind (add, rename, reorder, deactivate), on a second tab of the lists page (`/admin/lists?tab=stages`) | LST-4 | `src/app/admin/lists/*`, `src/server/lists/*` |
+| 3.7 | Several DS officers per office (added 2026-10-14): migration `several_officers_per_office` drops the one-officer index; the account commands take any active office; the form offers every office with the names of its officers; the lists screen names every officer; the demo data tells every officer of an office | ADM-3, NTF-1, AC-23 | `prisma/migrations/*`, `src/server/users/*`, `src/app/admin/users/account-form.tsx`, `src/server/lists/queries.ts`, `src/app/admin/lists/page.tsx`, `scripts/seed-{demo,load}.ts`, `messages/*.json` |
 
-**Tests:** unit tests for username generation and the account rules; database tests for every account and list command and its audit record; e2e for creating a DS officer who then signs in (AC-3), transfer, reset and disable, adding an office and a stage, and a Head Office officer trying an admin page (not found).
+**Tests:** unit tests for username generation and the account rules; database tests for every account and list command and its audit record; e2e for creating a DS officer who then signs in (AC-3), a second officer at the same office (AC-23), transfer, reset and disable, adding an office and a stage, and a Head Office officer trying an admin page (not found).
 
 **Done when:**
 - AC-3 and AC-23 pass.
