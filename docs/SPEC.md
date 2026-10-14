@@ -37,7 +37,7 @@ It does not cover anything under "Later" or "Out of scope" in the PRD.
 Rules for the stack:
 
 - **STK-1** Every dependency shall be pinned to an exact version, and the lockfile committed. Upgrades are made on purpose, one at a time, never automatically.
-- **STK-2** The system shall not use any third-party hosted service that receives or stores its data, other than its host, Amazon Web Services (the EC2 server and the S3 backup bucket, section 11): no Vercel, Supabase, Firebase, Clerk, hosted analytics or runtime Google Fonts.
+- **STK-2** The system shall not use any third-party hosted service that receives or stores its data, other than its host, Amazon Web Services (the EC2 server and the S3 backup bucket, section 11): no Vercel, Supabase, Firebase, Clerk, hosted analytics or runtime Google Fonts. The one exception is an SMS gateway in Sri Lanka (14 Oct 2026), which receives only an officer's mobile number and a password reset code (AUTH-7), never case data. The server reaches it at the address in `SMS_URL`.
 
 ## 3. Architecture
 
@@ -83,14 +83,15 @@ Every account has exactly one role. A DS officer runs the system for their DS; t
 
 ## 5. Data model
 
-Amounts are whole rupees stored as integers. Nothing listed here is ever deleted, except drafts (CASE-8).
+Amounts are whole rupees stored as integers. Nothing listed here is ever deleted, except drafts (CASE-8) and password reset codes (AUTH-7).
 
 | Entity | Main fields | Rules |
 | --- | --- | --- |
 | Province | name in Sinhala, Tamil and English | 9 rows, seeded |
 | District | name in Sinhala, Tamil and English, province | 25 rows, seeded |
 | DsOffice | name in Sinhala, Tamil and English, code, district, active | `code` is 3 capital letters, unique nationally, and used in case numbers. The Sinhala name is unique within its district |
-| User | full name, designation, mobile, email, username, role, DS office, active, must change password, last sign-in, failed sign-ins, locked until, new password asked at (AUTH-7) | DS office is required for DS officers only, and an office can have several active DS officers (ADM-3). Username is generated (ADM-2) and unique |
+| User | full name, designation, mobile, email, username, role, DS office, active, must change password, last sign-in, failed sign-ins, locked until | DS office is required for DS officers only, and an office can have several active DS officers (ADM-3). Username is generated (ADM-2) and unique |
+| ResetCode | ticket (its SHA-256), user, code (an HMAC), created at, expires at, tries, checked at | One code sent by SMS to reset a forgotten password (AUTH-7). A ticket for an unknown username, or for an account that gets no SMS, has no user. Used tickets and all of the account's other codes go when a password is set; any other row goes a day after it expires. The account's history keeps the audit records |
 | Case | case number, DS office, category, kind, status, name, child's name, NIC, NIC key, address, GN division, mobile 1, mobile 2, remark, created by, submitted at, verified at, completed at, status before stop, another name requested, replaces case, version | See CASE-2 for field rules. `version` goes up by one on every save and every installment, stage or status change (CASE-10). `submitted at` is the latest submit. While the case is stopped, `status before stop` holds the status it goes back to (CLS-3); the stop's day and reason are its Decision. `another name requested` is set when Head Office rejects or stops the case and asks for another name in its place (CASE-11); only a rejected or stopped case has it (a database check), and reopening clears it. `replaces case` is the case this one was entered in place of; a case is replaced by at most one other (unique), never by itself |
 | CaseNumberCounter | DS office, year, last number | One row per office and year. Taking the next number locks the row, so two submits at once never share a number (CASE-5) |
 | Decision | case, type, reason, by, at | Types: submit, verify, send back, reject, stop, reopen |
@@ -148,10 +149,12 @@ Values used across the system:
 - **AUTH-4** A session shall end after 30 minutes without activity, and always after 12 hours. Signing out shall end it at once.
 - **AUTH-5** A disabled account shall not be able to sign in. Its open sessions shall stop working on their next request.
 - **AUTH-6** Passwords shall be stored only as slow hashes, using Better Auth's default. A temporary password shall be shown once and never stored in plain text or written to any log.
-- **AUTH-7** An officer who has forgotten their password shall be able to ask for a new one from the sign-in page ("මුරපදය අමතකද?", added 14 Oct 2026). The system sends no email or SMS (PRD, Later), so the request goes to the admin:
-  - **Input:** the username only. The answer shall be the same whether or not the username exists or the account is disabled, as for AUTH-2; only an unknown or disabled account opens no request. A second request while one is open changes nothing.
-  - **The admin's users screen** shall show how many accounts wait, put them at the top of the list with the day they asked, and show the count in the menu. The new-password pop-up shall ask the admin to call the officer on the mobile number in the account before giving one, and show that number.
-  - **The request closes** when the admin gives a new password (ADM-5), closes it without one (for example when the officer didn't ask), or disables the account, or when the officer signs in with their own password. Asking, closing and withdrawing are in the account's history.
+- **AUTH-7** An officer who has forgotten their password shall set a new one with a code sent by SMS to the mobile number in their account, from "මුරපදය අමතකද?" on the sign-in page (14 Oct 2026; earlier that day the request went to the admin, which the user replaced with this). Three steps on one page:
+  - **The username.** The next step shall read the same for any username, as for AUTH-2: "if the username is right, a code was sent". Only an active account with a mobile number gets an SMS, and at most 5 in 24 hours; a new code ends the account's earlier ones. The code is 6 digits and lasts 15 minutes, and the SMS is in the screen's language. If the gateway refuses the message, the page shall say so and point to the admin.
+  - **The code.** A wrong code shall say how many tries are left, and the 5th wrong one ends the code. A new code can be asked for at this step.
+  - **The new password,** by AUTH-3's rules (at least 8 characters, typed twice), within the same 15 minutes. The officer chose it, so they aren't asked to change it again. It clears a lock (AUTH-2), ends every open session and uses up the account's codes; then the sign-in page says the password is set.
+  - The account's history shows each code sent (by "the sign-in page") and the password set with one. A disabled account gets no SMS, and a code checked before the account was disabled sets no password.
+  - The admin can still give a temporary password (ADM-5), for an officer whose number has changed or who gets no SMS. On a server with no SMS gateway the page says that resetting by SMS is not on yet and sends the officer to the admin.
 
 ### 7.2 Admin: accounts (ADM)
 
@@ -382,7 +385,7 @@ Only the DS office starts and pays installments (section 4). Each change is refu
 - **SEC-1** The system shall be reachable only over HTTPS (TLS 1.2 or later) with HSTS. Plain HTTP redirects to HTTPS.
 - **SEC-2** Every Server Action and route handler shall check the role and office in the data-access layer. Tests shall call each one with each role.
 - **SEC-3** The database shall accept connections only from the containers on the server; it publishes no port. The app's database account shall not be able to change the schema, or update or delete audit rows. Migrations run with a separate owner account.
-- **SEC-4** Sign-in shall allow at most 10 attempts per minute from one IP address, and asking for a new password (AUTH-7) at most 5 per 15 minutes. An unused temporary password expires after 7 days.
+- **SEC-4** Sign-in shall allow at most 10 attempts per minute from one IP address. Asking for a reset code (AUTH-7) shall be allowed at most 5 times per 15 minutes from one IP address, and an account shall get at most 5 codes in 24 hours, each taking at most 5 wrong tries, so no more than 25 guesses a day reach one account. The code is kept only as an HMAC. An unused temporary password expires after 7 days.
 - **SEC-5** Responses shall carry these security headers:
   - a Content Security Policy that allows only this site, with no third-party scripts or fonts
   - `frame-ancestors 'none'`
@@ -394,7 +397,7 @@ Only the DS office starts and pays installments (section 4). Each change is refu
   - A file's type is checked from its contents, not its name.
   - `/files/[id]` applies the same permission check as the case the file belongs to.
 - **SEC-8** Names, NICs, addresses and phone numbers shall never appear in application logs, error messages or URLs. Logs use IDs only.
-- **SEC-9** Secrets such as the database passwords, the auth secret and the backup password shall live only in the server's `.env` file, which only the deploy account and root can read, never in the repository. GitHub holds only the SSH key it deploys with.
+- **SEC-9** Secrets such as the database passwords, the auth secret, the backup password and the SMS gateway's address with its key (`SMS_URL`) shall live only in the server's `.env` file, which only the deploy account and root can read, never in the repository. GitHub holds only the SSH key it deploys with.
 - **SEC-10** Backups:
   - The database and files are backed up every night, encrypted on the server, to an S3 bucket in the server's AWS region. Only the server's role can write to the bucket, and it is never public.
   - Backups are kept for 30 days.
@@ -457,7 +460,7 @@ Version 1 is accepted when every check below passes on staging with made-up data
 | AC-28 | The admin, working in Sinhala, adds a DS office with its Sinhala and English names and its code, leaving the Tamil name blank. The lists screen shows only the Sinhala name; in English it shows the typed English name, and in Tamil the name the system wrote in Tamil letters. A stage needs only its Sinhala name. | UI-9, LST-2, LST-4 |
 | AC-29 | A commit pushed to `main` that passes CI runs on the server with no manual step, and a page left open from the old version reloads on its next move. A release whose app fails its health check is undone: the previous version runs again, and the database is as it was before the deploy. | OPS-3 |
 | AC-30 | Head Office rejects a case and ticks "ask for another name". The DS officer's to-do panel shows the request; their new-case form asks whether the new person is in its place and won't submit without an answer. Once linked, the new case's check view and both case pages name each other, and the request leaves the to-do panel. A second case can't take the same place, and a stopped case that has been replaced can't be reopened. | CASE-11, CHK-3, CLS-3, HOME-3 |
-| AC-31 | On the sign-in page an officer follows "මුරපදය අමතකද?" and asks for a new password; an unknown username gets the same answer. The admin's menu and users screen show the request with the officer's mobile number. The admin gives a new temporary password, the request goes, and the officer signs in with it and must set their own. A request the admin closes, or that the officer withdraws by signing in, goes too, and the history records each. | AUTH-7, ADM-5 |
+| AC-31 | On the sign-in page an officer who has a temporary password follows "මුරපදය අමතකද?" and gives their username; a 6-digit code goes by SMS to the number in their account, and an unknown username sees the same next step. A wrong code says 4 tries are left. The right one leads to the new password, after which the sign-in page says it is set, and the officer signs in with it straight to their home page. The account's history shows the code sent and the password set. | AUTH-7, SEC-4 |
 
 ## 13. Deferred questions and the defaults used
 
@@ -473,6 +476,6 @@ On 28 Sep the open questions were set aside for later. Until the Ministry answer
 | 7. Replacing a beneficiary | Settled on 12 Oct 2026 after the prototype: the new person is a new case linked to the one it replaces, and Head Office asks for it when rejecting or stopping. Still to ask the Ministry: may a case be replaced after money was paid, and does its balance then go to the new person? Until then the stopped case's balance stays with the DS (question 6) and the new case gets its own Rs. 2,000,000. | CASE-11, CHK-3, CLS-2, CLS-3 |
 | 8. Tamil | Answered 7 Oct 2026: the screens come in Sinhala, Tamil and English. | UI-9 |
 | 9. How the Rs. 2M is released | Answered on 6 Oct 2026: by one allocation letter to a District Secretary for several verified cases of the district. No longer a default. | REL-1–4 |
-| 12. First password | The admin sees it once and passes it on in person or by phone. A forgotten password goes the same way: the officer asks on the sign-in page, and the admin calls them with a new one (14 Oct 2026). | ADM-2, AUTH-7 |
+| 12. First password | The admin sees it once and passes it on in person or by phone. A forgotten password the officer resets with a code sent by SMS (14 Oct 2026); the admin's new password stays for an officer who gets no SMS. | ADM-2, AUTH-7 |
 
 The six rules marked Proposed in the PRD are built as written there: send back (CHK-3), Head Office-only edits after verification (CASE-9), nothing deleted (ADM-7, LST-3), the completion rule (CLS-1), one account per person (ADM-2), and the duplicate NIC in another DS (CASE-6).
