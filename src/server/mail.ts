@@ -21,7 +21,8 @@ export type MailSetup =
   | { kind: "outbox"; file: string }
   | null;
 
-export type Mail = { subject: string; text: string };
+/** html, when given, is what most mail apps show; text is for the rest and for the outbox's readers. */
+export type Mail = { subject: string; text: string; html?: string };
 
 const OUTBOX_ENVIRONMENTS = ["development", "ci", "test"];
 
@@ -43,7 +44,7 @@ export function mailSetup(env: Record<string, string | undefined> = process.env)
 }
 
 /**
- * Sends one plain-text email and says whether the mail server took it. The address, the text and the
+ * Sends one email and says whether the mail server took it. The address, the text and the
  * password are never logged (SEC-8, SEC-9); a failure is logged by its error code only (EAUTH for a
  * wrong user or password, ECONNECTION or ETIMEDOUT when the server can't be reached).
  */
@@ -75,7 +76,7 @@ export async function sendMail(to: string, mail: Mail, setup: MailSetup = mailSe
     socketTimeout: 20_000,
   });
   try {
-    await transport.sendMail({ from: setup.from, to, subject: mail.subject, text: mail.text });
+    await transport.sendMail({ from: setup.from, to, subject: mail.subject, text: mail.text, html: mail.html });
     return true;
   } catch (error) {
     logError("email_failed", error);

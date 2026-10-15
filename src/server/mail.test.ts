@@ -93,6 +93,11 @@ describe("sending", () => {
     expect(transport.options[1]).toMatchObject({ port: 587, secure: false, requireTLS: true });
   });
 
+  it("sends the HTML part with the text when there is one", async () => {
+    await sendMail("officer@example.com", { subject: "s", text: "t", html: "<p>t</p>" }, smtp(465));
+    expect(transport.sendMail).toHaveBeenCalledWith(expect.objectContaining({ text: "t", html: "<p>t</p>" }));
+  });
+
   it("answers false, logging only the error's code, when the mail server refuses", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     transport.sendMail.mockRejectedValueOnce(
