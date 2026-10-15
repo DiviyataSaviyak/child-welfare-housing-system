@@ -6,6 +6,7 @@ import { FormError } from "@/components/forms/form-field";
 import { PasswordField } from "@/components/forms/password-field";
 import { Button } from "@/components/ui/button";
 import { changePassword, type ChangePasswordState } from "../actions";
+import { authButton } from "../styles";
 
 export function ChangePasswordForm() {
   const t = useTranslations("changePassword");
@@ -45,7 +46,7 @@ export function ChangePasswordForm() {
         required
       />
       {state.error && <FormError id="change-password-error" message={t(`errors.${state.error}`)} />}
-      <Button type="submit" disabled={pending} className="h-12 rounded-lg text-[17px] font-semibold">
+      <Button type="submit" disabled={pending} className={authButton}>
         {pending ? t("submitting") : t("submit")}
       </Button>
     </form>

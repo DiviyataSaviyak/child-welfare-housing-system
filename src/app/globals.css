@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* A short window, such as a laptop at 125 or 150 % display scaling: the sign-in page tightens up. */
+@custom-variant short (@media (max-height: 760px));
+
 /* Colours and type follow the clickable prototype (UI-4, UI-7). */
 @theme inline {
   --color-background: var(--background);
@@ -30,7 +33,6 @@
   --color-notice: var(--notice);
   --color-notice-foreground: var(--notice-foreground);
   --color-mark-house: var(--mark-house);
-  --color-sign-in: var(--sign-in);
   --color-gold: var(--gold);
   --color-mark-leaf: var(--mark-leaf);
   --color-mark-stem: var(--mark-stem);
@@ -65,9 +67,8 @@
   --header-muted: #d3e6df;
   --notice: #fbebd3;
   --notice-foreground: #7a4105;
-  /* The logo's own colours (sign-in and password pages): the house and name, the gold base and the sprout. */
+  /* The logo's own colours: the house, the gold base and the sprout. */
   --mark-house: #7d2233;
-  --sign-in: #7a3a46;
   --gold: #e0a42b;
   --mark-leaf: #3f9e63;
   --mark-stem: #2e7d4f;
@@ -92,5 +93,57 @@
   :focus-visible {
     outline: 3px solid var(--ring);
     outline-offset: 2px;
+  }
+}
+
+/*
+ * The fields of the sign-in and password pages: warm, with a green focus ring. Not in a layer, so it wins over
+ * the input's own utilities; a field marked invalid keeps its red border.
+ */
+.auth-card [data-slot="input"] {
+  border-color: #d6d1c5;
+  background-color: #fcfbf8;
+  border-radius: 0.75rem;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms,
+    background-color 150ms;
+}
+.auth-card [data-slot="input"]:hover {
+  border-color: #b9b3a5;
+}
+.auth-card [data-slot="input"]:focus-visible {
+  border-color: var(--primary);
+  background-color: #fff;
+  box-shadow: 0 0 0 4px rgb(14 90 75 / 0.14);
+}
+.auth-card [data-slot="input"][aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+.auth-card [data-slot="input"][aria-invalid="true"]:focus-visible {
+  box-shadow: 0 0 0 4px rgb(180 35 24 / 0.14);
+}
+
+/* The house in outline at the foot of the sign-in panel: wide screens only, smaller on a short window. */
+.auth-watermark {
+  position: absolute;
+  right: -6rem;
+  bottom: -5rem;
+  display: none;
+  height: auto;
+}
+@media (min-width: 1024px) {
+  .auth-watermark {
+    display: block;
+  }
+}
+@media (min-width: 1280px) {
+  .auth-watermark {
+    width: 540px;
+  }
+}
+@media (max-height: 760px) {
+  .auth-watermark {
+    width: 360px;
   }
 }

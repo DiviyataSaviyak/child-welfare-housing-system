@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Info } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { FormNotice } from "@/components/forms/form-field";
@@ -18,18 +18,18 @@ export default async function LoginPage({
   const t = await getTranslations("login");
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-[26px] leading-snug font-bold">{t("title")}</h1>
+    <div className="flex flex-col gap-7 short:gap-4">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-[26px] leading-snug font-bold tracking-tight">{t("title")}</h1>
+        <p className="text-[15px] leading-relaxed text-muted-foreground">{t("intro")}</p>
+      </div>
       {/* After a forgotten password was reset with a code sent by email (AUTH-7). */}
       {notice === "passwordReset" && <FormNotice message={t("passwordReset")} />}
       <SignInForm next={typeof next === "string" ? next : ""} />
-      <Link
-        href="/forgot-password"
-        className="self-start text-base font-semibold text-primary underline underline-offset-4"
-      >
-        {t("forgot")}
-      </Link>
-      <p className="text-[15px] text-muted-foreground">{t("help")}</p>
+      <p className="flex gap-3 rounded-2xl border border-primary/10 bg-accent/70 px-4 py-3.5 text-[14.5px] short:py-2.5 leading-relaxed text-foreground/75">
+        <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-primary" />
+        <span>{t("help")}</span>
+      </p>
     </div>
   );
 }

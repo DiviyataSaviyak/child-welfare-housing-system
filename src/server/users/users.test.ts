@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAccountForm } from "@/lib/validation/user";
+import { parseAccountForm, parseProfileForm } from "@/lib/validation/user";
 import { generateTemporaryPassword } from "./passwords";
 import { checkDisable, checkRoleChange } from "./rules";
 import { nextUsername } from "./usernames";
@@ -93,5 +93,32 @@ describe("account form (ADM-2)", () => {
       errors: { name: "required", mobile: "required" },
     });
     expect(form({ ...valid, role: "user" })).toMatchObject({ ok: false, errors: { role: "role" } });
+  });
+});
+
+describe("profile form", () => {
+  const form = (values: Record<string, string>) => parseProfileForm((field) => values[field] ?? "");
+
+  it("reads only the officer's own details, never a role or an office", () => {
+    const result = form({
+      name: " කේ. පෙරේරා ",
+      designation: "",
+      mobile: "071 000 0101",
+      contactEmail: "kp@example.lk",
+      role: "ADMIN",
+      dsOfficeId: "7",
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: { name: "කේ. පෙරේරා", designation: null, mobile: "0710000101", contactEmail: "kp@example.lk" },
+    });
+  });
+
+  it("checks the fields as the account form does", () => {
+    expect(form({ name: "ක", mobile: "12345", contactEmail: "not-an-address" })).toEqual({
+      ok: false,
+      errors: { name: "tooShort", mobile: "mobile", contactEmail: "email" },
+    });
+    expect(form({})).toEqual({ ok: false, errors: { name: "required", mobile: "required" } });
   });
 });

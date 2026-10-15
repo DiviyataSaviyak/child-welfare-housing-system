@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { AccountInput } from "@/lib/validation/user";
+import type { AccountInput, ProfileInput } from "@/lib/validation/user";
 import { writeAudit } from "../audit";
 import { placeholderEmail } from "../auth/accounts";
 import { generateTemporaryPassword } from "./passwords";
@@ -136,6 +136,43 @@ export async function updateAccount(
       action: "account_updated",
       entityType: "user",
       entityId: id,
+      before: pick(current),
+      after: pick(input),
+    });
+  });
+  return { ok: true, value: { changed } };
+}
+
+const PROFILE_EDITABLE = ["name", "designation", "mobile", "contactEmail"] as const;
+
+/**
+ * The profile page: signed-in users change their own name, designation, mobile number and email.
+ * The role, district and DS office are not theirs to change (ADM-4). It is logged as
+ * `account_updated` with the officer as the actor, so the admin's history of the account shows it.
+ */
+export async function updateProfile(
+  db: PrismaClient,
+  userId: string,
+  input: ProfileInput,
+): Promise<Result<{ changed: string[] }>> {
+  const current = await db.user.findUnique({
+    where: { id: userId },
+    select: { name: true, designation: true, mobile: true, contactEmail: true },
+  });
+  if (!current) return { ok: false, error: "notFound" };
+
+  const changed = PROFILE_EDITABLE.filter((field) => current[field] !== input[field]);
+  if (changed.length === 0) return { ok: true, value: { changed } };
+
+  const pick = (source: Record<string, unknown>) =>
+    Object.fromEntries(changed.map((f) => [f, source[f]])) as Prisma.InputJsonObject;
+  await db.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: input });
+    await writeAudit(tx, {
+      actorId: userId,
+      action: "account_updated",
+      entityType: "user",
+      entityId: userId,
       before: pick(current),
       after: pick(input),
     });

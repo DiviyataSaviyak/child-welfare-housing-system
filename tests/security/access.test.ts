@@ -88,6 +88,7 @@ const VISITORS: Visitor[] = ["signedOut", "temporaryPassword", "DS_OFFICER", "HO
 type Rule =
   | { role: Role } // requireRole: the sign-in page, the password page, or "not found"
   | { signedIn: "temporaryAllowed" } // changing one's own password
+  | { signedIn: "own" } // changing one's own details: any role, once the temporary password is changed
   | { signedIn: "file" } // a file: "not found" unless a DS or Head Office officer; the case's own check follows
   | { anyone: string }; // open to all, with the reason
 
@@ -107,6 +108,7 @@ const RULES: Record<string, Record<string, Rule>> = {
     changePassword: { signedIn: "temporaryAllowed" },
     signOut: { anyone: "ends only the caller's own session" },
   },
+  "src/app/_profile/actions.ts": { updateProfileAction: { signedIn: "own" } },
   "src/i18n/actions.ts": { chooseLanguage: { anyone: "sets the caller's own language cookie (UI-9)" } },
   "src/app/health/route.ts": { GET: { anyone: "says only whether the app reaches its database (OPS-3)" } },
   "src/app/admin/lists/actions.ts": {
@@ -167,6 +169,7 @@ function expected(rule: Rule, visitor: Visitor): Outcome {
   if ("signedIn" in rule) {
     // The admin sees no cases (PRM-1), so no files either.
     if (rule.signedIn === "file") return visitor === "DS_OFFICER" || visitor === "HO_OFFICER" ? "passes" : "notFound";
+    if (rule.signedIn === "own" && visitor === "temporaryPassword") return "changePassword";
     return visitor === "signedOut" ? "signIn" : "passes";
   }
   if (visitor === "signedOut") return "signIn";
