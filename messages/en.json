@@ -50,6 +50,7 @@
   },
   "login": {
     "title": "Sign in to the system",
+    "intro": "Enter your username and password to continue.",
     "username": "Username",
     "password": "Password",
     "submit": "Sign in",

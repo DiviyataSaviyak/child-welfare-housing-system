@@ -17,7 +17,7 @@ import {
 } from "../actions";
 
 const backLink = "self-start text-base font-semibold text-primary underline underline-offset-4";
-const mainButton = "h-12 gap-2 rounded-lg bg-sign-in text-[17px] font-semibold text-white hover:bg-sign-in/90";
+const mainButton = "h-12 gap-2 rounded-lg text-[17px] font-semibold shadow-sm";
 
 /**
  * AUTH-7: the username, then the code sent by email, then the new password. Each step's state lives here

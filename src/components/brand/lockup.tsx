@@ -19,17 +19,3 @@ export function Mark({ className }: { className?: string }) {
     </svg>
   );
 }
-
-/** The mark beside the programme's name, a short gold line and the ministry, as on the primary logo. */
-export function Lockup({ name, ministry }: { name: string; ministry: string }) {
-  return (
-    <div className="flex flex-col items-center gap-5 text-center sm:flex-row sm:gap-7 sm:text-left">
-      <Mark className="h-24 w-[105px] shrink-0 sm:h-28 sm:w-[122px]" />
-      <div className="flex flex-col items-center gap-3 sm:items-start">
-        <p className="text-[40px] leading-tight font-extrabold text-mark-house sm:text-[46px]">{name}</p>
-        <span aria-hidden="true" className="h-1.5 w-20 rounded-full bg-gold" />
-        <p className="text-lg text-muted-foreground">{ministry}</p>
-      </div>
-    </div>
-  );
-}

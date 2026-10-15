@@ -30,7 +30,6 @@
   --color-notice: var(--notice);
   --color-notice-foreground: var(--notice-foreground);
   --color-mark-house: var(--mark-house);
-  --color-sign-in: var(--sign-in);
   --color-gold: var(--gold);
   --color-mark-leaf: var(--mark-leaf);
   --color-mark-stem: var(--mark-stem);
@@ -65,9 +64,8 @@
   --header-muted: #d3e6df;
   --notice: #fbebd3;
   --notice-foreground: #7a4105;
-  /* The logo's own colours (sign-in and password pages): the house and name, the gold base and the sprout. */
+  /* The logo's own colours: the house, the gold base and the sprout. */
   --mark-house: #7d2233;
-  --sign-in: #7a3a46;
   --gold: #e0a42b;
   --mark-leaf: #3f9e63;
   --mark-stem: #2e7d4f;
