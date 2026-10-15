@@ -1,76 +1,67 @@
-import { ShieldCheck } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { Mark } from "@/components/brand/lockup";
+import { MinistryBar } from "@/components/brand/ministry-bar";
 import { LanguagePicker } from "@/components/language-picker";
 
 /**
- * Sign-in and password pages, with no menu: the programme's panel in the header's green beside the form
- * (a short band above it on a narrow screen). The language picker sits in the card, beside the form.
+ * Sign-in and password pages, with no menu: the ministry's letterhead across the top (emblem and its
+ * name in three languages, as on its website), then the programme's panel in the header's green beside
+ * the form (a short band above it on a narrow screen). The language picker sits in the card, beside the form.
  */
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("app");
 
   return (
-    <div className="flex min-h-screen flex-col bg-background lg:flex-row">
-      <aside className="relative isolate shrink-0 overflow-hidden bg-header bg-[linear-gradient(160deg,#11705d_0%,var(--header)_42%,#093d33_100%)] text-header-foreground lg:flex lg:min-h-screen lg:w-[46%] lg:max-w-[680px] lg:flex-col">
-        <PanelBackground />
-        <div aria-hidden="true" className="h-1 bg-[linear-gradient(90deg,var(--gold),#f0c661_50%,var(--gold))]" />
+    <div className="flex min-h-screen flex-col bg-background">
+      <MinistryBar />
+      <div className="flex flex-1 flex-col lg:flex-row">
+        <aside className="relative isolate shrink-0 overflow-hidden bg-header bg-[linear-gradient(160deg,#11705d_0%,var(--header)_42%,#093d33_100%)] text-header-foreground lg:flex lg:w-[46%] lg:max-w-[680px] lg:flex-col">
+          <PanelBackground />
+          <div aria-hidden="true" className="h-1 bg-[linear-gradient(90deg,var(--gold),#f0c661_50%,var(--gold))]" />
 
-        {/* A narrow screen: the mark, the name and the ministry in one short band. */}
-        <div className="flex items-center gap-4 px-5 py-4 sm:px-8 lg:hidden">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[#fbf5ea] shadow-[0_4px_14px_rgb(0_0_0/0.25)] ring-1 ring-white/50">
-            <Mark className="h-8 w-[35px]" />
-          </span>
-          <div className="flex min-w-0 flex-col">
-            <p className="text-[22px] leading-tight font-bold tracking-tight">{t("name")}</p>
-            <p className="text-sm leading-snug text-header-muted">{t("ministry")}</p>
-          </div>
-        </div>
-
-        {/* A wide screen: the ministry as a letterhead, then the programme in the middle. */}
-        <div className="hidden flex-1 flex-col px-12 py-10 lg:flex xl:px-16 short:py-7">
-          <p className="flex items-center gap-3 text-[15px] font-semibold text-header-foreground/90">
-            <span aria-hidden="true" className="h-6 w-1 shrink-0 rounded-full bg-gold" />
-            {t("ministry")}
-          </p>
-          <div className="flex flex-1 flex-col justify-center gap-7 py-10 animate-in duration-700 fade-in slide-in-from-bottom-2 motion-reduce:animate-none short:gap-5 short:py-6">
-            <span className="relative flex size-[104px] items-center justify-center rounded-[28px] bg-[#fbf5ea] shadow-[0_18px_40px_-12px_rgb(0_0_0/0.45)] ring-1 ring-white/60 short:size-20 short:rounded-3xl">
-              {/* A soft halo round the mark. */}
-              <span
-                aria-hidden="true"
-                className="absolute -inset-3 -z-10 rounded-[36px] bg-white/10 ring-1 ring-white/15"
-              />
-              <Mark className="h-[66px] w-[72px] short:h-[52px] short:w-[57px]" />
+          {/* A narrow screen: the mark and the name in one short band. */}
+          <div className="flex items-center gap-4 px-5 py-4 sm:px-8 lg:hidden">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[#fbf5ea] shadow-[0_4px_14px_rgb(0_0_0/0.25)] ring-1 ring-white/50">
+              <Mark className="h-8 w-[35px]" />
             </span>
-            <div className="flex flex-col gap-5 short:gap-4">
-              <p className="text-[40px] leading-[1.15] font-extrabold tracking-tight xl:text-5xl xl:leading-[1.12]">
-                {t("name")}
-              </p>
-              <span aria-hidden="true" className="flex items-center gap-1.5">
-                <span className="h-1.5 w-14 rounded-full bg-gold" />
-                <span className="h-1.5 w-3 rounded-full bg-gold/60" />
-                <span className="size-1.5 rounded-full bg-gold/35" />
+            <p className="min-w-0 text-[22px] leading-tight font-bold tracking-tight">{t("name")}</p>
+          </div>
+
+          {/* A wide screen: the programme in the middle. */}
+          <div className="hidden flex-1 flex-col px-12 py-10 lg:flex xl:px-16 short:py-7">
+            <div className="flex flex-1 flex-col justify-center gap-7 py-10 animate-in duration-700 fade-in slide-in-from-bottom-2 motion-reduce:animate-none short:gap-5 short:py-6">
+              <span className="relative flex size-[104px] items-center justify-center rounded-[28px] bg-[#fbf5ea] shadow-[0_18px_40px_-12px_rgb(0_0_0/0.45)] ring-1 ring-white/60 short:size-20 short:rounded-3xl">
+                {/* A soft halo round the mark. */}
+                <span
+                  aria-hidden="true"
+                  className="absolute -inset-3 -z-10 rounded-[36px] bg-white/10 ring-1 ring-white/15"
+                />
+                <Mark className="h-[66px] w-[72px] short:h-[52px] short:w-[57px]" />
               </span>
-              <p className="max-w-[30rem] text-[17px] leading-relaxed text-white/80">{t("description")}</p>
+              <div className="flex flex-col gap-5 short:gap-4">
+                <p className="text-[40px] leading-[1.15] font-extrabold tracking-tight xl:text-5xl xl:leading-[1.12]">
+                  {t("name")}
+                </p>
+                <span aria-hidden="true" className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-14 rounded-full bg-gold" />
+                  <span className="h-1.5 w-3 rounded-full bg-gold/60" />
+                  <span className="size-1.5 rounded-full bg-gold/35" />
+                </span>
+                <p className="max-w-[30rem] text-[17px] leading-relaxed text-white/80">{t("description")}</p>
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </aside>
 
-      <main className="flex flex-1 flex-col items-center justify-start px-4 py-8 sm:px-8 sm:py-12 lg:justify-center lg:py-10 short:lg:py-4">
-        <div className="auth-card w-full max-w-[460px] rounded-3xl border border-black/[0.06] bg-card p-6 shadow-[0_1px_2px_rgb(28_36_32/0.05),0_10px_28px_-10px_rgb(28_36_32/0.14),0_32px_64px_-32px_rgb(14_90_75/0.3)] animate-in duration-500 fade-in slide-in-from-bottom-3 motion-reduce:animate-none sm:p-9 short:lg:py-6">
-          <div className="mb-6 flex items-center justify-between gap-3 short:mb-3">
-            <span
-              aria-hidden="true"
-              className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-primary ring-1 ring-primary/10"
-            >
-              <ShieldCheck className="size-[22px]" />
-            </span>
-            <LanguagePicker tone="page" />
+        <main className="flex flex-1 flex-col items-center justify-start px-4 py-8 sm:px-8 sm:py-12 lg:justify-center lg:py-10 short:lg:py-4">
+          <div className="auth-card w-full max-w-[460px] rounded-3xl border border-black/[0.06] bg-card p-6 shadow-[0_1px_2px_rgb(28_36_32/0.05),0_10px_28px_-10px_rgb(28_36_32/0.14),0_32px_64px_-32px_rgb(14_90_75/0.3)] animate-in duration-500 fade-in slide-in-from-bottom-3 motion-reduce:animate-none sm:p-9 short:lg:py-6">
+            <div className="mb-6 flex justify-end short:mb-3">
+              <LanguagePicker tone="page" />
+            </div>
+            {children}
           </div>
-          {children}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
