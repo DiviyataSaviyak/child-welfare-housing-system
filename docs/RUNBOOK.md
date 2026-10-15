@@ -85,9 +85,9 @@ Keep each check's ping URL for the next step. The service receives only short st
 From a checkout of the repository on your own computer:
 
 ```bash
-scp -r deploy/server ubuntu@<elastic ip>:diviyata-setup
+scp -r deploy/ec2 ubuntu@<elastic ip>:diviyata-setup
 ssh ubuntu@<elastic ip>
-sudo bash diviyata-setup/server-setup.sh --domain <domain> --email <ops email> \
+sudo bash diviyata-setup/setup/server-setup.sh --domain <domain> --email <ops email> \
   --backups s3:s3.ap-south-1.amazonaws.com/<bucket>/diviyata
 ```
 
@@ -133,7 +133,7 @@ Officers reset a forgotten password with a code sent by email to the address in 
 The simplest is a Gmail account the Ministry owns. It is free and sends up to about 500 emails a day.
 
 1. Sign in to the account, turn on 2-Step Verification, then make an app password at https://myaccount.google.com/apppasswords (name it "Diviyata"). Google shows its 16 letters once.
-2. Put these in `/opt/diviyata/.env` (a `.env` made before 14 Oct 2026 doesn't have the lines yet; add them):
+2. On your own computer, fill in these lines in `deploy/settings.env`:
 
    ```bash
    SMTP_HOST=smtp.gmail.com
@@ -143,7 +143,7 @@ The simplest is a Gmail account the Ministry owns. It is free and sends up to ab
    MAIL_FROM=<the account>@gmail.com
    ```
 
-3. Restart the app with them: `dc up -d --wait app`.
+3. Send them: `bash deploy/ops.sh env push` (`ops setup` sends them too). It writes them into `/opt/diviyata/.env` and recreates the app with them; `ops env show` lists them, the password hidden. By hand on the server instead: add the lines to `/opt/diviyata/.env` (a `.env` made before 14 Oct 2026 doesn't have them yet), then `dc up -d --wait app`. Not `dc restart app`: a restart keeps the container's old settings.
 4. Test it: give your own account an email address on the users screen, then on the sign-in page choose "මුරපදය අමතකද?" and give your username. The email should arrive within a minute; look in spam too. If it doesn't, `dc logs --since 10m app` shows `email_failed` with an error code, never the address or the email: `EAUTH` is a wrong user or app password, `ECONNECTION` or `ETIMEDOUT` a mail server the app can't reach.
 
 Another service works the same way with its own SMTP settings: Amazon SES (part of AWS, so no third party sees the addresses, STK-2; about US$0.10 per 1,000 emails; it needs a verified domain and production access first) or Brevo (free for 300 emails a day). Port 465 speaks TLS from the start; with 587 the app insists on switching to TLS (STARTTLS). An account gets at most 5 codes a day (SEC-4).
@@ -157,6 +157,11 @@ Everything below runs on the server as the deploy user (`sudo -iu deploy`), unle
 | See the containers | `dc ps` |
 | Read the app's log | `dc logs --since 1h app` |
 | See what is deployed | `cat release.env`, `tail deploys.log` |
+| See the settings, secrets hidden | `scripts/env.sh show` |
+| Change settings, then recreate what they change | `printf 'KEY=value
+' \| scripts/env.sh set` (from your computer: `ops env push` or `ops env set`) |
+| Recreate a container, so it reads `.env` and Caddy's files again | `scripts/restart.sh [app\|proxy\|db\|all]` (not `dc restart`, which keeps the old settings) |
+| Free disk space | `scripts/clean.sh`: unused images and build cache; the two releases' images stay |
 | See the scheduled jobs' output | `journalctl -t diviyata-monitor -t diviyata-backup -t diviyata-restore-test --since today` |
 | Open the database as the owner | `dc exec db psql -U diviyata diviyata` |
 | Run a script of the tools image | `dc run --rm tools npx tsx scripts/<script>.ts` |
@@ -167,12 +172,15 @@ The app's log holds ids, never names, NICs, addresses or phone numbers (SEC-8).
 
 ### How a deploy works (OPS-3)
 
-`deploy.yml` runs `ci.yml`, builds the app and tools images tagged with the commit, copies `deploy/server/compose.yml`, `deploy/server/caddy/` and `deploy/server/scripts/` to the server, and runs `scripts/deploy.sh <app image> <tools image>` there. `deploy.sh`:
+`deploy.yml` runs `ci.yml`, builds the app and tools images tagged with the commit, copies `deploy/ec2/stack/compose.yml`, `deploy/ec2/stack/caddy/` and `deploy/ec2/stack/scripts/` to the server, and runs `scripts/deploy.sh <app image> <tools image>` there. `deploy.sh`:
 
 1. pulls the images and backs up the database into `backups/` (the newest 5 are kept)
 2. if the release brings migrations, stops the app (Caddy shows a maintenance page in three languages) and runs them
 3. runs the lists seed, which only adds missing rows, and the grants (`scripts/db-grants.sql`)
 4. starts the new app and waits up to 3 minutes for its health check
+5. recreates the proxy if Caddy's files changed: they are mounted one by one, and the copy replaces them, so a running Caddy would go on reading the old ones
+
+Only the app's container is replaced; the database keeps running. A deploy never changes `.env`.
 
 If any step fails, the previous release starts again; if a migration had started, the database is first put back from step 1's backup. Nothing is lost, because the app was stopped before the migration. The run in GitHub then fails, and its log says why. A page left open in an office reloads by itself at its next move, because each build carries its commit as its deployment id.
 
@@ -230,7 +238,7 @@ All of them are in `/opt/diviyata/.env` (SEC-9). GitHub holds only the deploy ke
 
 - **Ubuntu's security updates** install by themselves, rebooting at 03:30 when needed. Once a month, outside office hours: `sudo apt update && sudo apt upgrade`, which also updates Docker.
 - **The app's dependencies** come through pull requests (STK-1); CI runs `npm audit` (SEC-12).
-- **PostgreSQL, Caddy and Node** are pinned in `deploy/server/compose.yml` and `docker/Dockerfile`. A new minor version is a pull request changing the tag. A new PostgreSQL major version needs a dump and restore: plan it with a backup.
+- **PostgreSQL, Caddy and Node** are pinned in `deploy/ec2/stack/compose.yml` and `docker/Dockerfile`. A new minor version is a pull request changing the tag. A new PostgreSQL major version needs a dump and restore: plan it with a backup.
 
 ## Before launch (tasks 9.10 to 9.13)
 

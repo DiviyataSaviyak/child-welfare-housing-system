@@ -6,8 +6,8 @@
 #
 # It reads deploy/settings.env (copied from settings.example.env) and reaches the server over
 # SSH and GitHub through the gh CLI. Nothing here needs you to log in to the server yourself.
-# shellcheck source=ops/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/ops/lib.sh"
+# shellcheck source=operator/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/operator/lib.sh"
 
 usage() {
   cat <<'EOF'
@@ -25,12 +25,19 @@ Every day
   deploy [branch]           deploy main (or a branch) now, without a new push
   ssh                       a shell on the server as the deploy user
 
+Settings on the server (/opt/diviyata/.env)
+  env show                  every setting, passwords and keys hidden
+  env push                  send settings.env's SMTP_* lines, then restart what they change
+  env set KEY=VALUE [...]   change settings (KEY= empties one), then restart what they change
+  restart [app|proxy|db|all]  recreate containers so they read .env and Caddy's files again
+
 When something goes wrong
   rollback [--with-database]  go back to the previous release
   backup                      back up into S3 now
   backups                     list the backups kept (30 days)
   restore-test                restore the latest backup into a scratch copy and check it
   restore <id|latest>         put the database and uploads back as in a backup (loses later changes)
+  clean                       free disk space: unused Docker images and build cache
 
 Staging only (refused in production)
   test-data demo|load [--remove]  add or remove made-up cases
@@ -38,35 +45,6 @@ Staging only (refused in production)
 This computer
   shortcut                  let "ops <command>" work from any folder in Git Bash
 EOF
-}
-
-# Runs a command on the server as the deploy user, in /opt/diviyata, with scripts/lib.sh loaded
-# (compose, load_env, log, die).
-as_deploy() {
-  # shellcheck disable=SC2029 # the command is quoted here, on purpose
-  remote "sudo -u deploy -H bash -c $(printf '%q' ". /opt/diviyata/scripts/lib.sh; $1")"
-}
-
-# Answers ready, new (reached, but setup hasn't run) or nothing (SSH failed).
-server_state() {
-  remote 'if id deploy >/dev/null 2>&1 && sudo test -d /opt/diviyata; then echo ready; else echo new; fi' || true
-}
-
-# Loads the settings, and stops with the next step to take while the server can't be used yet.
-load_ready() {
-  load_settings
-  case "$(server_state)" in
-    ready) ;;
-    new) die "the server isn't set up yet. Run: ops setup" ;;
-    *) die "can't reach the server over SSH. Check SERVER_IP and SSH_KEY in settings.env, and that the instance is running" ;;
-  esac
-}
-
-# Asks before something that can't be undone; the answer must be the word given.
-confirm() {
-  local word=$1 answer
-  read -r -p "Type $word to go on: " answer
-  [ "$answer" = "$word" ] || die "nothing was changed"
 }
 
 command=${1:-help}
@@ -94,6 +72,7 @@ case "$command" in
   setup) bash "$HERE/setup.sh" "$@" ;;
   create-admin) bash "$HERE/create-admin.sh" "$@" ;;
   launch) bash "$HERE/launch.sh" "$@" ;;
+  env) bash "$HERE/env.sh" "$@" ;;
 
   status)
     load_settings
@@ -161,6 +140,18 @@ case "$command" in
     esac
     # shellcheck disable=SC2029
     remote "sudo -u deploy -H /opt/diviyata/scripts/rollback.sh ${1:-}"
+    ;;
+
+  restart)
+    case "${1:-app}" in app | proxy | db | all) ;; *) die "restart [app|proxy|db|all]" ;; esac
+    load_ready
+    server_script restart.sh "${1:-app}"
+    check_health
+    ;;
+
+  clean)
+    load_ready
+    server_script clean.sh
     ;;
 
   backup)

@@ -86,3 +86,16 @@ ping_alert() {
   curl -fsS -m 10 --retry 3 --data-raw "$message" "$url$suffix" >/dev/null ||
     log "could not reach the alert service"
 }
+
+# Takes the deploy lock, so a deploy, a rollback, a restart or a change to .env never run at once.
+take_lock() {
+  exec 9>"$DIVIYATA_DIR/.deploy.lock"
+  flock -n 9 || die "a deploy, rollback or restart is running: try again when it ends"
+}
+
+# compose.yml mounts Caddy's files one by one, and a deploy's copy replaces them with new files, so
+# a running proxy keeps reading the old ones until it is recreated. .caddy.sum holds the checksum of
+# the files the proxy last started with.
+caddy_sum() { cat caddy/* | sha256sum | cut -d ' ' -f 1; }
+caddy_changed() { [ "$(caddy_sum)" != "$(cat .caddy.sum 2>/dev/null || true)" ]; }
+caddy_started() { caddy_sum >.caddy.sum; }

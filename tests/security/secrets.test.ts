@@ -38,7 +38,7 @@ describe("the repository holds no secrets (SEC-9)", () => {
   });
 
   it("leaves every secret empty in the server's env template", () => {
-    const template = readFileSync("deploy/server/env.example", "utf8");
+    const template = readFileSync("deploy/ec2/setup/env.example", "utf8");
     for (const key of [
       "DB_OWNER_PASSWORD",
       "APP_DB_PASSWORD",
@@ -51,7 +51,7 @@ describe("the repository holds no secrets (SEC-9)", () => {
   });
 
   it("takes every password in the server's stack from .env", () => {
-    const compose = readFileSync("deploy/server/compose.yml", "utf8");
+    const compose = readFileSync("deploy/ec2/stack/compose.yml", "utf8");
     const literal = compose
       .split("\n")
       .filter((line) => /(PASSWORD|SECRET)\b.*:/.test(line) || /:\/\/[^$]*:[^$@]+@/.test(line))

@@ -7,7 +7,7 @@
  *   npx tsx scripts/create-admin.ts --name "ආර්. සිල්වා" --mobile 0712345678
  *     [--designation "..."] [--email someone@example.lk] [--another]
  *
- * On the server: deploy/server/scripts/create-admin.sh with the same flags. It refuses while an active
+ * On the server: deploy/ec2/stack/scripts/create-admin.sh with the same flags. It refuses while an active
  * admin exists, who would create the account on the users screen instead; --another adds one
  * anyway, for when no admin can sign in.
  */

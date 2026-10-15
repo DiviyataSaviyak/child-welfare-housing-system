@@ -30,7 +30,7 @@ export const resetCodeLimiter = createRateLimiter({ limit: 5, windowMs: 15 * 60_
 
 /**
  * The client's IP address. On the server Caddy overwrites X-Forwarded-For with the real address
- * (deploy/server/caddy/Caddyfile), so the first entry is trusted; without it every request counts as "unknown".
+ * (deploy/ec2/stack/caddy/Caddyfile), so the first entry is trusted; without it every request counts as "unknown".
  */
 export function clientIp(headers: Headers): string {
   const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
