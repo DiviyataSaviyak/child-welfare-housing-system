@@ -2,9 +2,11 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { normaliseUsername } from "@/server/auth/accounts";
 import { checkResetCode, resetPasswordWithCode, sendResetCode } from "@/server/auth/password-reset";
 import { clientIp, resetCodeLimiter, signInLimiter } from "@/server/auth/rate-limit";
+import { resetCodeEmail } from "@/server/auth/reset-email";
 import { homeFor, safeReturnPath } from "@/server/auth/roles";
 import { attemptSignIn, changeOwnPassword, signOutCurrentSession } from "@/server/auth/sign-in";
 import { requireSignedIn } from "@/server/context";
@@ -82,9 +84,26 @@ export async function askForCode(_previous: AskForCodeState, form: FormData): Pr
     return { error: "tooMany", username, ticket: null };
   }
 
-  const t = await getTranslations("forgotPassword");
+  const [t, app, locale] = await Promise.all([
+    getTranslations("forgotPassword.email"),
+    getTranslations("app"),
+    getLocale(),
+  ]);
+  const words = {
+    appName: app("name"),
+    ministry: app("ministry"),
+    subject: t("subject"),
+    heading: t("heading"),
+    intro: t("intro"),
+    codeLabel: t("codeLabel"),
+    account: t("account"),
+    valid: t("valid"),
+    secret: t("secret"),
+    notYou: t("notYou"),
+    automatic: t("automatic"),
+  };
   const result = await sendResetCode(db, username, (email, code) =>
-    sendMail(email, { subject: t("email.subject"), text: t("email.body", { code }) }),
+    sendMail(email, resetCodeEmail(words, code, normaliseUsername(username), locale)),
   );
   if (!result.ok) {
     logEvent("reset_code_refused", { reason: "email_failed" });

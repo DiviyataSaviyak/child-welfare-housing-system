@@ -82,7 +82,14 @@
     "startAgain": "Start again",
     "email": {
       "subject": "Diviyata Sawiyak: your code to reset your password",
-      "body": "Your code to reset your password is {code}. It is valid for 15 minutes. Don't tell it to anyone.\n\nIf you didn't ask for it, ignore this email. Your password stays the same."
+      "heading": "Reset your password",
+      "intro": "We received a request to reset the password of your account. Enter the code below on the \"Forgot your password?\" page.",
+      "codeLabel": "Your code",
+      "account": "Account",
+      "valid": "This code is valid for 15 minutes only.",
+      "secret": "Don't tell this code to anyone.",
+      "notYou": "If you didn't ask for it, ignore this email. Your password stays the same.",
+      "automatic": "This email was sent automatically. Please don't reply to it."
     },
     "code": {
       "sent": "If the username is right, a code has been sent to the email address in the account. It is valid for 15 minutes.",
