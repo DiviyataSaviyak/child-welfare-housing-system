@@ -112,7 +112,8 @@ server_script() {
   shift
   [ $# -eq 0 ] || args=$(printf '%q ' "$@")
   # bash's own test: Ubuntu 26.04's /usr/bin/test (uutils) answers -x wrongly for root.
-  remote "sudo bash -c 'test -x /opt/diviyata/scripts/$name'" ||
+  # </dev/null: ssh would otherwise swallow the standard input meant for the script below.
+  remote "sudo bash -c 'test -x /opt/diviyata/scripts/$name'" </dev/null ||
     die "the server doesn't have scripts/$name yet: it arrives with the next deploy of main (ops deploy)"
   # shellcheck disable=SC2029 # the arguments are quoted here, on purpose
   remote "sudo -u deploy -H /opt/diviyata/scripts/$name $args"
