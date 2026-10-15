@@ -1,53 +1,106 @@
+import { ShieldCheck } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { Mark } from "@/components/brand/lockup";
 import { LanguagePicker } from "@/components/language-picker";
 
 /**
  * Sign-in and password pages, with no menu: the programme's panel in the header's green beside the form
- * (above it on a narrow screen), and the language picker over the form.
+ * (a short band above it on a narrow screen). The language picker sits in the card, beside the form.
  */
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("app");
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
-      <aside className="relative isolate shrink-0 overflow-hidden bg-header bg-[linear-gradient(150deg,#0f6553_0%,var(--header)_45%,#0a3f34_100%)] text-header-foreground lg:flex lg:w-[44%] lg:max-w-[640px] lg:flex-col">
-        <div aria-hidden="true" className="h-1 bg-gold" />
-        {/* A soft light and a faint dotted grid behind the panel's words. */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_15%,rgb(255_255_255/0.12),transparent_45%)]"
-        />
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-[radial-gradient(rgb(255_255_255/0.07)_1px,transparent_1px)] [background-size:22px_22px]"
-        />
-        <div className="flex items-center gap-4 px-6 py-5 sm:px-10 lg:flex-1 lg:flex-col lg:items-start lg:justify-center lg:gap-8 lg:px-14 lg:py-16">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-[#fbf5ea] shadow-[0_8px_24px_rgb(0_0_0/0.25)] ring-1 ring-white/40 lg:size-24 lg:rounded-3xl">
-            <Mark className="h-9 w-[40px] lg:h-16 lg:w-[70px]" />
+    <div className="flex min-h-screen flex-col bg-background lg:flex-row">
+      <aside className="relative isolate shrink-0 overflow-hidden bg-header bg-[linear-gradient(160deg,#11705d_0%,var(--header)_42%,#093d33_100%)] text-header-foreground lg:flex lg:min-h-screen lg:w-[46%] lg:max-w-[680px] lg:flex-col">
+        <PanelBackground />
+        <div aria-hidden="true" className="h-1 bg-[linear-gradient(90deg,var(--gold),#f0c661_50%,var(--gold))]" />
+
+        {/* A narrow screen: the mark, the name and the ministry in one short band. */}
+        <div className="flex items-center gap-4 px-5 py-4 sm:px-8 lg:hidden">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[#fbf5ea] shadow-[0_4px_14px_rgb(0_0_0/0.25)] ring-1 ring-white/50">
+            <Mark className="h-8 w-[35px]" />
           </span>
-          <div className="flex min-w-0 flex-col gap-1 lg:gap-5">
-            <p className="text-2xl leading-tight font-extrabold tracking-tight lg:text-4xl xl:text-[44px]">
-              {t("name")}
-            </p>
-            <span aria-hidden="true" className="hidden h-1.5 w-20 rounded-full bg-gold lg:block" />
-            <p className="text-sm text-header-muted lg:text-lg lg:font-semibold lg:text-header-foreground">
-              {t("ministry")}
-            </p>
-            <p className="hidden max-w-md text-base leading-relaxed text-header-muted lg:block">{t("description")}</p>
+          <div className="flex min-w-0 flex-col">
+            <p className="text-[22px] leading-tight font-bold tracking-tight">{t("name")}</p>
+            <p className="text-sm leading-snug text-header-muted">{t("ministry")}</p>
+          </div>
+        </div>
+
+        {/* A wide screen: the ministry as a letterhead, then the programme in the middle. */}
+        <div className="hidden flex-1 flex-col px-12 py-10 lg:flex xl:px-16 short:py-7">
+          <p className="flex items-center gap-3 text-[15px] font-semibold text-header-foreground/90">
+            <span aria-hidden="true" className="h-6 w-1 shrink-0 rounded-full bg-gold" />
+            {t("ministry")}
+          </p>
+          <div className="flex flex-1 flex-col justify-center gap-7 py-10 animate-in duration-700 fade-in slide-in-from-bottom-2 motion-reduce:animate-none short:gap-5 short:py-6">
+            <span className="relative flex size-[104px] items-center justify-center rounded-[28px] bg-[#fbf5ea] shadow-[0_18px_40px_-12px_rgb(0_0_0/0.45)] ring-1 ring-white/60 short:size-20 short:rounded-3xl">
+              {/* A soft halo round the mark. */}
+              <span
+                aria-hidden="true"
+                className="absolute -inset-3 -z-10 rounded-[36px] bg-white/10 ring-1 ring-white/15"
+              />
+              <Mark className="h-[66px] w-[72px] short:h-[52px] short:w-[57px]" />
+            </span>
+            <div className="flex flex-col gap-5 short:gap-4">
+              <p className="text-[40px] leading-[1.15] font-extrabold tracking-tight xl:text-5xl xl:leading-[1.12]">
+                {t("name")}
+              </p>
+              <span aria-hidden="true" className="flex items-center gap-1.5">
+                <span className="h-1.5 w-14 rounded-full bg-gold" />
+                <span className="h-1.5 w-3 rounded-full bg-gold/60" />
+                <span className="size-1.5 rounded-full bg-gold/35" />
+              </span>
+              <p className="max-w-[30rem] text-[17px] leading-relaxed text-white/80">{t("description")}</p>
+            </div>
           </div>
         </div>
       </aside>
-      <div className="flex flex-1 flex-col">
-        <div className="flex justify-center px-4 pt-5 sm:justify-end sm:px-8">
-          <LanguagePicker tone="page" />
-        </div>
-        <main className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-8 lg:py-12">
-          <div className="w-full max-w-[440px] rounded-2xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(28_36_32/0.04),0_12px_32px_-12px_rgb(28_36_32/0.18)] sm:p-9">
-            {children}
+
+      <main className="flex flex-1 flex-col items-center justify-start px-4 py-8 sm:px-8 sm:py-12 lg:justify-center lg:py-10 short:lg:py-4">
+        <div className="auth-card w-full max-w-[460px] rounded-3xl border border-black/[0.06] bg-card p-6 shadow-[0_1px_2px_rgb(28_36_32/0.05),0_10px_28px_-10px_rgb(28_36_32/0.14),0_32px_64px_-32px_rgb(14_90_75/0.3)] animate-in duration-500 fade-in slide-in-from-bottom-3 motion-reduce:animate-none sm:p-9 short:lg:py-6">
+          <div className="mb-6 flex items-center justify-between gap-3 short:mb-3">
+            <span
+              aria-hidden="true"
+              className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-primary ring-1 ring-primary/10"
+            >
+              <ShieldCheck className="size-[22px]" />
+            </span>
+            <LanguagePicker tone="page" />
           </div>
-        </main>
-      </div>
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/** The panel's quiet decoration: a light from the top, a fading dot grid, two rings and the house in outline. */
+function PanelBackground() {
+  return (
+    <div aria-hidden="true" className="absolute inset-0 -z-10">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_15%_0%,rgb(255_255_255/0.14),transparent_55%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(rgb(255_255_255/0.08)_1px,transparent_1px)] mask-[linear-gradient(170deg,black,transparent_70%)] bg-size-[24px_24px]" />
+      <div className="absolute -top-48 -right-48 hidden size-[520px] rounded-full border border-white/[0.07] lg:block" />
+      <div className="absolute -top-28 -right-28 hidden size-[360px] rounded-full border border-white/[0.06] lg:block" />
+      {/* Its size and faintness are attributes, not classes, so it can never fill the panel in solid white. */}
+      <svg
+        viewBox="0 0 96 88"
+        width="480"
+        height="440"
+        className="auth-watermark"
+        fill="none"
+        stroke="#ffffff"
+        strokeOpacity="0.06"
+        strokeWidth="0.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M7 43 L48 7 L89 43" />
+        <path d="M20.75 46 V66 M75.25 46 V66 M48 46 V71 M9 80.5 H87" />
+        <path d="M48.5 53 C50 41 55 33 65 30 C65.5 42 59 51 48.5 53 Z" />
+        <path d="M47.5 59 C44 50 39.5 44 31.5 41.5 C31 51 37 57.5 47.5 59 Z" />
+      </svg>
     </div>
   );
 }

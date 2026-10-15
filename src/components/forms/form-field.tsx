@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 /**
  * A labelled text input in the prototype's size: 48 px tall, 17 px text (UI-4, UI-6).
  * `error` shows a message under the field (ERR-1); `invalid` + `errorId` point at a shared error box instead.
- * `trailing` is a small button shown inside the field's right edge, such as PasswordField's show/hide.
+ * `trailing` is a small button shown inside the field's right edge, such as PasswordField's show/hide;
+ * `leading` is an icon inside its left edge.
  */
 export function FormField({
   id,
@@ -15,6 +16,8 @@ export function FormField({
   invalid,
   errorId,
   trailing,
+  leading,
+  className,
   ...inputProps
 }: {
   id: string;
@@ -24,6 +27,7 @@ export function FormField({
   invalid?: boolean;
   errorId?: string;
   trailing?: React.ReactNode;
+  leading?: React.ReactNode;
 } & Omit<React.ComponentProps<"input">, "id">) {
   const helpId = help ? `${id}-help` : undefined;
   const ownErrorId = error ? `${id}-error` : undefined;
@@ -40,9 +44,22 @@ export function FormField({
           id={id}
           aria-invalid={isInvalid || undefined}
           aria-describedby={describedBy}
-          className={cn("h-12 rounded-lg px-3.5 text-[17px] md:text-[17px]", trailing && "pr-12")}
+          className={cn(
+            "peer h-12 rounded-lg px-3.5 text-[17px] md:text-[17px]",
+            trailing && "pr-12",
+            leading && "ps-11",
+            className,
+          )}
           {...inputProps}
         />
+        {leading && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3.5 text-muted-foreground transition-colors peer-focus-visible:text-primary"
+          >
+            {leading}
+          </div>
+        )}
         {trailing && <div className="absolute inset-y-0 right-1 flex items-center">{trailing}</div>}
       </div>
       {help && (
