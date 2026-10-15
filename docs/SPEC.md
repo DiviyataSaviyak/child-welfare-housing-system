@@ -1,4 +1,4 @@
-# Diviyata Sawiyak — Software Specification
+# Diviyata Saviyak — Software Specification
 
 2026-09-28, updated 2026-10-14 · Janindu Pramod
 
@@ -360,7 +360,7 @@ Only the DS office starts and pays installments (section 4). Each change is refu
   | HO officer | Case list, case page, new case | `/ho/cases`, `/ho/cases/[id]`, `/ho/cases/new` | ප්‍රතිලාභියාගේ පිටුව |
   | Admin | Users, lists | `/admin/users`, `/admin/lists` | පරිශීලකයින්, ලැයිස්තු |
 
-- **UI-8** The sign-in and set-a-new-password pages shall show the programme's logo above the card: the mark (a house with a sprout, on a gold base), දිවියට සවියක්, a short gold line and the ministry's name. They have no header bar. The logo keeps its own colours: a maroon house and name, a gold base and a green sprout (`src/components/brand/lockup.tsx`). The sign-in button is a softer maroon (`--sign-in`). Every other page's green header is fixed to the top of the screen (it stays in place when the page scrolls) and shows the mark in its own maroon, gold and green on a small cream tile, beside the programme's name. The name is in the screen's language: දිවියට සවියක්, திவியட சவியக் or Diviyata Sawiyak (UI-9). The logo's Latin line "DIVIYATA SAWIYAK" is left out.
+- **UI-8** The sign-in and set-a-new-password pages shall show the programme's logo above the card: the mark (a house with a sprout, on a gold base), දිවියට සවියක්, a short gold line and the ministry's name. They have no header bar. The logo keeps its own colours: a maroon house and name, a gold base and a green sprout (`src/components/brand/lockup.tsx`). The sign-in button is a softer maroon (`--sign-in`). Every other page's green header is fixed to the top of the screen (it stays in place when the page scrolls) and shows the mark in its own maroon, gold and green on a small cream tile, beside the programme's name. The name is in the screen's language: දිවියට සවියක්, திவியட சவியக் or Diviyata Saviyak (UI-9). The logo's Latin line "DIVIYATA SAVIYAK" is left out.
 - **UI-9** The screens shall come in Sinhala, Tamil and English (7 Oct 2026; PRD question 8). Sinhala is the default.
   - Every page shows a language picker: on the sign-in and password pages above the logo, and in the header elsewhere. It names each language in its own script (සිංහල · தமிழ் · English), marked with its own `lang`.
   - The choice is kept in the browser (a cookie, `lang`, for a year), not in the account or the address, so links and bookmarks work in every language. Choosing shows the same page again in the new language.

@@ -1,4 +1,4 @@
-# Diviyata Sawiyak — Product Requirements Document
+# Diviyata Saviyak — Product Requirements Document
 
 2026-09-28, updated 2026-10-14 · Janindu Pramod
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Diviyata Sawiyak (දිවියට සවියක්) is a web system to replace the Google Sheet that the Ministry of Women and Child Affairs uses to run this housing programme. Head Office and every Divisional Secretariat (DS) will use it on office PCs, with screens in Sinhala, Tamil and English. For each case it records the Rs. 2,000,000 released, the four installments paid from that amount, and the work done on the ground.
+Diviyata Saviyak (දිවියට සවියක්) is a web system to replace the Google Sheet that the Ministry of Women and Child Affairs uses to run this housing programme. Head Office and every Divisional Secretariat (DS) will use it on office PCs, with screens in Sinhala, Tamil and English. For each case it records the Rs. 2,000,000 released, the four installments paid from that amount, and the work done on the ground.
 
 - **Who it helps.** Two groups. Care leavers are young people who grew up in a child-care institution and are now 18 or older. Children at risk are vulnerable children in at-risk families, and their cases are recorded under the child's guardian.
 - **Who selects them.** Each DS selects its beneficiaries after its own field research. Head Office then checks each case and verifies or rejects it.

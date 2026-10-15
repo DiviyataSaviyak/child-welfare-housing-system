@@ -77,7 +77,7 @@ test("Head Office works in English, and its Excel file comes in English", async 
     page.waitForEvent("download"),
     page.getByRole("link", { name: "Download as an Excel file" }).click(),
   ]);
-  expect(download.suggestedFilename()).toMatch(/^Diviyata Sawiyak list \d{4}-\d{2}-\d{2}\.xlsx$/);
+  expect(download.suggestedFilename()).toMatch(/^Diviyata Saviyak list \d{4}-\d{2}-\d{2}\.xlsx$/);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(await download.path());
   const sheet = workbook.worksheets[0];

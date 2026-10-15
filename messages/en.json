@@ -1,7 +1,7 @@
 {
   "app": {
-    "name": "Diviyata Sawiyak",
-    "description": "The system for recording the progress of the Diviyata Sawiyak housing assistance programme",
+    "name": "Diviyata Saviyak",
+    "description": "The system for recording the progress of the Diviyata Saviyak housing assistance programme",
     "ministry": "Ministry of Women and Child Affairs"
   },
   "language": {
@@ -81,7 +81,7 @@
     "backToSignIn": "Back to sign in",
     "startAgain": "Start again",
     "email": {
-      "subject": "Diviyata Sawiyak: your code to reset your password",
+      "subject": "Diviyata Saviyak: your code to reset your password",
       "heading": "Reset your password",
       "intro": "We received a request to reset the password of your account. Enter the code below on the \"Forgot your password?\" page.",
       "codeLabel": "Your code",
@@ -712,7 +712,7 @@
       "button": "Download as an Excel file",
       "hint": "Every beneficiary that matches the filters, on all pages",
       "sheet": "Beneficiaries",
-      "fileName": "Diviyata Sawiyak list {date}.xlsx",
+      "fileName": "Diviyata Saviyak list {date}.xlsx",
       "columns": {
         "number": "Registration number",
         "category": "Category",

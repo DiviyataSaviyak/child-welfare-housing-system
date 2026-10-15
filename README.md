@@ -1,6 +1,6 @@
-# Diviyata Sawiyak (දිවියට සවියක්)
+# Diviyata Saviyak (දිවියට සවියක්)
 
-A web system for the Ministry of Women and Child Affairs, Sri Lanka, to run the Diviyata Sawiyak housing programme. It tracks each beneficiary from the Divisional Secretariat's first entry through the Head Office check, the Rs. 2,000,000 release, the four installments and the building stages.
+A web system for the Ministry of Women and Child Affairs, Sri Lanka, to run the Diviyata Saviyak housing programme. It tracks each beneficiary from the Divisional Secretariat's first entry through the Head Office check, the Rs. 2,000,000 release, the four installments and the building stages.
 
 The screens are in Sinhala and designed for office PCs.
 

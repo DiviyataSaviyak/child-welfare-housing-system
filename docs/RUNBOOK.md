@@ -1,4 +1,4 @@
-# Diviyata Sawiyak — Runbook
+# Diviyata Saviyak — Runbook
 
 2026-10-11 · Phase 9 (task 9.8)
 
