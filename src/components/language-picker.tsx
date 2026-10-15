@@ -21,8 +21,10 @@ export function LanguagePicker({ tone }: { tone: "header" | "page" }) {
       aria-label={t("label")}
       aria-busy={pending}
       className={cn(
-        "flex shrink-0 items-center rounded-lg border p-0.5",
-        tone === "header" ? "border-header-muted/60" : "border-border bg-card",
+        "flex shrink-0 items-center p-0.5",
+        tone === "header"
+          ? "rounded-full bg-black/20 ring-1 ring-white/10 ring-inset"
+          : "rounded-lg border border-border bg-card",
       )}
     >
       {LOCALES.map((locale) => {
@@ -38,14 +40,14 @@ export function LanguagePicker({ tone }: { tone: "header" | "page" }) {
               if (!on) start(() => chooseLanguage(locale));
             }}
             className={cn(
-              "h-8 rounded-md px-2.5 text-[15px] disabled:opacity-70",
+              "h-8 px-2.5 text-[15px] transition-colors disabled:opacity-70",
               tone === "header"
                 ? on
-                  ? "bg-white font-semibold text-header"
-                  : "text-header-foreground hover:bg-white/10"
+                  ? "rounded-full bg-white px-3.5 font-semibold text-header shadow-sm"
+                  : "rounded-full px-3 text-header-muted hover:bg-white/10 hover:text-header-foreground"
                 : on
-                  ? "bg-primary font-semibold text-primary-foreground"
-                  : "text-foreground hover:bg-muted",
+                  ? "rounded-md bg-primary font-semibold text-primary-foreground"
+                  : "rounded-md text-foreground hover:bg-muted",
             )}
           >
             {t(`names.${locale}`)}

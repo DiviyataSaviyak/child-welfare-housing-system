@@ -35,25 +35,37 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-5 bg-header px-8 text-header-foreground">
-        <span className="flex shrink-0 items-center gap-3">
-          <span className="flex h-11 w-12 shrink-0 items-center justify-center rounded-lg bg-[#fbf5ea]">
-            <Mark className="h-8 w-[35px]" />
-          </span>
-          <span className="text-[22px] font-bold whitespace-nowrap">{t("app.name")}</span>
-        </span>
-        <span className="shrink-0 text-base whitespace-nowrap text-header-muted">{areaLabel}</span>
-        <div className="ms-auto flex min-w-0 items-center gap-4">
-          <LanguagePicker tone="header" />
-          {bell && <Bell href={bell.href} unread={bell.unread} />}
-          {profile ? (
-            <ProfileDialog userName={userName} profile={profile} />
-          ) : (
-            <span className="shrink-0 text-base whitespace-nowrap" aria-label={`${t("shell.signedInAs")} ${userName}`}>
-              {userName}
+      <header className="sticky top-0 z-30 shrink-0 bg-header bg-[linear-gradient(105deg,#0f6553_0%,var(--header)_45%,#0a4639_100%)] text-header-foreground shadow-[0_1px_0_rgb(0_0_0/0.08),0_6px_18px_-8px_rgb(10_70_57/0.55)]">
+        {/* The logo's gold base, as a thin line along the top. */}
+        <div aria-hidden="true" className="h-1 bg-gold" />
+        <div className="flex h-[88px] items-center gap-6 px-8">
+          <div className="flex min-w-0 shrink-0 items-center gap-3.5">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-[#fbf5ea] shadow-[0_2px_6px_rgb(0_0_0/0.18)] ring-1 ring-white/40">
+              <Mark className="h-9 w-[40px]" />
             </span>
-          )}
-          <SignOutButton />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[22px] leading-tight font-bold tracking-tight whitespace-nowrap">
+                {t("app.name")}
+              </span>
+              <span className="text-[15px] leading-snug whitespace-nowrap text-header-muted">{areaLabel}</span>
+            </span>
+          </div>
+          <div className="ms-auto flex min-w-0 items-center gap-3">
+            <LanguagePicker tone="header" />
+            <span aria-hidden="true" className="mx-1 h-7 w-px shrink-0 bg-white/20" />
+            {bell && <Bell href={bell.href} unread={bell.unread} />}
+            {profile ? (
+              <ProfileDialog userName={userName} profile={profile} />
+            ) : (
+              <span
+                className="shrink-0 text-base whitespace-nowrap"
+                aria-label={`${t("shell.signedInAs")} ${userName}`}
+              >
+                {userName}
+              </span>
+            )}
+            <SignOutButton />
+          </div>
         </div>
       </header>
       <NavLinks

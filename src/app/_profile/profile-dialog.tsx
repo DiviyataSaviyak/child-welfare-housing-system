@@ -1,5 +1,6 @@
 "use client";
 
+import { UserRound } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -37,8 +38,14 @@ export function ProfileDialog({ userName, profile }: { userName: string; profile
         title={t("shell.profile")}
         aria-label={`${t("shell.signedInAs")} ${userName} · ${t("shell.profile")}`}
         aria-haspopup="dialog"
-        className="shrink-0 rounded-md px-1 text-base whitespace-nowrap underline-offset-4 hover:underline"
+        className="flex h-10 shrink-0 items-center gap-2.5 rounded-full bg-white/10 ps-1 pe-5 text-[15px] font-semibold whitespace-nowrap ring-1 ring-white/15 transition-colors ring-inset hover:bg-white/20"
       >
+        <span
+          aria-hidden="true"
+          className="flex size-8 items-center justify-center rounded-full bg-gold text-foreground"
+        >
+          <UserRound className="size-[18px]" />
+        </span>
         {userName}
       </button>
       <Modal open={open} onClose={() => setOpen(false)} labelledBy="profile-title" size="wide">

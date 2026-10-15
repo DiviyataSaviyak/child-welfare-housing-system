@@ -22,7 +22,10 @@ export function NavLinks({ label, items }: { label: string; items: NavLinkItem[]
   const pathname = usePathname();
 
   return (
-    <nav aria-label={label} className="flex h-14 shrink-0 items-stretch gap-2 border-b border-border bg-card px-6">
+    <nav
+      aria-label={label}
+      className="flex h-14 shrink-0 items-stretch gap-1 border-b border-border bg-card px-6 shadow-[0_1px_2px_rgb(28_36_32/0.04)]"
+    >
       {items.map((item) => {
         const active = item.exact
           ? pathname === item.href
@@ -33,12 +36,15 @@ export function NavLinks({ label, items }: { label: string; items: NavLinkItem[]
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 border-b-[3px] px-4 text-[17px] transition-colors",
+              "relative my-2 flex items-center gap-2.5 rounded-lg px-4 text-[17px] transition-colors",
               active
-                ? "border-primary font-bold text-primary"
-                : "border-transparent font-medium text-muted-foreground hover:text-primary",
+                ? "font-bold text-primary"
+                : "font-medium text-muted-foreground hover:bg-accent hover:text-primary",
             )}
           >
+            {active && (
+              <span aria-hidden="true" className="absolute inset-x-3 -bottom-2 h-[3px] rounded-t-full bg-primary" />
+            )}
             {item.label}
             {item.count && <WaitingBadge live={item.count} />}
           </Link>
