@@ -14,7 +14,7 @@ import { db } from "@/server/db";
  * Better Auth's endpoint would skip.
  */
 export const auth = betterAuth({
-  appName: "Diviyata Sawiyak",
+  appName: "Diviyata Saviyak",
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
   database: prismaAdapter(db, { provider: "postgresql" }),

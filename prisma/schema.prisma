@@ -1,4 +1,4 @@
-// Diviyata Sawiyak database schema. Section 5 of docs/SPEC.md describes each entity.
+// Diviyata Saviyak database schema. Section 5 of docs/SPEC.md describes each entity.
 
 generator client {
   provider = "prisma-client"

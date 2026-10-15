@@ -1,4 +1,4 @@
-# Diviyata Sawiyak — Implementation Plan
+# Diviyata Saviyak — Implementation Plan
 
 2026-09-28 · Janindu Pramod
 
