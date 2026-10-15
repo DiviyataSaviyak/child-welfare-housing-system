@@ -15,20 +15,25 @@ const optionalText = (max: number) =>
     .max(max, { error: "tooLong" })
     .transform((value) => value || null);
 
+/** The details an officer may change on their own profile page too. */
+const personFields = {
+  name: z.string().trim().min(1, { error: "required" }).min(2, { error: "tooShort" }).max(100, { error: "tooLong" }),
+  designation: optionalText(100),
+  mobile: z
+    .string()
+    .transform(normalisePhone)
+    .pipe(z.string().min(1, { error: "required" }).refine(isValidPhone, { error: "mobile" })),
+  contactEmail: z
+    .string()
+    .trim()
+    .max(254, { error: "tooLong" })
+    .refine((value) => value === "" || z.email().safeParse(value).success, { error: "email" })
+    .transform((value) => value || null),
+};
+
 export const accountSchema = z
   .object({
-    name: z.string().trim().min(1, { error: "required" }).min(2, { error: "tooShort" }).max(100, { error: "tooLong" }),
-    designation: optionalText(100),
-    mobile: z
-      .string()
-      .transform(normalisePhone)
-      .pipe(z.string().min(1, { error: "required" }).refine(isValidPhone, { error: "mobile" })),
-    contactEmail: z
-      .string()
-      .trim()
-      .max(254, { error: "tooLong" })
-      .refine((value) => value === "" || z.email().safeParse(value).success, { error: "email" })
-      .transform((value) => value || null),
+    ...personFields,
     role: z.enum(ROLES, { error: "role" }),
     dsOfficeId: z
       .string()
@@ -60,6 +65,34 @@ export function parseAccountForm(
   const errors: AccountErrors = {};
   for (const issue of result.error.issues) {
     const field = issue.path[0] as AccountField;
+    errors[field] ??= issue.message as AccountErrorKey;
+  }
+  return { ok: false, errors };
+}
+
+/**
+ * The profile page, where signed-in users change their own details. The role, district and DS office
+ * stay with the admin (ADM-4), so they aren't on it.
+ */
+export const profileSchema = z.object(personFields);
+
+export type ProfileInput = z.output<typeof profileSchema>;
+export type ProfileField = keyof z.input<typeof profileSchema>;
+export type ProfileErrors = Partial<Record<ProfileField, AccountErrorKey>>;
+
+const PROFILE_FIELDS: ProfileField[] = ["name", "designation", "mobile", "contactEmail"];
+
+/** Reads the profile form. Missing fields count as empty. */
+export function parseProfileForm(
+  read: (field: ProfileField) => string,
+): { ok: true; value: ProfileInput } | { ok: false; errors: ProfileErrors } {
+  const raw = Object.fromEntries(PROFILE_FIELDS.map((field) => [field, read(field)]));
+  const result = profileSchema.safeParse(raw);
+  if (result.success) return { ok: true, value: result.data };
+
+  const errors: ProfileErrors = {};
+  for (const issue of result.error.issues) {
+    const field = issue.path[0] as ProfileField;
     errors[field] ??= issue.message as AccountErrorKey;
   }
   return { ok: false, errors };

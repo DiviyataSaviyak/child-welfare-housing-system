@@ -128,6 +128,44 @@ export async function getAccount(db: PrismaClient, id: string): Promise<AccountD
   };
 }
 
+export type Profile = {
+  name: string;
+  username: string;
+  designation: string | null;
+  mobile: string | null;
+  contactEmail: string | null;
+  role: Role;
+  officeName: string | null;
+  districtName: string | null;
+};
+
+/** The signed-in user's own account, for the profile page; office and district in the screen's language. */
+export async function getProfile(db: PrismaClient, userId: string, locale: Locale): Promise<Profile | null> {
+  const u = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      name: true,
+      username: true,
+      designation: true,
+      mobile: true,
+      contactEmail: true,
+      role: true,
+      dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+    },
+  });
+  if (!u || !isRole(u.role) || !u.username) return null;
+  return {
+    name: u.name,
+    username: u.username,
+    designation: u.designation,
+    mobile: u.mobile,
+    contactEmail: u.contactEmail,
+    role: u.role,
+    officeName: u.dsOffice ? localName(u.dsOffice, locale) : null,
+    districtName: u.dsOffice ? localName(u.dsOffice.district, locale) : null,
+  };
+}
+
 export type OfficeChoice = { id: number; name: string; active: boolean };
 export type DistrictChoice = { id: number; name: string; offices: OfficeChoice[] };
 

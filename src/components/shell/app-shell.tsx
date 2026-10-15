@@ -1,6 +1,10 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { ProfileDialog } from "@/app/_profile/profile-dialog";
 import { Mark } from "@/components/brand/lockup";
 import { LanguagePicker } from "@/components/language-picker";
+import { getContext } from "@/server/context";
+import { db } from "@/server/db";
+import { getProfile } from "@/server/users/queries";
 import { Bell } from "./bell";
 import { NavLinks } from "./nav-links";
 import { SignOutButton } from "./sign-out-button";
@@ -24,7 +28,9 @@ export async function AppShell({
   bell?: { href: string; unread: LiveCount };
   children: React.ReactNode;
 }) {
-  const t = await getTranslations();
+  const [t, locale, context] = await Promise.all([getTranslations(), getLocale(), getContext()]);
+  // The name in the header opens the signed-in user's profile in a pop-up.
+  const profile = context ? await getProfile(db, context.userId, locale) : null;
   const areaLabel = officeName ? t("areas.dsOffice", { office: officeName }) : t(`areas.${area}`);
 
   return (
@@ -40,9 +46,13 @@ export async function AppShell({
         <div className="ms-auto flex min-w-0 items-center gap-4">
           <LanguagePicker tone="header" />
           {bell && <Bell href={bell.href} unread={bell.unread} />}
-          <span className="shrink-0 text-base whitespace-nowrap" aria-label={`${t("shell.signedInAs")} ${userName}`}>
-            {userName}
-          </span>
+          {profile ? (
+            <ProfileDialog userName={userName} profile={profile} />
+          ) : (
+            <span className="shrink-0 text-base whitespace-nowrap" aria-label={`${t("shell.signedInAs")} ${userName}`}>
+              {userName}
+            </span>
+          )}
           <SignOutButton />
         </div>
       </header>

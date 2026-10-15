@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../../../tests/db/client";
 import type { AccountInput } from "@/lib/validation/user";
-import { createAccount, resetPassword, setAccountDisabled, updateAccount } from "./commands";
-import { accountHistory, listAccounts } from "./queries";
+import { createAccount, resetPassword, setAccountDisabled, updateAccount, updateProfile } from "./commands";
+import { accountHistory, getProfile, listAccounts } from "./queries";
 
 const db = createTestClient();
 const ADMIN = "users-test-admin";
@@ -124,6 +124,44 @@ describe("changing an account (ADM-4)", () => {
     const { user, dsOfficeId } = await newOfficer();
     expect(await updateAccount(db, ADMIN, user.id, officer(dsOfficeId))).toEqual({ ok: true, value: { changed: [] } });
     expect(await accountHistory(db, user.id)).toHaveLength(1);
+  });
+});
+
+describe("changing one's own profile", () => {
+  it("changes the officer's own details, keeps the role and office, and logs the officer as the actor", async () => {
+    const { user, dsOfficeId } = await newOfficer();
+    const details = { name: "ජී. පරීක්ෂණ", designation: null, mobile: "0770000202", contactEmail: "g@example.lk" };
+
+    const result = await updateProfile(db, user.id, details);
+    expect(result).toEqual({ ok: true, value: { changed: ["designation", "mobile", "contactEmail"] } });
+
+    const after = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(after).toMatchObject({ ...details, role: "DS_OFFICER", dsOfficeId });
+    const [latest] = await accountHistory(db, user.id);
+    expect(latest).toMatchObject({
+      action: "account_updated",
+      actorName: "ජී. පරීක්ෂණ",
+      before: { designation: "සංවර්ධන නිලධාරී", mobile: "0710000201", contactEmail: null },
+      after: { designation: null, mobile: "0770000202", contactEmail: "g@example.lk" },
+    });
+
+    expect(await updateProfile(db, user.id, details)).toEqual({ ok: true, value: { changed: [] } });
+    expect(await accountHistory(db, user.id)).toHaveLength(2);
+  });
+
+  it("shows the account's username, role, district and office", async () => {
+    const { user, dsOfficeId } = await newOfficer();
+    const office = await db.dsOffice.findUniqueOrThrow({ where: { id: dsOfficeId }, include: { district: true } });
+    expect(await getProfile(db, user.id, "si")).toEqual({
+      name: user.name,
+      username: user.username,
+      designation: user.designation,
+      mobile: user.mobile,
+      contactEmail: null,
+      role: "DS_OFFICER",
+      officeName: office.nameSi,
+      districtName: office.district.nameSi,
+    });
   });
 });
 

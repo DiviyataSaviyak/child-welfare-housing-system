@@ -33,7 +33,20 @@
     "signedInAs": "Signed in as",
     "signOut": "Sign out",
     "signingOut": "Signing out...",
-    "changePassword": "Change password"
+    "changePassword": "Change password",
+    "profile": "My profile"
+  },
+  "profile": {
+    "title": "My profile",
+    "accountTitle": "Account",
+    "username": "Username",
+    "role": "Role",
+    "district": "District",
+    "office": "Divisional Secretariat",
+    "detailsTitle": "My details",
+    "contactEmailHint": "If you forget your password, the code to reset it is sent to this address.",
+    "saved": "Your details were saved.",
+    "close": "Close"
   },
   "login": {
     "title": "Sign in to the system",
