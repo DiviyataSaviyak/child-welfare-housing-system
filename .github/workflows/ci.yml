@@ -19,21 +19,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: ShellCheck on the server scripts
-        run: shellcheck --external-sources deploy/server/server-setup.sh deploy/server/scripts/*.sh deploy/ops.sh deploy/ops/*.sh
+        run: shellcheck --external-sources deploy/ec2/setup/server-setup.sh deploy/ec2/stack/scripts/*.sh deploy/ops.sh deploy/operator/*.sh
 
       - name: actionlint on the workflows
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
 
       - name: The stack's Compose file
         run: |
-          cp deploy/server/env.example /tmp/server.env
+          cp deploy/ec2/setup/env.example /tmp/server.env
           printf '%s\n' SITE_DOMAIN=ci.invalid ACME_EMAIL=ci@ci.invalid DB_OWNER_PASSWORD=ci APP_DB_PASSWORD=ci \
             BETTER_AUTH_SECRET=ci >>/tmp/server.env
-          docker compose -f deploy/server/compose.yml --env-file /tmp/server.env config --quiet
+          docker compose -f deploy/ec2/stack/compose.yml --env-file /tmp/server.env config --quiet
 
       - name: The Caddyfile
         run: >-
-          docker run --rm -v "$PWD/deploy/server/caddy:/etc/caddy:ro" -e SITE_ADDRESS=ci.invalid -e ACME_EMAIL=ci@ci.invalid
+          docker run --rm -v "$PWD/deploy/ec2/stack/caddy:/etc/caddy:ro" -e SITE_ADDRESS=ci.invalid -e ACME_EMAIL=ci@ci.invalid
           caddy:2.11.4-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   check:

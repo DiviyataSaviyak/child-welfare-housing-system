@@ -105,6 +105,21 @@ Skip this if the instance already has an Elastic IP: one shows under **Elastic I
 
 **You don't deploy by hand.** Every push to `main` that passes the tests reaches the server by itself, in about 15 minutes. Watch it under the repository's **Actions** tab. A failed deploy puts the previous version back on its own.
 
+A deploy replaces only the app's container, with the new version: the database keeps running and keeps its data, and the proxy (Caddy) is recreated only when its files changed. The server's settings in `/opt/diviyata/.env` are never touched by a deploy; change them with `env` below.
+
+### Settings on the server
+
+The server's settings and secrets live in `/opt/diviyata/.env`, on the server only, never in GitHub. `setup` made it: it generated the passwords and keys on the server, and filled in the rest from `settings.env`: the domain, the backups, the alerts and the email for forgotten passwords (the `SMTP_*` lines). After changing the `SMTP_*` lines in `settings.env`, send them with `env push`.
+
+| Command | When | What it does |
+| --- | --- | --- |
+| `env show` | To check what the server has | Lists every setting, with passwords and keys hidden (`****abcd`) |
+| `env push` | After changing the `SMTP_*` lines in `settings.env` | Sends those that have a value, then recreates the app so they take effect. Nothing else in `settings.env` (your key's path, healthchecks.io's key) is sent. |
+| `env set KEY=VALUE` | To change one or two settings | Sends them (`KEY=` empties one), then recreates the app. The values stay in this computer's Git Bash history, so prefer `settings.env` and `env push` for passwords. |
+| `restart` | After changing something by hand on the server, or when the app misbehaves | Recreates the app's container, so it reads `.env` again. `restart proxy`, `restart db` or `restart all` for the others. The site is down for a few seconds. |
+
+The passwords and keys `setup` generated (`DB_OWNER_PASSWORD`, `APP_DB_PASSWORD`, `BETTER_AUTH_SECRET`, `RESTIC_PASSWORD`) and `APP_ENV` are refused: the database keeps the passwords it was first started with, and the backups can only be read with their own key. Only `launch` changes them. Each change keeps the old file as `/opt/diviyata/.env.previous`, and if the app doesn't come back with the new values, the old ones are put back.
+
 ### When something goes wrong
 
 | Command | When | What it does |
@@ -115,6 +130,7 @@ Skip this if the instance already has an Elastic IP: one shows under **Elastic I
 | `backups` | Before a restore | Lists the backups kept (the last 30 days) |
 | `restore-test` | To be sure the backups can be read | Restores the latest backup into a scratch copy, checks it and removes it. The live site isn't touched. This also runs by itself on the 1st of each month. |
 | `restore <id>` or `restore latest` | Data was lost or damaged | Puts the database and uploaded files back as in that backup. **Loses every change made since.** Asks first. |
+| `clean` | The disk is filling up | Removes Docker images no container uses and Docker's build cache, and shows the disk before and after. The running version's and the previous version's images stay, for `rollback`; the database, the uploads and the certificate are never touched. |
 
 ### Staging only
 
@@ -131,11 +147,11 @@ Both refuse once the server runs as production.
 | --- | --- |
 | An email from healthchecks.io: **monitor** | Run `status`. If the site is down, run `logs app` and `logs proxy`. If it went down right after a deploy, run `rollback`. |
 | An email: **backup** or **restore test** | Run `backup` and read its error. A changed bucket or IAM role is the usual cause. |
-| An email: **the disk is 80% full** or more | Run `ssh`, then `docker system df` to see what uses the space, and `docker image prune` to remove leftover images. If it's still full, make the EC2 volume bigger in AWS. |
+| An email: **the disk is 80% full** or more | Run `clean`. If it's still full, make the EC2 volume bigger in AWS. |
 | A push to `main` didn't reach the server | Open the failed run under **Actions**, fix the problem in a new commit, and push again |
 | Officers see an error after a deploy | Run `rollback`, then fix the problem in a new commit |
 | An officer forgot their password, or is locked out | Nothing here: the officer resets it with a code sent by email from the sign-in page ("මුරපදය අමතකද?"), or the admin gives a new one on the users screen |
-| Officers say the email with the code never comes | Ask them to look in spam, and the admin to check the email address in their account. Then run `logs app` and look for `email_failed`: `EAUTH` means a wrong `SMTP_USER` or `SMTP_PASSWORD`, and a new app password is the usual fix. Set them as in docs/RUNBOOK.md, "Email for forgotten passwords" |
+| Officers say the email with the code never comes | Ask them to look in spam, and the admin to check the email address in their account. Then run `logs app` and look for `email_failed`: `EAUTH` means a wrong `SMTP_USER` or `SMTP_PASSWORD`, and a new app password is the usual fix. Fill them in `settings.env` and run `env push` (docs/RUNBOOK.md, "Email for forgotten passwords") |
 
 ## What's in this folder
 
@@ -147,22 +163,27 @@ deploy/
 ├── ops.sh                 the one command you run
 ├── settings.example.env   the settings' template; your copy is settings.env (never committed)
 │
-├── ops/                   ON YOUR COMPUTER: ops.sh's parts
+├── operator/              ON YOUR COMPUTER: ops.sh's parts
 │   ├── setup.sh             ops setup
 │   ├── launch.sh            ops launch
 │   ├── create-admin.sh      ops create-admin
+│   ├── env.sh               ops env
 │   └── lib.sh               shared: settings, SSH, deploy, health and backup checks
 │
-└── server/                ON THE SERVER, in /opt/diviyata
-    ├── server-setup.sh      prepares a new server (ops setup runs it)
-    ├── compose.yml          the running system: Caddy (HTTPS), the app, PostgreSQL
-    ├── caddy/               Caddy's settings and the maintenance page
-    ├── cron                 the timer: 5-minute check, nightly backup, monthly restore test
-    ├── env.example          the template of the server's secrets (/opt/diviyata/.env)
-    └── scripts/             deploy, rollback, backup, restore, monitor, create-admin
+└── ec2/                   ON THE SERVER
+    ├── setup/               run once, as root, to prepare a new server (ops setup does it)
+    │   ├── server-setup.sh    installs Docker, the deploy user and /opt/diviyata
+    │   ├── cron               the timer: 5-minute check, nightly backup, monthly restore test
+    │   └── env.example        the template of the server's settings (/opt/diviyata/.env)
+    │
+    └── stack/               copied to /opt/diviyata on every deploy
+        ├── compose.yml        the running system: Caddy (HTTPS), the app, PostgreSQL
+        ├── caddy/             Caddy's settings and the maintenance page
+        └── scripts/           deploy, rollback, backup, restore, monitor, create-admin,
+                               env, restart, clean
 ```
 
-The server's copy of `server/` is refreshed on every deploy. GitHub Actions and the server's timer run its scripts by themselves; `ops.sh` runs them for you when you need one. So to change anything on the server, change it here and push: a change made on the server itself is overwritten by the next deploy.
+`stack/` is copied to the server on every deploy. GitHub Actions and the server's timer run its scripts by themselves; `ops.sh` runs them for you when you need one. So to change anything on the server, change it here and push: a change made on the server itself is overwritten by the next deploy. The one exception is `/opt/diviyata/.env`, which only `setup`, `env` and `launch` change.
 
 Outside this folder: `docker/Dockerfile` builds the app's images, and `.github/workflows/` holds the tests (`ci.yml`) and the automatic deploy (`deploy.yml`). The `scripts/` folder at the repository's root holds development tools such as the demo data, not server scripts.
 

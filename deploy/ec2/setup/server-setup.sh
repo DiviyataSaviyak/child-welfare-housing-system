@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Prepares a fresh Ubuntu 24.04 server for the system (OPS-2, SEC-9). "ops setup" (deploy/ops.sh)
-# copies the repository's deploy/server/ folder to the server as ~/diviyata-setup and runs it there,
+# copies the repository's deploy/ec2/ folder to the server as ~/diviyata-setup and runs it there,
 # as root; by hand (docs/RUNBOOK.md, "The server"):
 #
-#   sudo bash diviyata-setup/server-setup.sh --domain diviyata.example.lk --email ops@example.lk \
+#   sudo bash diviyata-setup/setup/server-setup.sh --domain diviyata.example.lk --email ops@example.lk \
 #     --backups s3:s3.ap-south-1.amazonaws.com/<bucket>/diviyata
 #
 # Optional: --hc-monitor, --hc-backup and --hc-restore set the healthchecks.io ping URLs, and --quiet
@@ -21,6 +21,8 @@ set -Eeuo pipefail
 
 DIR=/opt/diviyata
 SOURCE=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+# The stack's files, which deploy.yml copies again on every deploy, sit beside this folder.
+STACK=$(cd "$SOURCE/../stack" && pwd)
 DEPLOY_USER=deploy
 DEPLOY_KEY=/home/$DEPLOY_USER/.ssh/github-actions
 
@@ -143,10 +145,10 @@ grep -q 'alias dc=' "$bashrc" ||
 step "$DIR"
 install -d -m 750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$DIR" "$DIR/caddy" "$DIR/scripts"
 install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$DIR/backups"
-install -m 640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$SOURCE/compose.yml" "$DIR/compose.yml"
-install -m 640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$SOURCE"/caddy/* "$DIR/caddy/"
-install -m 750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$SOURCE"/scripts/*.sh "$DIR/scripts/"
-install -m 640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$SOURCE"/scripts/*.sql "$DIR/scripts/"
+install -m 640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$STACK/compose.yml" "$DIR/compose.yml"
+install -m 640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$STACK"/caddy/* "$DIR/caddy/"
+install -m 750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$STACK"/scripts/*.sh "$DIR/scripts/"
+install -m 640 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$STACK"/scripts/*.sql "$DIR/scripts/"
 install -m 644 -o root -g root "$SOURCE/cron" /etc/cron.d/diviyata
 
 step "$DIR/.env"

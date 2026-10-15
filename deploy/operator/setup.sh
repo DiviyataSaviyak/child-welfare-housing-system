@@ -11,6 +11,7 @@
 #   1. checks the server: SSH, its IAM role, and that the domain points at it
 #   2. makes the three healthchecks.io checks, when HC_API_KEY is set
 #   3. copies the server files and runs server-setup.sh there
+#   3b. sends settings.env's server settings (SERVER_KEYS: the email for forgotten passwords)
 #   4. sets GitHub's repository variable DEPLOY_HOST, the production environment's secrets
 #      (DEPLOY_KNOWN_HOSTS, DEPLOY_SSH_KEY,
 #      the key passing straight from the server to GitHub, then shredded on the server), the
@@ -88,7 +89,7 @@ if [ "$new_key" = 1 ]; then
 fi
 
 step "Copying the server files"
-tar -C "$REPO_ROOT/deploy/server" -cf - . |
+tar -C "$REPO_ROOT/deploy/ec2" -cf - . |
   remote 'rm -rf ~/diviyata-setup && mkdir ~/diviyata-setup && tar -xf - -C ~/diviyata-setup'
 
 step "server-setup.sh on the server (a few minutes the first time)"
@@ -98,7 +99,10 @@ args=(--domain "$DOMAIN" --email "$OPS_EMAIL"
 [ -z "$HC_BACKUP_URL" ] || args+=(--hc-backup "$HC_BACKUP_URL")
 [ -z "$HC_RESTORE_URL" ] || args+=(--hc-restore "$HC_RESTORE_URL")
 # shellcheck disable=SC2029
-remote "sudo bash ~/diviyata-setup/server-setup.sh --quiet $(printf '%q ' "${args[@]}") && rm -rf ~/diviyata-setup"
+remote "sudo bash ~/diviyata-setup/setup/server-setup.sh --quiet $(printf '%q ' "${args[@]}") && rm -rf ~/diviyata-setup"
+
+step "The server's settings from settings.env"
+push_server_settings || note "none filled in (the email for forgotten passwords stays off; ops env push sends them later)"
 
 step "GitHub: $GITHUB_REPO"
 gh api -X PUT "repos/$GITHUB_REPO/environments/production" >/dev/null

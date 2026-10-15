@@ -7,6 +7,9 @@ set -Eeuo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$HERE/../.." && pwd)
 SETTINGS=${SETTINGS:-$(cd "$HERE/.." && pwd)/settings.env}
+# The settings in settings.env that belong in the server's .env; "ops setup" and "ops env push" send
+# them. The rest of settings.env (SSH, GitHub, healthchecks.io's key) never leaves this computer.
+SERVER_KEYS=(SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD MAIL_FROM)
 
 step() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
@@ -31,8 +34,10 @@ load_settings() {
     die "settings.env holds a private key itself. SSH_KEY must be the path of the .pem file, for example
 SSH_KEY=C:/Users/<you>/.ssh/diviyata.pem. Save the key in that file, and remove it from settings.env"
   fi
+  # The server's settings are left out: a password may hold spaces, $ or #, and server_settings
+  # reads them as written instead.
   # shellcheck disable=SC1090
-  . <(tr -d '\r' <"$SETTINGS")
+  . <(tr -d '\r' <"$SETTINGS" | grep -Ev "^($(IFS='|' && echo "${SERVER_KEYS[*]}"))=")
 
   local key
   for key in SERVER_IP SSH_KEY; do
@@ -76,6 +81,69 @@ SSH_KEY=C:/Users/<you>/.ssh/diviyata.pem. Save the key in that file, and remove 
 remote() {
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes \
     -o ServerAliveInterval=30 "$SSH_USER@$SERVER_IP" "$@"
+}
+
+# Runs a command on the server as the deploy user, in /opt/diviyata, with scripts/lib.sh loaded
+# (compose, load_env, log, die).
+as_deploy() {
+  # shellcheck disable=SC2029 # the command is quoted here, on purpose
+  remote "sudo -u deploy -H bash -c $(printf '%q' ". /opt/diviyata/scripts/lib.sh; $1")"
+}
+
+# Answers ready, new (reached, but setup hasn't run) or nothing (SSH failed).
+server_state() {
+  remote 'if id deploy >/dev/null 2>&1 && sudo test -d /opt/diviyata; then echo ready; else echo new; fi' || true
+}
+
+# Loads the settings, and stops with the next step to take while the server can't be used yet.
+load_ready() {
+  load_settings
+  case "$(server_state)" in
+    ready) ;;
+    new) die "the server isn't set up yet. Run: ops setup" ;;
+    *) die "can't reach the server over SSH. Check SERVER_IP and SSH_KEY in settings.env, and that the instance is running" ;;
+  esac
+}
+
+# Runs one of the server's scripts as the deploy user: server_script <name> [arguments]. Standard
+# input goes through. A script newer than the server's copy arrives with the next deploy.
+server_script() {
+  local name=$1 args=""
+  shift
+  [ $# -eq 0 ] || args=$(printf '%q ' "$@")
+  remote "sudo test -x /opt/diviyata/scripts/$name" ||
+    die "the server doesn't have scripts/$name yet: it arrives with the next deploy of main (ops deploy)"
+  # shellcheck disable=SC2029 # the arguments are quoted here, on purpose
+  remote "sudo -u deploy -H /opt/diviyata/scripts/$name $args"
+}
+
+# settings.env's SERVER_KEYS that have a value, as KEY=VALUE lines, read as written (not run as
+# shell, so a password's $ or # stays); quotes around a value are dropped.
+server_settings() {
+  local line key value
+  tr -d '\r' <"$SETTINGS" | while IFS= read -r line || [ -n "$line" ]; do
+    key=${line%%=*} value=${line#*=}
+    [[ $line == *=* && " ${SERVER_KEYS[*]} " == *" $key "* ]] || continue
+    if [[ $value =~ ^\"(.*)\"$ || $value =~ ^\'(.*)\'$ ]]; then value=${BASH_REMATCH[1]}; fi
+    [ -z "$value" ] || printf '%s=%s\n' "$key" "$value"
+  done
+}
+
+# Sends server_settings to the server's scripts/env.sh, which saves them and recreates what they
+# change. Answers 1 when there is nothing to send.
+push_server_settings() {
+  local lines
+  lines=$(server_settings)
+  [ -n "$lines" ] || return 1
+  note "sending $(cut -d= -f1 <<<"$lines" | tr '\n' ' ')"
+  server_script env.sh set <<<"$lines" || die "the server didn't take the settings (see above)"
+}
+
+# Asks before something that can't be undone; the answer must be the word given.
+confirm() {
+  local word=$1 answer
+  read -r -p "Type $word to go on: " answer
+  [ "$answer" = "$word" ] || die "nothing was changed"
 }
 
 # Runs deploy.yml on a branch (main by default) and waits for it. About 15 minutes: CI, the images,

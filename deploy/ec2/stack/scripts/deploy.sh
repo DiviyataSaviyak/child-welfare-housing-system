@@ -7,7 +7,7 @@
 # 1. Backs up the database (kept in /opt/diviyata/backups, the newest 5).
 # 2. With migrations to run, stops the app (Caddy shows the maintenance page), runs them, then the
 #    lists seed and the grants. Without, the old app keeps answering until the swap.
-# 3. Swaps the app and waits for its health check.
+# 3. Swaps the app and waits for its health check, then recreates the proxy if Caddy's files changed.
 # If anything fails, the previous release runs again, and the database is put back from step 1's
 # backup if a migration had started. scripts/rollback.sh goes back by hand.
 # shellcheck source=lib.sh
@@ -17,8 +17,7 @@
 new_app=$1
 new_tools=$2
 
-exec 9>"$DIVIYATA_DIR/.deploy.lock"
-flock -n 9 || die "another deploy or rollback is running"
+take_lock
 
 load_env
 previous_app=${APP_IMAGE:-}
@@ -95,6 +94,13 @@ compose up -d --wait --wait-timeout 180 app proxy
 trap - ERR
 rm -f previous.env.before
 log "the app is healthy: $new_app"
+
+if caddy_changed; then
+  log "Caddy's files changed: recreating the proxy"
+  compose up -d --wait --wait-timeout 60 --force-recreate --no-deps proxy ||
+    die "the proxy didn't come back with the new Caddyfile: read its log (dc logs proxy)"
+  caddy_started
+fi
 
 # Keep the images of this release and the previous one; remove older ones.
 keep=$(printf '%s\n' "$new_app" "$new_tools" "$previous_app" "$previous_tools")
