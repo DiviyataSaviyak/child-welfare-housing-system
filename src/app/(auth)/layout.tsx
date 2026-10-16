@@ -21,27 +21,30 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
 
           {/* A narrow screen: the mark and the name in one short band. */}
           <div className="flex items-center gap-4 px-5 py-4 sm:px-8 lg:hidden">
-            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[#fbf5ea] shadow-[0_4px_14px_rgb(0_0_0/0.25)] ring-1 ring-white/50">
-              <Mark className="h-8 w-[35px]" />
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-white shadow-[0_4px_14px_rgb(0_0_0/0.25)] ring-1 ring-white/50">
+              <Mark className="h-[34px] w-auto" />
             </span>
             <p className="min-w-0 text-[22px] leading-tight font-bold tracking-tight">{t("name")}</p>
           </div>
 
           {/* A wide screen: the programme in the middle. */}
           <div className="hidden flex-1 flex-col px-12 py-10 lg:flex xl:px-16 short:py-7">
-            <div className="flex flex-1 flex-col justify-center gap-7 py-10 animate-in duration-700 fade-in slide-in-from-bottom-2 motion-reduce:animate-none short:gap-5 short:py-6">
-              <span className="relative flex size-[104px] items-center justify-center rounded-[28px] bg-[#fbf5ea] shadow-[0_18px_40px_-12px_rgb(0_0_0/0.45)] ring-1 ring-white/60 short:size-20 short:rounded-3xl">
-                {/* A soft halo round the mark. */}
-                <span
-                  aria-hidden="true"
-                  className="absolute -inset-3 -z-10 rounded-[36px] bg-white/10 ring-1 ring-white/15"
-                />
-                <Mark className="h-[66px] w-[72px] short:h-[52px] short:w-[57px]" />
-              </span>
-              <div className="flex flex-col gap-5 short:gap-4">
+            <div className="flex flex-1 flex-col justify-center gap-5 py-10 animate-in duration-700 fade-in slide-in-from-bottom-2 motion-reduce:animate-none short:gap-4 short:py-6">
+              {/* The mark sits centred over the name, both as wide as the name. */}
+              <div className="flex w-fit flex-col items-center gap-7 short:gap-5">
+                <span className="relative flex size-[120px] -translate-y-6 items-center justify-center rounded-[30px] bg-white shadow-[0_18px_40px_-12px_rgb(0_0_0/0.45)] ring-1 ring-white/60 short:size-[88px] short:-translate-y-3 short:rounded-3xl">
+                  {/* A soft halo round the mark. */}
+                  <span
+                    aria-hidden="true"
+                    className="absolute -inset-3 -z-10 rounded-[36px] bg-white/10 ring-1 ring-white/15"
+                  />
+                  <Mark className="h-[84px] w-auto short:h-[62px]" />
+                </span>
                 <p className="text-[40px] leading-[1.15] font-extrabold tracking-tight xl:text-5xl xl:leading-[1.12]">
                   {t("name")}
                 </p>
+              </div>
+              <div className="flex flex-col gap-5 short:gap-4">
                 <span aria-hidden="true" className="flex items-center gap-1.5">
                   <span className="h-1.5 w-14 rounded-full bg-gold" />
                   <span className="h-1.5 w-3 rounded-full bg-gold/60" />

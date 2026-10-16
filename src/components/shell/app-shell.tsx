@@ -40,8 +40,8 @@ export async function AppShell({
         <div aria-hidden="true" className="h-1 bg-gold" />
         <div className="flex h-[88px] items-center gap-6 px-8">
           <div className="flex min-w-0 shrink-0 items-center gap-3.5">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-[#fbf5ea] shadow-[0_2px_6px_rgb(0_0_0/0.18)] ring-1 ring-white/40">
-              <Mark className="h-9 w-[40px]" />
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-white shadow-[0_2px_6px_rgb(0_0_0/0.18)] ring-1 ring-white/40">
+              <Mark className="h-[40px] w-auto" />
             </span>
             <span className="flex min-w-0 flex-col">
               <span className="text-[22px] leading-tight font-bold tracking-tight whitespace-nowrap">
