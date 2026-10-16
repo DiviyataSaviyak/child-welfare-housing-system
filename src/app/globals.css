@@ -32,10 +32,7 @@
   --color-header-muted: var(--header-muted);
   --color-notice: var(--notice);
   --color-notice-foreground: var(--notice-foreground);
-  --color-mark-house: var(--mark-house);
   --color-gold: var(--gold);
-  --color-mark-leaf: var(--mark-leaf);
-  --color-mark-stem: var(--mark-stem);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -67,11 +64,8 @@
   --header-muted: #d3e6df;
   --notice: #fbebd3;
   --notice-foreground: #7a4105;
-  /* The logo's own colours: the house, the gold base and the sprout. */
-  --mark-house: #7d2233;
+  /* The gold of the panel's accents. */
   --gold: #e0a42b;
-  --mark-leaf: #3f9e63;
-  --mark-stem: #2e7d4f;
 }
 
 @layer base {
