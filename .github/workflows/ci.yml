@@ -1,6 +1,7 @@
 name: CI
 
-# Pushes to main run these checks through deploy.yml, which deploys only when they pass (OPS-3).
+# Pushes to main run these checks through release.yml, which publishes the images only when they pass.
+# The server's files are checked in the Infrastructure repository.
 on:
   push:
     branches-ignore: [main]
@@ -11,30 +12,14 @@ permissions:
   contents: read
 
 jobs:
-  # The server's scripts and these workflows (Phase 9).
-  server-files:
+  workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
-      - name: ShellCheck on the server scripts
-        run: shellcheck --external-sources deploy/ec2/setup/server-setup.sh deploy/ec2/stack/scripts/*.sh deploy/ops.sh deploy/operator/*.sh
-
       - name: actionlint on the workflows
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
-
-      - name: The stack's Compose file
-        run: |
-          cp deploy/ec2/setup/env.example /tmp/server.env
-          printf '%s\n' SITE_DOMAIN=ci.invalid ACME_EMAIL=ci@ci.invalid DB_OWNER_PASSWORD=ci APP_DB_PASSWORD=ci \
-            BETTER_AUTH_SECRET=ci >>/tmp/server.env
-          docker compose -f deploy/ec2/stack/compose.yml --env-file /tmp/server.env config --quiet
-
-      - name: The Caddyfile
-        run: >-
-          docker run --rm -v "$PWD/deploy/ec2/stack/caddy:/etc/caddy:ro" -e SITE_ADDRESS=ci.invalid -e ACME_EMAIL=ci@ci.invalid
-          caddy:2.11.4-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   check:
     runs-on: ubuntu-latest
