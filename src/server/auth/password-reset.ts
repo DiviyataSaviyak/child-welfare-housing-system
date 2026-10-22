@@ -1,9 +1,10 @@
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { writeAudit } from "../audit";
 import { savePasswordHash } from "../users/commands";
 import { normaliseUsername } from "./accounts";
+import { keyedHash } from "./keyed-hash";
 
 /**
  * AUTH-7: an officer who has forgotten their password sets a new one with a code sent by email to the
@@ -23,11 +24,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 const ticketId = (ticket: string) => createHash("sha256").update(ticket).digest("hex");
 
-function codeHash(id: string, code: string): string {
-  const secret = process.env.BETTER_AUTH_SECRET;
-  if (!secret) throw new Error("BETTER_AUTH_SECRET is not set");
-  return createHmac("sha256", secret).update(`${id}:${code}`).digest("hex");
-}
+const codeHash = (id: string, code: string) => keyedHash(`${id}:${code}`);
 
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
