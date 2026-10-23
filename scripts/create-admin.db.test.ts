@@ -10,7 +10,7 @@ const details = { name: "පළමු පරිපාලක", mobile: "071000090
 beforeAll(() => seed(db));
 afterAll(() => db.$disconnect());
 
-describe("the first admin account (task 9.5)", () => {
+describe("the first admin account (task 9.2)", () => {
   it("makes an admin with a temporary password, credited to the system", async () => {
     // Other test files share the schema and may have added an admin already.
     const result = await createAdmin(db, details, { another: true });

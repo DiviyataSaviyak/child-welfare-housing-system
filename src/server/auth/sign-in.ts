@@ -16,24 +16,12 @@ import {
   temporaryPasswordExpired,
 } from "./lockout";
 import { isRole, type Role } from "./roles";
+import { saveUnknownNameState, unknownNameState } from "./unknown-names";
 
 export type SignInRefusal = { kind: "wrong"; attemptsLeft: number } | { kind: "locked"; minutesLeft: number };
 
 export type SignInResult =
   { ok: true; role: Role; mustChangePassword: boolean } | { ok: false; refusal: SignInRefusal };
-
-/**
- * Lock states for usernames that have no account, kept in memory like the rate limit. They count down and
- * lock exactly as a real account does, so the messages never show whether a username exists (AUTH-2).
- */
-const unknownNames = new Map<string, LockState>();
-
-function unknownNameState(accountName: string, now: Date): LockState {
-  if (unknownNames.size > 10_000) {
-    for (const [name, state] of unknownNames) if (!isLocked(state, now)) unknownNames.delete(name);
-  }
-  return unknownNames.get(accountName) ?? AFTER_SUCCESSFUL_SIGN_IN;
-}
 
 function refusalFor(state: LockState, now: Date): { ok: false; refusal: SignInRefusal } {
   return isLocked(state, now)
@@ -71,7 +59,8 @@ export async function attemptSignIn(
   });
 
   if (!user) {
-    const state = unknownNameState(accountName, now);
+    // A username with no account counts down and locks as an account does (src/server/auth/unknown-names.ts).
+    const state = await unknownNameState(db, accountName);
     if (isLocked(state, now)) {
       logEvent("sign_in_refused", { reason: "locked", userId: null });
       return refusalFor(state, now);
@@ -86,7 +75,7 @@ export async function attemptSignIn(
       if (!isAPIError(error)) throw error;
     }
     const next = afterFailedSignIn(state, now);
-    unknownNames.set(accountName, next);
+    await saveUnknownNameState(db, accountName, next, now);
     logEvent("sign_in_failed", { reason: "unknown_user" });
     return refusalFor(next, now);
   }

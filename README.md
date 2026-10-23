@@ -2,13 +2,14 @@
 
 A web system for the Ministry of Women and Child Affairs, Sri Lanka, to run the Diviyata Saviyak housing programme. It tracks each beneficiary from the Divisional Secretariat's first entry through the Head Office check, the Rs. 2,000,000 release, the four installments and the building stages.
 
-The screens are in Sinhala and designed for office PCs.
+The screens are in Sinhala, Tamil and English, and designed for office PCs.
 
-## Documents
+## Repositories
 
-- [PRD](docs/PRD.md): what we are building and why
-- [SPEC](docs/SPEC.md): what exactly the system must do
-- [PLAN](docs/PLAN.md): the build phases, one at a time
+This repository is the application. The system has two more, in the same GitHub organization:
+
+- **Docs**: the PRD (what we are building and why), the SPEC (what exactly the system must do), the PLAN (the build phases), the runbook, the decision records and the officers' Sinhala guides.
+- **Infrastructure**: the servers, and how they are set up, deployed, backed up and monitored.
 
 ## Running it locally
 
@@ -25,13 +26,15 @@ npm run dev
 
 Then open http://localhost:3000. `CLAUDE.md` lists every command, including the tests.
 
-## The server
+## Releases
 
-The system runs with Docker Compose on one Amazon EC2 server. Every push to `main` that passes CI is built into two images and deployed there by GitHub Actions; the server backs itself up every night and reports to an alert service. **To run it, start with [`deploy/README.md`](deploy/README.md):** one command, `bash deploy/ops.sh`, does the setup, launch day, status, logs, rollback, backups and restores from your own computer. The [runbook](docs/RUNBOOK.md) explains what happens underneath. The images are built from `docker/Dockerfile`.
+Every push to `main` that passes CI is built from `docker/Dockerfile` into two images, the app and its tools, for amd64 and arm64, tagged with the commit and published to GitHub's container registry (`.github/workflows/release.yml`). Then:
 
-## Guides
+1. Trivy scans both images. A HIGH or CRITICAL vulnerability that has a fix stops the release; `.trivyignore` lists the accepted ones, each with its reason and an expiry date.
+2. Both images are signed with the release key, which stays in AWS KMS, and get their SBOMs (the list of everything inside) attached as signed attestations.
+3. The Infrastructure repository's Promote workflow checks the signatures and deploys the release to staging. Production is a pull request there that names the same images.
 
-Short Sinhala guides for the officers: [DS offices](docs/guides/ds-officer.md) and [Head Office](docs/guides/head-office.md).
+Nothing is deployed from here. Because a deploy runs a release's migrations while the previous release is still answering, every migration must work beside the code before it (`CLAUDE.md`, "Migrations without downtime").
 
 ## Data protection
 

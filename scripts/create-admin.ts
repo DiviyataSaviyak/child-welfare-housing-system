@@ -7,9 +7,10 @@
  *   npx tsx scripts/create-admin.ts --name "ආර්. සිල්වා" --mobile 0712345678
  *     [--designation "..."] [--email someone@example.lk] [--another]
  *
- * On the server: deploy/ec2/stack/scripts/create-admin.sh with the same flags. It refuses while an active
- * admin exists, who would create the account on the users screen instead; --another adds one
- * anyway, for when no admin can sign in.
+ * On the server: the Infrastructure repository's create-admin.sh, with the same flags, which runs
+ * `scripts/tools.ts create-admin` in the tools image. It refuses while an active admin exists, who
+ * would create the account on the users screen instead; --another adds one anyway, for when no admin
+ * can sign in.
  */
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
@@ -49,43 +50,48 @@ export async function createAdmin(
   return { ok: true, credentials: created.value };
 }
 
+/** The command line (see the top of this file), for this script and `scripts/tools.ts create-admin`. Returns the exit code. */
+export async function createAdminCommand(db: PrismaClient, args: string[]): Promise<number> {
+  const option = (name: string) => {
+    const index = args.indexOf(name);
+    return index === -1 ? undefined : args[index + 1];
+  };
+  const result = await createAdmin(
+    db,
+    {
+      name: option("--name") ?? "",
+      mobile: option("--mobile") ?? "",
+      designation: option("--designation"),
+      email: option("--email"),
+    },
+    { another: args.includes("--another") },
+  );
+  if (!result.ok) {
+    console.error(
+      result.error === "adminExists"
+        ? "An active admin exists already: they create accounts on the users screen. Use --another only when no admin can sign in."
+        : `The details were refused (${result.detail}). Usage: --name "<name>" --mobile <07XXXXXXXX> [--designation "<title>"] [--email <address>]`,
+    );
+    return 1;
+  }
+  // Shown once, here only: only its hash is stored (ADM-2).
+  console.log(`Admin account created for ${(option("--name") ?? "").trim()}.
+  Username:           ${result.credentials.username}
+  Temporary password: ${result.credentials.temporaryPassword}
+Give these to the admin in person. They set their own password at first sign-in.`);
+  return 0;
+}
+
 // Run directly: see the top of this file.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const option = (name: string) => {
-    const index = process.argv.indexOf(name);
-    return index === -1 ? undefined : process.argv[index + 1];
-  };
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   const prisma = createPrismaClient(databaseUrl);
 
-  const run = async () => {
-    const result = await createAdmin(
-      prisma,
-      {
-        name: option("--name") ?? "",
-        mobile: option("--mobile") ?? "",
-        designation: option("--designation"),
-        email: option("--email"),
-      },
-      { another: process.argv.includes("--another") },
-    );
-    if (!result.ok) {
-      console.error(
-        result.error === "adminExists"
-          ? "An active admin exists already: they create accounts on the users screen. Use --another only when no admin can sign in."
-          : `The details were refused (${result.detail}). Usage: --name "<name>" --mobile <07XXXXXXXX> [--designation "<title>"] [--email <address>]`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    // Shown once, here only: only its hash is stored (ADM-2).
-    console.log(`Admin account created for ${(option("--name") ?? "").trim()}.
-  Username:           ${result.credentials.username}
-  Temporary password: ${result.credentials.temporaryPassword}
-Give these to the admin in person. They set their own password at first sign-in.`);
-  };
-  run()
+  createAdminCommand(prisma, process.argv.slice(2))
+    .then((code) => {
+      process.exitCode = code;
+    })
     .catch((error: unknown) => {
       console.error(error);
       process.exitCode = 1;

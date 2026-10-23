@@ -58,6 +58,3 @@ next-env.d.ts
 
 # emails written instead of sent in development and CI (src/server/mail.ts)
 /data/mail-outbox.jsonl
-
-# deploy/ops.sh's settings (deploy/settings.example.env)
-/deploy/settings.env

@@ -1,0 +1,7 @@
+# Vulnerabilities the release accepts (release.yml, "Scan for vulnerabilities"). The release stops on
+# any HIGH or CRITICAL vulnerability in either image that has a fix, so first try the fix: a newer
+# NODE_IMAGE in docker/Dockerfile, or a newer package. Add a line here only when no fix can be taken
+# yet, with the reason above it and an expiry date, after which the release stops on it again:
+#
+#   # The app never parses untrusted TIFF files. Remove once NODE_IMAGE has the fix.
+#   CVE-2026-12345 exp:2026-12-31

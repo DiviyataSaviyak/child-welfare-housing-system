@@ -1,4 +1,4 @@
-// Diviyata Saviyak database schema. Section 5 of docs/SPEC.md describes each entity.
+// Diviyata Saviyak database schema. Section 5 of the SPEC (the Docs repository's requirements/SPEC.md) describes each entity.
 
 generator client {
   provider = "prisma-client"
@@ -277,6 +277,33 @@ model ResetCode {
 
   @@index([userId, createdAt])
   @@map("password_reset_code")
+}
+
+/// SEC-4: attempts per client address in a fixed window, for each limit ("sign-in", "reset-code"). In
+/// the database, so every app container counts against the same limit. The key is the limit's name and
+/// an HMAC of the address; the next attempt against a limit removes its windows that have ended.
+model RateLimit {
+  key         String   @id
+  /// The window's first attempt.
+  windowStart DateTime @map("window_start")
+  /// Attempts in the window so far, the refused ones too.
+  count       Int
+
+  @@map("rate_limit")
+}
+
+/// AUTH-2: the wrong tries and lock of a username that has no account. They count and lock exactly as
+/// an account's own do, so the sign-in page never shows whether a username exists. The name is kept only
+/// as an HMAC, because it is sometimes a password typed into the wrong box.
+model UnknownSignInName {
+  nameHash      String    @id @map("name_hash")
+  failedSignIns Int       @default(0) @map("failed_sign_ins")
+  lockedUntil   DateTime? @map("locked_until")
+  /// A name with no wrong try for 30 days is forgotten.
+  lastTriedAt   DateTime  @map("last_tried_at")
+
+  @@index([lastTriedAt])
+  @@map("unknown_sign_in_name")
 }
 
 // ---------------------------------------------------------------------------

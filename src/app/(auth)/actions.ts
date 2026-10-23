@@ -45,7 +45,7 @@ export async function signIn(_previous: SignInState, form: FormData): Promise<Si
   if (problem) return { error: problem, username };
 
   const requestHeaders = await headers();
-  if (!signInLimiter.allow(clientIp(requestHeaders))) {
+  if (!(await signInLimiter.allow(db, clientIp(requestHeaders)))) {
     logEvent("sign_in_refused", { reason: "rate_limited" });
     return { error: "tooMany", username };
   }
@@ -79,7 +79,7 @@ export async function askForCode(_previous: AskForCodeState, form: FormData): Pr
   if (username === "") return { error: "required", username, ticket: null };
   if (!mailSetup()) return { error: "emailOff", username, ticket: null };
 
-  if (!resetCodeLimiter.allow(clientIp(await headers()))) {
+  if (!(await resetCodeLimiter.allow(db, clientIp(await headers())))) {
     logEvent("reset_code_refused", { reason: "rate_limited" });
     return { error: "tooMany", username, ticket: null };
   }
