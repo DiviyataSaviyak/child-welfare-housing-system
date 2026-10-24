@@ -37,7 +37,7 @@ type Reached = { id: string; stageId: number | null; visitedOn: string; note: st
 
 /**
  * Pure: the case's stages from its kind's list and its stage updates. A case's current stage is the
- * highest stage it has reached (SPEC section 5); only active stages after it can be chosen next.
+ * highest stage it has reached (application spec, Data model); only active stages after it can be chosen next.
  */
 export function stageProgress(
   definitions: readonly Definition[],

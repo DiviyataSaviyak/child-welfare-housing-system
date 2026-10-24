@@ -76,8 +76,9 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
 
 /**
  * Checks what every DS installment step shares: the case is the officer's to see (PRM-1), only its DS
- * office changes installments (SPEC section 4), the case is in progress (INS-5), and the installment
- * is the next one and in the right state (INS-2). Gives the case, or the refusal.
+ * office changes installments (application spec, Roles and permissions), the case is in progress
+ * (INS-5), and the installment is the next one and in the right state (INS-2). Gives the case, or the
+ * refusal.
  */
 async function prepareStep(db: PrismaClient, actor: Actor, target: Target, step: "start" | "pay") {
   const found = await load(db, actor, target.caseId);

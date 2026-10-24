@@ -204,7 +204,10 @@ function interleave<T>(r: Random, chains: T[][]): T[] {
   return out;
 }
 
-/** One case and everything that hangs off it, with a story that follows the rules of SPEC section 6. */
+/**
+ * One case and everything that hangs off it, with a story that follows the application spec's Case
+ * statuses and transitions.
+ */
 export function planCase(ctx: Context, office: Office, status: CaseStatus): Planned {
   const { r, today, cast } = ctx;
   const upToToday = (day: string) => (day > today ? today : day);

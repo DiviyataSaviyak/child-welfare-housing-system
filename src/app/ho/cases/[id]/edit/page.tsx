@@ -20,8 +20,8 @@ import {
 } from "../../actions";
 
 /**
- * Head Office changes a draft or a returned case of any office (SPEC section 4), or corrects a verified
- * case, with every changed field logged (CASE-9).
+ * Head Office changes a draft or a returned case of any office (application spec, Roles and
+ * permissions), or corrects a verified case, with every changed field logged (CASE-9).
  */
 export default async function HoEditCasePage({
   params,

@@ -48,8 +48,9 @@ export async function uploadDocument(
 
 /**
  * Stores one photo of building progress (STG-1, STG-3). Only the DS office records progress
- * (SPEC section 4). The photo is checked from its contents, then turned upright, resized and saved as
- * a JPEG with no metadata, so its GPS position is never stored; a thumbnail is saved beside it (STG-6).
+ * (application spec, Roles and permissions). The photo is checked from its contents, then turned
+ * upright, resized and saved as a JPEG with no metadata, so its GPS position is never stored; a
+ * thumbnail is saved beside it (STG-6).
  * Like a document, it belongs to the person who uploaded it until the stage update is saved with it.
  */
 export async function uploadPhoto(

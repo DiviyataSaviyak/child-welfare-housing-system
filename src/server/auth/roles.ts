@@ -1,4 +1,4 @@
-/** The three roles of version 1 (SPEC section 4). */
+/** The three roles of version 1 (application spec, Roles and permissions). */
 export const ROLES = ["DS_OFFICER", "HO_OFFICER", "ADMIN"] as const;
 
 export type Role = (typeof ROLES)[number];

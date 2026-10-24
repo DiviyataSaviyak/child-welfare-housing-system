@@ -45,7 +45,7 @@ export const accountSchema = z
       context.addIssue({ code: "custom", path: ["dsOfficeId"], message: "office" });
     }
   })
-  // Only DS officers belong to an office (SPEC section 4).
+  // Only DS officers belong to an office (application spec, Roles and permissions).
   .transform((value) => ({ ...value, dsOfficeId: value.role === "DS_OFFICER" ? value.dsOfficeId : null }));
 
 export type AccountInput = z.output<typeof accountSchema>;

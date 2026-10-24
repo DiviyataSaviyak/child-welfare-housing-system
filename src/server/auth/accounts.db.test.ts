@@ -15,7 +15,7 @@ afterAll(() => prisma.$disconnect());
 const account = (id: string, fields: { role: string; dsOfficeId?: number | null; banned?: boolean }) =>
   prisma.user.create({ data: { id, name: "පරීක්ෂණ", email: `${id}@no-email.invalid`, username: id, ...fields } });
 
-describe("account rules kept by the database (SPEC section 4)", () => {
+describe("account rules kept by the database (application spec, Roles and permissions)", () => {
   it("accepts the three roles, with an office only for DS officers", async () => {
     await expect(account("rule-ds", { role: "DS_OFFICER", dsOfficeId: office })).resolves.toBeTruthy();
     await expect(account("rule-ho", { role: "HO_OFFICER" })).resolves.toBeTruthy();
