@@ -1,0 +1,23 @@
+# Backstage's catalog: this repository as part of the Diviyata Saviyak system. The system, its groups
+# and the documents are described in the Docs repository's catalog-info.yaml.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: child-welfare-housing-system
+  title: Diviyata Saviyak application
+  description: The web application for Head Office, the DS offices and the admin, in Sinhala, Tamil and English
+  annotations:
+    github.com/project-slug: DiviyataSaviyak/child-welfare-housing-system
+    # Its Docs tab opens the application spec, in the system's one documents site.
+    backstage.io/techdocs-entity: component:default/docs
+    backstage.io/techdocs-entity-path: /specs/application
+  links:
+    - url: https://github.com/DiviyataSaviyak/child-welfare-housing-system
+      title: Repository
+spec:
+  type: website
+  lifecycle: experimental
+  owner: group:default/application-team
+  system: diviyata-saviyak
+  dependsOn:
+    - component:default/infrastructure
