@@ -11,14 +11,14 @@ The system has three repositories, kept side by side on disk. This one is the ap
 | Repository | Local folder | What it holds |
 | --- | --- | --- |
 | child-welfare-housing-system | `.` | The application, its tests, `docker/Dockerfile`, CI and `release.yml`, which builds, scans, signs and publishes the images, then starts the Infrastructure repository's promotion |
-| Docs | `../Docs` | `requirements/` (PRD, SPEC), `planning/` (PLAN), `operations/` (RUNBOOK), `decisions/`, `guides/` and `GLOSSARY.md` |
+| Docs | `../Docs` | Everything under `docs/`: `specs/` (product, application, infrastructure, interfaces), `changes/` (one folder per piece of work), `decisions/`, `operations/runbook.md` and `glossary.md` |
 | Infrastructure | `../Infrastructure` | The AWS environments: Terraform, the servers' Ansible, deploys, backups and monitoring |
 
-Why they are separate: `../Docs/decisions/0002-separate-application-infrastructure-and-docs-repositories.md`. A change that crosses repositories, such as a new setting the app reads, needs a pull request in each.
+Why they are separate: `../Docs/docs/decisions/0002-separate-application-infrastructure-and-docs-repositories.md`. A change that crosses repositories, such as a new setting the app reads, needs a pull request in each.
 
 ## Project status
 
-Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists), 4 (cases), 5 (check and release), 6 (installments, progress and closing) and 7 (dashboard, exports and notifications) of the PLAN (`../Docs/planning/PLAN.md`) are built. Phase 8 (the sheet import) was built, then removed (see below). You get:
+Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists), 4 (cases), 5 (check and release), 6 (installments, progress and closing) and 7 (dashboard, exports and notifications) of version 1's plan (Docs change 0001, `../Docs/docs/changes/0001-version-1/tasks.md`) are built. Phase 8 (the sheet import) was built, then removed (see below). You get:
 
 - a Next.js shell for the three roles in Sinhala, Tamil and English (7 Oct 2026), and PostgreSQL with the place and stage lists
 - sign-in with lockout and forced password change, a permission layer, an append-only audit log and security headers
@@ -34,15 +34,15 @@ Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists
 - several officer accounts for one DS office (14 Oct 2026)
 - resetting a forgotten password with a code sent by email (14 Oct 2026)
 - tests and CI
-- Phase 9's first tasks: the two production images and their signed releases, the first-admin script and the security tests (the servers are the Infrastructure repository's; the runbook and the officers' guides are in Docs)
+- Phase 9's first tasks: the two production images and their signed releases, the first-admin script and the security tests (the servers are the Infrastructure repository's; the runbook is in Docs)
 
 Phase 7 was built one task at a time: 7.1 (the load-test data script), 7.2 (the Head Office dashboard), 7.3 (the Excel export of the case lists), 7.4 (an export in the old sheet's layout, since removed) and 7.5 (the notifications beside the dashboard).
 
 Phase 8 (the sheet import) was built one task at a time, on the branch `phase-8-import`: 8.1 (the made-up sample sheet), 8.2 (the import script), 8.3 (the import report), 8.4 (the DS office filling in imported cases) and 8.5 (Head Office confirming them). It was removed on 6 Oct 2026, because the sheet is still being updated; see "Sheet import (removed)" below.
 
-Phase 9 (go-live) has 9.1 to 9.3 built, and the guides of 9.6. What is left needs staging (PLAN Phase 10) or people: the performance and accessibility pass (9.4), the full DS office list and the language checks (9.5), the user test (9.6) and launch (9.7).
+Phase 9 (go-live, Docs change 0003) has 9.1 to 9.3 built. What is left needs staging (Docs change 0002) or people: the performance and accessibility pass (9.4), the full DS office list and the language checks (9.5), the user test (9.6) and launch (9.7).
 
-The stack is set in the SPEC (`../Docs/requirements/SPEC.md`): Next.js 16 (App Router, TypeScript), PostgreSQL + Prisma 7, Better Auth, next-intl (Sinhala, Tamil and English), Zod, Tailwind 4 + shadcn/ui (Radix), ExcelJS and sharp. It runs with Docker Compose behind Caddy, on servers the Infrastructure repository manages. Every permission check lives in the server-side data-access layer (`src/server/`), never in middleware or the UI alone.
+The stack is set in the application spec (`../Docs/docs/specs/application.md`): Next.js 16 (App Router, TypeScript), PostgreSQL + Prisma 7, Better Auth, next-intl (Sinhala, Tamil and English), Zod, Tailwind 4 + shadcn/ui (Radix), ExcelJS and sharp. It runs with Docker Compose behind Caddy, on servers the Infrastructure repository manages. Every permission check lives in the server-side data-access layer (`src/server/`), never in middleware or the UI alone.
 
 ## Commands
 
@@ -86,7 +86,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **A forgotten password (AUTH-7, 14 Oct 2026)** is reset by the officer with a code sent by email to the address in their account (`contact_email`, the account form's optional "ඊමේල්", whose hint now says so). The same morning it was a request to the admin (`app_user.new_password_asked_at`, a menu badge, "close the request"); the user replaced that with a code sent by SMS (migration `20261014150000_reset_password_by_sms` drops the column), then that afternoon with email, because SMS costs money for each message and email can be free. Don't bring the request or SMS back unless asked.
   - `/forgot-password` is three steps in one client component (`forgot-password-form.tsx`), each a Server Action in `src/app/(auth)/actions.ts`: `askForCode` (username), `checkCode` (the six digits), `setNewPassword` (AUTH-3's rules via `checkChosenPassword`), which redirects to `/login?notice=passwordReset`. The state lives only in the page, so leaving it starts again.
   - The logic is `src/server/auth/password-reset.ts`. Every username gets a random ticket (the browser holds it in the action state; `password_reset_code.id` is its SHA-256, and the code is an HMAC keyed by `BETTER_AUTH_SECRET`). Only an active account with an email address and fewer than 5 codes in 24 hours gets an email and a ticket with a user; any other ticket has none, so the page reads the same for any username. A new code ends the earlier ones; 5 wrong tries end a code; a code lasts 15 minutes for both steps. Setting the password clears a lock, ends the sessions, uses up the account's codes, and writes `password_reset_by_code` (the officer as actor); a code sent writes `reset_code_sent` (no actor; the history says "the sign-in page"). Only a failed email is refused (`emailFailed`).
-  - **Email** goes through `sendMail` (`src/server/mail.ts`, nodemailer over SMTP) in the screen's language. `resetCodeEmail` (`src/server/auth/reset-email.ts`, 15 Oct 2026, the user's request for a friendlier email) builds it from `forgotPassword.email` and `app`: an HTML part (inline styles and tables, since mail apps drop `<style>`; a green header, the code in a large box with the account's username, the 15 minutes, a "tell no one" box and a "sent automatically" footer) and the same words as plain text, with the code before the username so `lastCodeSentTo` finds it first. On a server, `SMTP_HOST`, `SMTP_PORT` (465, TLS from the start, by default; any other port must STARTTLS), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (default `SMTP_USER`) are settings in Parameter Store (the Infrastructure README, "Settings"; the RUNBOOK's "Email for forgotten passwords" compares a Gmail account with an app password and Amazon SES); with no `SMTP_HOST`, the page says resetting isn't on and sends officers to the admin. Setting `SMTP_HOST` in a developer's own `.env` sends real emails there too. In development and CI (`APP_ENV` development, ci or test) without it, emails are written to `MAIL_OUTBOX` (default `data/mail-outbox.jsonl`, git-ignored) instead, and printed in the dev server's terminal; `playwright.config.ts` sets the file and `lastCodeSentTo(email)` (`tests/e2e/helpers.ts`) reads the code, so an e2e test gives its officer an address of its own. Never log the address, the text or the password (SEC-8, SEC-9): `logError` logs nodemailer's error code (`EAUTH`, `ECONNECTION`) only.
+  - **Email** goes through `sendMail` (`src/server/mail.ts`, nodemailer over SMTP) in the screen's language. `resetCodeEmail` (`src/server/auth/reset-email.ts`, 15 Oct 2026, the user's request for a friendlier email) builds it from `forgotPassword.email` and `app`: an HTML part (inline styles and tables, since mail apps drop `<style>`; a green header, the code in a large box with the account's username, the 15 minutes, a "tell no one" box and a "sent automatically" footer) and the same words as plain text, with the code before the username so `lastCodeSentTo` finds it first. On a server, `SMTP_HOST`, `SMTP_PORT` (465, TLS from the start, by default; any other port must STARTTLS), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (default `SMTP_USER`) are settings in Parameter Store (the Infrastructure README, "Settings"; the Docs runbook's "Email for forgotten passwords" compares a Gmail account with an app password and Amazon SES); with no `SMTP_HOST`, the page says resetting isn't on and sends officers to the admin. Setting `SMTP_HOST` in a developer's own `.env` sends real emails there too. In development and CI (`APP_ENV` development, ci or test) without it, emails are written to `MAIL_OUTBOX` (default `data/mail-outbox.jsonl`, git-ignored) instead, and printed in the dev server's terminal; `playwright.config.ts` sets the file and `lastCodeSentTo(email)` (`tests/e2e/helpers.ts`) reads the code, so an e2e test gives its officer an address of its own. Never log the address, the text or the password (SEC-8, SEC-9): `logError` logs nodemailer's error code (`EAUTH`, `ECONNECTION`) only.
   - The Sinhala and Tamil screens say "ඊමේල්" and "மின்னஞ்சல்", not "email", because no Latin letters are allowed on them (the smoke test checks both steps).
   - Limits (SEC-4): `resetCodeLimiter` (5 per 15 minutes per IP), `CODES_PER_DAY`, `CODE_TRIES`, `CODE_MINUTES`. The admin's temporary password (ADM-5) stays for an officer with no email address or who gets no email.
 - **The session ends after 30 minutes idle or 12 hours in total.** The idle time is our `session.last_active_at`, checked in `getContext()`.
@@ -136,7 +136,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 
 ### Check and release (Phase 5)
 
-- **Every status change goes through `applyMove`** (`src/server/cases/transitions.ts`). Its `MOVES` table is SPEC section 6, row by row: who may make each move, from and to which statuses, whether it needs a reason, its Decision type, its audit action and its notice.
+- **Every status change goes through `applyMove`** (`src/server/cases/transitions.ts`). Its `MOVES` table is the application spec's "Case statuses and transitions", row by row: who may make each move, from and to which statuses, whether it needs a reason, its Decision type, its audit action and its notice.
   - It updates the case only while it still has the status the caller read (and the version, with `checkVersion`), so two people deciding at once can't both succeed.
   - It writes the Decision, the audit record and the notifications in the caller's transaction. It throws a `Refusal` (`refusal.ts`) that rolls everything back.
   - Commands call `moveRefusal` first to answer early with `roleNotAllowed` or `notAllowedNow`. `saveCase`'s submit uses `applyMove` too.
@@ -211,7 +211,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 
 ### Languages (7 Oct 2026)
 
-- **Three screen languages (UI-9):** Sinhala (the default), Tamil and English, the answer to PRD question 8.
+- **Three screen languages (UI-9):** Sinhala (the default), Tamil and English, as the Ministry answered on 7 Oct 2026.
   - The language is a cookie, `lang` (`src/i18n/locales.ts`), read by `src/i18n/request.ts`. Addresses carry no language. The picker (`src/components/language-picker.tsx`) is in the header and on the sign-in and password pages; it calls `chooseLanguage` (`src/i18n/actions.ts`), which sets the cookie and refreshes the layouts.
   - Server code gets the language with `getLocale()` from `next-intl/server`, client code with `useLocale()`.
   - Money: `formatRupees(amount, locale)` writes රු., ரூ. or Rs.
@@ -231,7 +231,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 
 ### Replacing a beneficiary (CASE-11, 12 Oct 2026)
 
-- **PRD question 7, settled after the prototype:** the new person is always a new case, linked to the old one; never an edit. Task 7.8 in the PLAN. Still open with the Ministry: replacing a case that already received money.
+- **Settled with the Ministry after the prototype:** the new person is always a new case, linked to the old one; never an edit. Task 7.8 of version 1 (Docs change 0001). Still open with the Ministry: replacing a case that already received money.
 - **Two columns on `case`** (migration `20261012090000_replacing_a_beneficiary`): `another_name_requested`, set when Head Office rejects (`decideCase`'s `askAnotherName`) or stops (`stopCase`'s `askAnotherName`) and ticks "ask for another name"; and `replaces_case_id` (unique, `ON DELETE SET NULL`) on the new case. Hand-written checks: the flag only on a `REJECTED` or `STOPPED` case, and never a case replacing itself. Reopening clears the flag (audit `anotherNameWithdrawn`) and answers `replaced` once a case has taken the place.
 - **`src/server/cases/replacements.ts`** holds `openRequests` (the office's cases waiting for another name; `forCaseId` keeps the one a case already replaces), `replacementRefusal` and `REQUEST_SELECT`/`toRequest`, which `getCase` reuses for `replaces`; `getCase` also gives `anotherNameRequested` and `replacedBy`. The to-do panel lists requests first (`type: "replace"`), and the check queue's cards say "<number> වෙනුවට" (`QueueRow.replacesNumber`).
 - **The form's answer** travels as `replaces`: absent when the form didn't ask (keep the link), `""` unanswered (refused on submit with `replacementRequired`, kept on a draft save), `"none"` (no link), or the old case's id. `saveCase` checks the target (same office, waiting, not taken: `replacementUnavailable`) and, in the transaction, claims it with `claimReplaced`, which moves the old case's version on, so a reopening at the same moment fails as a conflict. A verified case keeps its link whatever is sent. "No" isn't stored, so the form asks again on a case with no link.
@@ -257,7 +257,6 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
   - The pure parts are tested in `tests/unit/tools.test.ts`, the rest against a database in `scripts/tools.db.test.ts`.
 - **The first admin** comes from `scripts/create-admin.ts`, run on the server as `tsx scripts/tools.ts create-admin` by the Infrastructure repository's `create-admin.sh`: `createAccount` with a null actor, so the history says the system made it. It refuses while an active admin exists, unless `--another`.
 - **Security tests (9.3)** are in `tests/security/`: `access.test.ts` calls every Server Action and route handler as every kind of visitor, with the real `requireRole` and a made-up session, and fails when a new action or route has no rule in its `RULES`; `secrets.test.ts` scans tracked files; `headers.spec.ts` (Playwright, which now also runs `tests/security/*.spec.ts`) reads the headers of the running app. The servers' configuration is checked by the Infrastructure repository's CI.
-- **The officers' guides** are Sinhala Markdown in `../Docs/guides/si/`, quoting the screens' own labels from `messages/si.json`. Update them when a label they quote changes.
 
 ### Migrations without downtime (22 Oct 2026)
 
@@ -278,26 +277,23 @@ So never, in one release, rename or drop a column or table that the previous rel
 ### Sheet import (removed)
 
 - **Phase 8's import was taken out on 6 Oct 2026**, while the sheet is still being updated: the sample sheet and import scripts, `src/server/import/`, the DS office's fill-in page and "details missing" tab, Head Office's `/ho/imported` screen and the confirmation on the case page. The migration `20261006090000_remove_sheet_import` drops `case.sheet_key`, `sheet_row`, `sheet_serial` and `sheet_notes`, the `IMPORTED` status and the `CONFIRM_IMPORT` decision. It stops, changing nothing, if a case or decision still holds one of them.
-- **Don't add it back unless asked.** How the sheet's cases come into the system is open (PLAN, "Waiting on others"). The import as it was built, and SPEC IMP-1 to IMP-7 as they read then, are in the git history up to commit `9a5ce1b`.
+- **Don't add it back unless asked.** How the sheet's cases come into the system is still open with the Ministry. The import as it was built, and the application spec's IMP-1 to IMP-7 as they read then, are in the git history up to commit `9a5ce1b`.
 - `scripts/made-up.ts` (made-up names, NICs and phone numbers) came from task 8.1 and stays; the load-test data uses it.
 
 The system is for the Ministry of Women and Child Affairs (Sri Lanka) and tracks the **Diviyata Saviyak (දිවියට සවියක්)** housing programme. For each case it records the financial progress (four installment releases) and the physical construction progress.
 
-## Workflow: PRD → SPEC → PLAN before code
+## Workflow: specs and changes before code
 
-This project follows a documentation-first workflow (source: `../Documents/Project Documentation Workflow.pdf`):
+The Docs repository (`../Docs`) is the source this code is built from. Its `docs/CONTRIBUTING.md` sets the rules.
 
-- The PRD (`../Docs/requirements/PRD.md`) answers what we are building and why: the problem, users, goals, scope and what is out of scope.
-- The SPEC (`../Docs/requirements/SPEC.md`) answers what exactly the system must do: functional requirements, inputs and outputs, error handling, security, performance and acceptance criteria.
-- The PLAN (`../Docs/planning/PLAN.md`) answers how we will build it and in what order: phases, tasks, dependencies, the files each task touches, tests and completion criteria.
+- **The specs** (`../Docs/docs/specs/`) describe the system as it is built: `product.md` (what we are building and why: the problem, users, goals and scope), `application.md` (what exactly the application must do, with requirement IDs and acceptance checks), `infrastructure.md`, and `interfaces.md` (what this repository and Infrastructure agree on: images, the release, settings, database accounts, the tools commands, `/health`).
+- **The changes** (`../Docs/docs/changes/NNNN-name/`) are the work: one folder each, with `proposal.md` (why, what, the requirements and acceptance checks), `design.md` when it needs one, and `tasks.md` (the work in each repository). Version 1 was built as change 0001.
 
-They live in the Docs repository, whose `CONTRIBUTING.md` sets the rules for changing them: requirement IDs are never renumbered or reused, the three change together, and documents carry dates, never personal names.
-
-The order is: a clickable prototype is reviewed with the Ministry to settle the PRD's open questions, the user approves the PRD, then the SPEC is written, then the PLAN, then implementation one phase at a time. The prototype ([Design canvas](https://claude.ai/artifact/DQarnsyMfCao1y6SmpMDbT)) is throwaway: sample data only, no backend, and never the start of the app's code. Test each phase before starting the next. When approved requirements change, update all three documents so they stay in sync. Don't start application code until the relevant document exists and the user has approved it. If a question is already answered in the PRD, don't ask the user again.
+The order is: a change's folder gathers what it needs, its owner approves the Docs pull request, then it is built here, one task at a time, each pull request naming the change ("Change 0014: …"). Once it is delivered, its requirements move into the specs. Requirement IDs are never renumbered or reused, and documents carry dates, never personal names. A change to something in `interfaces.md` needs a pull request in both this repository and Infrastructure. The prototype ([Design canvas](https://claude.ai/artifact/DQarnsyMfCao1y6SmpMDbT)) is throwaway: sample data only, no backend, and never the start of the app's code. Test each task before starting the next. Don't start application code until its change is approved. If a question is already answered in the specs, don't ask the user again.
 
 ## Decisions made so far
 
-These may not be in the PRD yet. Once the PRD is approved, it overrides this list.
+These may not be in the product spec yet. Once it is approved, it overrides this list.
 
 - **Platform:** a web app used on office PCs and on phones. Since 28 Sep, screens are designed for desktop first, for DS officers as well as Head Office.
 - **Language and ease of use (28 Sep, widened 7 Oct):** the screens are in Sinhala, Tamil and English; each officer picks one, and Sinhala is the default. Officers are non-technical, and most of their other systems are in Sinhala. Keep screens simple: one main task per screen, plain words, and the sheet's own terms (for example නිවාසගත, අවදානම් දරුවන්, පළමු වාරිකය).
@@ -314,8 +310,8 @@ These may not be in the PRD yet. Once the PRD is approved, it overrides this lis
 - **Installment status:** Not started → Processing (with an expected date) → Released (with the actual date).
 - **Documents (28 Sep):** a new case has one optional upload, "වෙනත් ලේඛන" (other documents). No document is required, so the field research report and GN certificate are not separate uploads.
 - **Kinds of help (28 Sep):** only a new house or the renovation of an existing house. Land cases have not started, so leave them out of the system for now. Don't design for them.
-- **Repositories:** the application, the infrastructure and the documents are separate repositories (see "Repositories" above). This repository only tests and publishes images; the Infrastructure repository deploys them with Terraform and Ansible, and monitors them. Docs `decisions/0002` records why.
-- **Hosting on AWS (22 Oct):** officers sign in from DS offices across the country and there is no Ministry server or database for the system. Docs `decisions/0003` records the design.
+- **Repositories:** the application, the infrastructure and the documents are separate repositories (see "Repositories" above). This repository only tests and publishes images; the Infrastructure repository deploys them with Terraform and Ansible, and monitors them. Docs `docs/decisions/0002` records why.
+- **Hosting on AWS (22 Oct):** officers sign in from DS offices across the country and there is no Ministry server or database for the system. Docs `docs/decisions/0003` records the design.
   - The app runs as two containers on a Graviton (arm64) server behind CloudFront and WAF, with RDS PostgreSQL and the uploads in S3.
   - Each release reaches staging by itself, signed; production is a pull request in the Infrastructure repository.
   - For this repository that meant the sign-in limits in PostgreSQL, files in S3, amd64 and arm64 images, the tools commands and the migration rule ("Migrations without downtime").
