@@ -8,7 +8,7 @@ The screens are in Sinhala, Tamil and English, and designed for office PCs.
 
 This repository is the application. The system has two more, in the same GitHub organization:
 
-- **Docs**: the PRD (what we are building and why), the SPEC (what exactly the system must do), the PLAN (the build phases), the runbook, the decision records and the officers' Sinhala guides.
+- **Docs**: the specs (the product, the application, the infrastructure and what the repositories agree on), the changes (each piece of work, from proposal to delivery), the decision records and the runbook.
 - **Infrastructure**: the servers, and how they are set up, deployed, backed up and monitored.
 
 ## Running it locally

@@ -7,9 +7,9 @@ import { notifyOffice } from "../notifications/commands";
 import { Refusal } from "./refusal";
 
 /**
- * The only place a case's status changes (SPEC section 6). Every move in the table below is checked
- * here on the server, whatever the screen showed (STS-1, ERR-7). A move records its decision, audit
- * record and notices in the same transaction as the change.
+ * The only place a case's status changes (application spec, Case statuses and transitions). Every
+ * move in the table below is checked here on the server, whatever the screen showed (STS-1, ERR-7). A
+ * move records its decision, audit record and notices in the same transaction as the change.
  */
 
 /** Who makes a move: an officer, or the system itself (CLS-1). */
@@ -30,7 +30,7 @@ type MoveRule = {
   audit: string;
 };
 
-/** SPEC section 6, row by row. */
+/** Application spec, Case statuses and transitions, row by row. */
 export const MOVES: Record<Move, MoveRule> = {
   submit: {
     from: ["DRAFT", "RETURNED"],

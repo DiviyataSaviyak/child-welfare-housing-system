@@ -2,9 +2,9 @@ import type { CaseStatus } from "@/generated/prisma/enums";
 import type { Role } from "../auth/roles";
 
 /**
- * Who may change a case's details, and when (SPEC section 4 and section 6). Office scope is checked
- * separately, through the permission layer; these rules only look at the role and the case's status.
- * Status changes themselves are in transitions.ts.
+ * Who may change a case's details, and when (application spec, Roles and permissions; Case statuses
+ * and transitions). Office scope is checked separately, through the permission layer; these rules
+ * only look at the role and the case's status. Status changes themselves are in transitions.ts.
  */
 const ENTRY: readonly CaseStatus[] = ["DRAFT", "RETURNED"];
 

@@ -15,7 +15,7 @@ const STATUSES: CaseStatus[] = [
   "STOPPED",
 ];
 
-describe("case rules (SPEC sections 4 and 6)", () => {
+describe("case rules (application spec, Roles and permissions; Case statuses and transitions)", () => {
   it("lets the office change only drafts and returned cases, and nobody a case being checked (CASE-7, STS-3)", () => {
     for (const status of STATUSES) {
       const entry = status === "DRAFT" || status === "RETURNED";
@@ -48,7 +48,10 @@ describe("case rules (SPEC sections 4 and 6)", () => {
   });
 });
 
-/** SPEC section 6: [move, from, to, who]. Every other combination must be refused (STS-1). */
+/**
+ * Application spec, Case statuses and transitions: [move, from, to, who]. Every other combination
+ * must be refused (STS-1).
+ */
 const ALLOWED: [Move, CaseStatus, CaseStatus, Mover[]][] = [
   ["submit", "DRAFT", "SUBMITTED", ["DS_OFFICER", "HO_OFFICER"]],
   ["submit", "RETURNED", "SUBMITTED", ["DS_OFFICER", "HO_OFFICER"]],
@@ -64,7 +67,7 @@ const ALLOWED: [Move, CaseStatus, CaseStatus, Mover[]][] = [
 ];
 const MOVERS: Mover[] = ["DS_OFFICER", "HO_OFFICER", "ADMIN", "SYSTEM"];
 
-describe("status changes (SPEC section 6)", () => {
+describe("status changes (application spec, Case statuses and transitions)", () => {
   it("allows exactly the moves in the table, to the right status and by the right people (STS-1)", () => {
     for (const move of Object.keys(MOVES) as Move[]) {
       for (const from of STATUSES) {

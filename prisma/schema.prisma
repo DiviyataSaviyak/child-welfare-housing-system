@@ -1,4 +1,5 @@
-// Diviyata Saviyak database schema. Section 5 of the SPEC (the Docs repository's requirements/SPEC.md) describes each entity.
+// Diviyata Saviyak database schema. The application spec's Data model (the Docs repository's
+// docs/specs/application.md) describes each entity.
 
 generator client {
   provider = "prisma-client"
@@ -9,19 +10,19 @@ datasource db {
   provider = "postgresql"
 }
 
-/// Kind of help (SPEC section 5). Land-only cases are out of scope.
+/// Kind of help (application spec, Data model). Land-only cases are out of scope.
 enum Kind {
   NEW_HOUSE
   RENOVATION
 }
 
-/// Which of the sheet's two lists a beneficiary belongs to (SPEC section 5).
+/// Which of the sheet's two lists a beneficiary belongs to (application spec, Data model).
 enum Category {
   CARE_LEAVER
   CHILD_AT_RISK
 }
 
-/// A case's status (SPEC section 6). Only the moves listed there are allowed (STS-1).
+/// A case's status (application spec, Case statuses and transitions). Only the moves listed there are allowed (STS-1).
 enum CaseStatus {
   DRAFT
   SUBMITTED
@@ -42,7 +43,7 @@ enum DecisionType {
   REOPEN
 }
 
-/// An installment's status (SPEC section 5, INS-3, INS-4).
+/// An installment's status (application spec, Data model, INS-3, INS-4).
 enum InstallmentStatus {
   NOT_STARTED
   PROCESSING
@@ -154,7 +155,7 @@ model AuditLog {
 
 // ---------------------------------------------------------------------------
 // Sign-in (Phase 2). User, Session, Account and Verification follow the fields Better Auth 1.7
-// expects, including its username and admin plugins. The other fields are ours (SPEC section 5).
+// expects, including its username and admin plugins. The other fields are ours (application spec, Data model).
 // ---------------------------------------------------------------------------
 
 /// An officer's account. Never deleted (ADM-7).
@@ -307,7 +308,7 @@ model UnknownSignInName {
 }
 
 // ---------------------------------------------------------------------------
-// Cases (Phase 4). SPEC section 5; the rules for each field are in CASE-2.
+// Cases (Phase 4). Application spec, Data model; the rules for each field are in CASE-2.
 // ---------------------------------------------------------------------------
 
 /// A beneficiary's case. Never deleted, except drafts (CASE-8).
@@ -436,7 +437,8 @@ model StoredFile {
 }
 
 // ---------------------------------------------------------------------------
-// Check and release (Phase 5). SPEC sections 7.7 to 7.9 and 7.13.
+// Check and release (Phase 5). Application spec: Head Office check, the Rs. 2,000,000 release,
+// Installments, History and notifications.
 // ---------------------------------------------------------------------------
 
 /// One allocation letter (ප්‍රතිපාදන ලිපිය) from Head Office to a District Secretary: Rs. 2,000,000 for each
@@ -524,7 +526,8 @@ model Notification {
 }
 
 // ---------------------------------------------------------------------------
-// Installments, building progress and closing (Phase 6). SPEC sections 7.9 to 7.11.
+// Installments, building progress and closing (Phase 6). Application spec: Installments, Building
+// progress, Completing, stopping and reopening.
 // ---------------------------------------------------------------------------
 
 /// Building progress recorded by the DS office (STG-1): a stage reached, or a visit with only a note.

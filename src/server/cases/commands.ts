@@ -36,7 +36,7 @@ export type CaseCommandError =
   | "fileUnavailable"
   /** The case's status doesn't allow this step (STS-1). */
   | "notAllowedNow"
-  /** The actor's role never takes this step (SPEC section 4). */
+  /** The actor's role never takes this step (application spec, Roles and permissions). */
   | "roleNotAllowed"
   /** The kind of help decides the stages, so it stays once a stage is recorded (CASE-9, STG-4). */
   | "kindLocked"
@@ -337,7 +337,7 @@ export async function deleteDraft(db: PrismaClient, actor: Actor, id: string): P
 
 /**
  * Takes a document off a draft or a returned case. The file itself is kept, because nothing on a
- * case is deleted (SPEC section 5); it no longer shows or opens.
+ * case is deleted (application spec, Data model); it no longer shows or opens.
  */
 export async function removeDocument(
   db: PrismaClient,

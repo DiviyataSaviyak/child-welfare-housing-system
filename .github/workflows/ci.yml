@@ -1,11 +1,11 @@
 name: CI
 
-# Pushes to main run these checks through release.yml, which publishes the images only when they pass.
-# The server's files are checked in the Infrastructure repository.
+# Runs on pull requests to main, not on pushes to other branches. Pushes to main run these checks
+# through release.yml, which publishes the images only when they pass. The server's files are checked
+# in the Infrastructure repository.
 on:
-  push:
-    branches-ignore: [main]
   pull_request:
+    branches: [main]
   workflow_call:
 
 permissions:
