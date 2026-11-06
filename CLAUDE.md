@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
+The system is for the Ministry of Women and Child Affairs (Sri Lanka) and tracks the **Diviyata Saviyak (දිවියට සවියක්)** housing programme. For each case it records the financial progress (four installment releases) and the physical construction progress.
+
 ## Repositories
 
 The system has three repositories, kept side by side on disk. This one is the application.
@@ -55,7 +57,8 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 | No hard-coded screen text (UI-1) | `npm run check:strings` |
 | Unit tests | `npm test`; one file: `npx vitest run src/lib/dates.test.ts`; one test: add `-t "<name>"` |
 | Database tests (database must be up) | `npm run test:db`; one file: `npx vitest run --config vitest.db.config.mts prisma/seed.db.test.ts` |
-| End-to-end tests | `npm run test:e2e`; one test: `npx playwright test tests/e2e/smoke.spec.ts -g "/ds"` |
+| End-to-end tests | `npm run test:e2e`; one test: `npx playwright test tests/e2e/smoke.spec.ts -g "/ds"`. Locally it starts `next dev` on port 3100, or reuses whatever already answers there, even a stale server. Its global setup runs `tests/e2e/cleanup.ts` and `prisma/seed-users.ts --reset`, which signs out anyone using a sample account (such as `ad0001`) in the same dev database and puts its password back |
+| Everything CI checks, in its order | actionlint (below), `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm run check:strings`, `npm test`, `npm run test:db`, `npm run build`, the end-to-end tests against the standalone build, `npm audit --omit=dev --audit-level=high` |
 | Production build and server | `npm run build`, then `npm run start:standalone` |
 | Change the database schema (it must work beside the previous release: "Migrations without downtime" below) | edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <change>` and `npx prisma generate` (Prisma 7's `migrate dev` no longer regenerates the client). When `migrate dev` stops to ask about a change (for example a new unique column), write the SQL with `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` into a new `prisma/migrations/<timestamp>_<change>/migration.sql` and apply it with `npx prisma migrate deploy` |
 | Put the sample accounts back to their start state | `npx tsx prisma/seed-users.ts --reset` (the end-to-end tests do this themselves) |
@@ -74,6 +77,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **The fonts are committed** in `src/app/fonts/`, copied from `@fontsource-variable/noto-sans-sinhala` and `noto-sans-tamil`. Nothing loads from Google at runtime.
 - **The `overrides` in `package.json`** force patched `deepmerge-ts` and `mysql2` inside the Prisma CLI, and `uuid` inside ExcelJS. Remove them once Prisma and ExcelJS ship fixed versions.
 - **Pinned versions.** `.npmrc` saves exact versions. Upgrade one dependency at a time, on purpose.
+- **A dev server that hangs or panics in Turbopack** usually has a corrupted `.next/dev` cache: stop every `next` process and delete `.next/dev` (git-ignored, rebuilt on start). On Windows, stopping a background `next dev` can leave it holding its port.
 
 ### Sign-in and permissions (Phase 2)
 
@@ -279,8 +283,6 @@ So never, in one release, rename or drop a column or table that the previous rel
 - **Phase 8's import was taken out on 6 Oct 2026**, while the sheet is still being updated: the sample sheet and import scripts, `src/server/import/`, the DS office's fill-in page and "details missing" tab, Head Office's `/ho/imported` screen and the confirmation on the case page. The migration `20261006090000_remove_sheet_import` drops `case.sheet_key`, `sheet_row`, `sheet_serial` and `sheet_notes`, the `IMPORTED` status and the `CONFIRM_IMPORT` decision. It stops, changing nothing, if a case or decision still holds one of them.
 - **Don't add it back unless asked.** How the sheet's cases come into the system is still open with the Ministry. The import as it was built, and the application spec's IMP-1 to IMP-7 as they read then, are in the git history up to commit `9a5ce1b`.
 - `scripts/made-up.ts` (made-up names, NICs and phone numbers) came from task 8.1 and stays; the load-test data uses it.
-
-The system is for the Ministry of Women and Child Affairs (Sri Lanka) and tracks the **Diviyata Saviyak (දිවියට සවියක්)** housing programme. For each case it records the financial progress (four installment releases) and the physical construction progress.
 
 ## Workflow: specs and changes before code
 
