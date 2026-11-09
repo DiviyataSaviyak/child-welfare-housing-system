@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../prisma/seed-data";
 import { createTestClient } from "../../tests/db/client";
+import messages from "../../messages/si.json";
 import type { CaseValues } from "@/lib/validation/case";
 import { type Designation, roleOf } from "./auth/designations";
 import { type Actor, deleteDraft, saveCase } from "./cases/commands";
@@ -9,9 +11,11 @@ import { decideCase } from "./cases/decide";
 import { caseWhere, getCase } from "./cases/queries";
 import { stopCase } from "./cases/stop";
 import { dashboard } from "./dashboard/queries";
+import { exportCaseList } from "./exports/case-list";
 import { fileForViewer, uploadDocument, uploadPhoto } from "./files/uploads";
 import { caseHistory } from "./history/queries";
 import { startInstallment } from "./installments/commands";
+import { viewerArea } from "./lists/queries";
 import { recordLetter } from "./releases/commands";
 import { recordStageUpdate } from "./stages/commands";
 
@@ -23,6 +27,7 @@ import { recordStageUpdate } from "./stages/commands";
  */
 
 const db = createTestClient();
+const t = createTranslator({ locale: "si", messages, namespace: "cases" });
 
 type Office = { id: number; districtId: number; provinceId: number };
 let home: Office; // the first district's first office
@@ -179,6 +184,47 @@ describe("each account sees the cases of its own area (PRM-4, AC-41)", () => {
     const province = as("PROVINCE_COMMISSIONER", { provinceId: home.provinceId });
     const outside = await dashboard(db, province, { districtId: otherProvince.districtId }, "si");
     expect(outside.byOffice.size).toBe(0);
+  });
+
+  it("offers in the view-only area's filters only the area's places", async () => {
+    const officesOf = (districtId: number) =>
+      db.dsOffice.findMany({ where: { districtId }, orderBy: { id: "asc" }, select: { id: true } });
+    const placesOf = async (viewer: Actor) =>
+      (await viewerArea(db, viewer, "si")).districts.map((d) => [d.id, d.offices.map((o) => o.id)]);
+
+    const office = await viewerArea(db, as("DS_SECRETARY", { dsOfficeId: home.id }), "si");
+    const homeOffice = await db.dsOffice.findUniqueOrThrow({ where: { id: home.id }, select: { nameSi: true } });
+    expect(office).toMatchObject({ kind: "office", name: homeOffice.nameSi });
+    expect(await placesOf(as("DS_SECRETARY", { dsOfficeId: home.id }))).toEqual([[home.districtId, [home.id]]]);
+
+    const ownOffices = (await officesOf(home.districtId)).map((o) => o.id);
+    expect(await placesOf(as("DISTRICT_SECRETARY", { districtId: home.districtId }))).toEqual([
+      [home.districtId, ownOffices],
+    ]);
+
+    const provinceDistricts = await db.district.findMany({
+      where: { provinceId: home.provinceId },
+      orderBy: { id: "asc" },
+      select: { id: true },
+    });
+    const province = await placesOf(as("PROVINCE_COMMISSIONER", { provinceId: home.provinceId }));
+    expect(province.map(([id]) => id)).toEqual(provinceDistricts.map((d) => d.id));
+
+    const all = await placesOf(as("MINISTRY_SECRETARY", {}));
+    expect(all).toHaveLength(await db.district.count());
+    expect(await viewerArea(db, as(null, {}), "si")).toEqual({ kind: "none", name: null, districts: [] });
+  });
+
+  it("downloads only the area's cases, and records the download (EXP-3)", async () => {
+    const viewer = as("DISTRICT_SECRETARY", { districtId: home.districtId });
+    const file = (await exportCaseList(db, viewer, "oversight_cases", {}, t, "si"))!;
+    expect(file.rows).toBe(await db.case.count({ where: caseWhere(viewer, {})! }));
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { actorId: viewer.userId, action: "cases_exported" },
+      orderBy: { id: "desc" },
+    });
+    expect(audit).toMatchObject({ entityType: "case_list", entityId: "oversight_cases" });
+    expect(audit.after).toEqual({ filters: { districtScope: home.districtId }, rows: file.rows });
   });
 });
 

@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { contentSecurityPolicy } from "./server/security-headers";
 
 /** Areas that need a signed-in user. */
-const PROTECTED = ["/ds", "/ho", "/admin", "/change-password", "/files"];
+const PROTECTED = ["/ds", "/ho", "/oversight", "/admin", "/change-password", "/files"];
 
 /**
  * Two jobs only (ARC-3):

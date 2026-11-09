@@ -128,7 +128,7 @@ const VISITORS: Visitor[] = ["signedOut", "temporaryPassword", ...(Object.keys(A
 
 /** Who may call it. */
 type Rule =
-  | { role: Role } // requireRole: the sign-in page, the password page, or "not found"
+  | { role: Role | Role[] } // requireRole: the sign-in page, the password page, or "not found"
   | { signedIn: "temporaryAllowed" } // changing one's own password
   | { signedIn: "own" } // changing one's own details: any role, once the temporary password is changed
   | { signedIn: "file" } // a file: "not found" unless the account sees cases; the case's own check follows
@@ -137,6 +137,8 @@ type Rule =
 const DS: Rule = { role: "DS_OFFICER" };
 const HO: Rule = { role: "HO_OFFICER" };
 const ADMIN: Rule = { role: "ADMIN" };
+/** The view-only area (PRM-4, PRM-5): it changes nothing, and only reads within the account's own area. */
+const OVERSIGHT: Rule = { role: ["VIEWER", "DISTRICT_OFFICER"] };
 
 const RULES: Record<string, Record<string, Rule>> = {
   "src/app/(auth)/actions.ts": {
@@ -200,6 +202,7 @@ const RULES: Record<string, Record<string, Rule>> = {
   },
   "src/app/ho/cases/export/route.ts": { GET: HO },
   "src/app/ho/waiting/route.ts": { GET: HO },
+  "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
   "src/app/files/[id]/route.ts": { GET: { signedIn: "file" } },
   "src/app/files/[id]/thumb/route.ts": { GET: { signedIn: "file" } },
 };
@@ -219,7 +222,7 @@ function expected(rule: Rule, visitor: Visitor): Outcome {
   }
   if (visitor === "signedOut") return "signIn";
   if (visitor === "temporaryPassword") return "changePassword";
-  return ACCOUNTS[visitor].role === rule.role ? "passes" : "notFound";
+  return [rule.role].flat().includes(ACCOUNTS[visitor].role) ? "passes" : "notFound";
 }
 
 /** Next's redirect() and notFound() throw errors that carry a digest. */

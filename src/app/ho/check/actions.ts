@@ -9,7 +9,7 @@ import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { uploadLetterScan } from "@/server/files/uploads";
 import { correctRelease, MAX_LETTER_CASES, recordLetter, type ReleaseCommandError } from "@/server/releases/commands";
-import { positive } from "../cases/filters";
+import { positive } from "@/components/cases/list-filters";
 import { placeQuery, readPlace } from "./place";
 
 /** Head Office's check and release actions (CHK-3, REL-2 to REL-4). Each checks the role first. */

@@ -17,7 +17,7 @@ export type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 export type ListFilter = Omit<CaseFilter, "page">;
 
 /** Which list was exported, as the audit record names it (EXP-3). */
-export type ListName = "ho_cases" | "ds_cases";
+export type ListName = "ho_cases" | "ds_cases" | "oversight_cases";
 
 export type ExportRow = {
   caseNumber: string | null;

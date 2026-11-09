@@ -167,8 +167,24 @@ test("AC-37: an account with no name, mobile or email signs in and sets its own 
     await officer.getByLabel("නව මුරපදය", { exact: true }).fill("Nameless-Own-Pass-1");
     await officer.getByLabel("නව මුරපදය නැවත").fill("Nameless-Own-Pass-1");
     await officer.getByRole("button", { name: "සුරකින්න" }).click();
-    // The view-only area's pages come with task 5 of change 0005; landing there is what counts here.
+    // PRM-4: the view-only area, for the account's own district only.
     await expect(officer).toHaveURL(/\/oversight$/);
+    await expect(officer.getByText(`${NAMELESS_DISTRICT} දිස්ත්‍රික් ලේකම් කාර්යාලය`)).toBeVisible();
+    await expect(officer.getByRole("heading", { name: "සාරාංශය", level: 1 })).toBeVisible();
+    await expect(officer.getByLabel("දිස්ත්‍රික්කය", { exact: true })).toHaveCount(0);
+
+    await officer.getByRole("navigation").getByRole("link", { name: "ප්‍රතිලාභීන්" }).click();
+    await expect(officer).toHaveURL(/\/oversight\/cases$/);
+    // One district: only its DS offices to choose from, and nothing to add (PRM-5).
+    await expect(officer.getByLabel("දිස්ත්‍රික්කය", { exact: true })).toHaveCount(0);
+    const offices = officer.getByLabel("ප්‍රා.ලේ. කොට්ඨාසය");
+    await expect(offices).toBeVisible();
+    await expect(offices.locator("option")).not.toHaveCount(1);
+    await expect(officer.getByRole("link", { name: /නව ප්‍රතිලාභියෙකු/ })).toHaveCount(0);
+
+    // Another role's area answers "not found".
+    await officer.goto("/ho");
+    await expect(officer.getByRole("heading", { name: "මෙම පිටුව සොයාගත නොහැක" })).toBeVisible();
   });
 });
 
@@ -183,7 +199,8 @@ test("AC-40: an officer with no name goes by designation and office, and changes
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: NAMELESS_DISTRICT });
   const firstOffice = page.getByRole("group", { name: "ප්‍රාදේශීය ලේකම් කාර්යාලය *" }).getByRole("radio").first();
   await firstOffice.check();
-  const office = (await page.locator("label", { has: firstOffice }).innerText()).trim();
+  // Each office radio sits inside its own label, which holds the office's name.
+  const office = (await firstOffice.locator("xpath=..").innerText()).trim();
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
   await expect(page.getByRole("heading", { name: "ගිණුම සාදන ලදී" })).toBeVisible();
   const username = await page.getByTestId("new-username").innerText();

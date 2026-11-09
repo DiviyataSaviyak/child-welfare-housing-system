@@ -1,18 +1,16 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { caseName } from "@/components/cases/page-header";
+import { CaseFilters } from "@/components/cases/case-filters";
+import { CaseTable } from "@/components/cases/case-table";
 import { ExportLink } from "@/components/cases/export-link";
+import { FILTERS, filterQuery, positive, readFilters, STATUSES } from "@/components/cases/list-filters";
 import { Pager } from "@/components/cases/pager";
-import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
-import { formatDate } from "@/lib/dates";
 import { listCases, PAGE_SIZE } from "@/server/cases/queries";
 import { isBeingEntered } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
-import { CaseFilters } from "./case-filters";
-import { FILTERS, filterQuery, positive, readFilters, STATUSES } from "./filters";
 
 /** FND-1: every case, filterable by name, NIC, number, district, DS, status, category and kind. */
 export default async function HoCasesPage({
@@ -73,66 +71,15 @@ export default async function HoCasesPage({
         <CaseFilters
           // "Clear" changes the address without leaving the page; a new form shows the new choices.
           key={FILTERS.map((key) => values[key]).join("|")}
+          action="/ho/cases"
           values={values}
           districts={districts}
           statuses={STATUSES}
         />
-        {list.rows.length === 0 ? (
-          <p className="px-5 py-8 text-center text-muted-foreground">{t("list.empty")}</p>
-        ) : (
-          <table className="w-full border-collapse text-left">
-            <thead className="bg-muted/60 text-[15px] text-muted-foreground">
-              <tr>
-                <th scope="col" className="px-5 py-2.5 font-semibold">
-                  {t("list.columns.beneficiary")}
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-semibold">
-                  {t("list.columns.office")}
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-semibold">
-                  {t("list.columns.kind")}
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-semibold">
-                  {t("list.columns.status")}
-                </th>
-                <th scope="col" className="px-5 py-2.5 font-semibold">
-                  {t("list.columns.updated")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.rows.map((row) => (
-                <tr key={row.id} className="border-t hover:bg-accent/60">
-                  <td className="px-5 py-2.5">
-                    <Link
-                      href={isBeingEntered(row.status) ? `/ho/cases/${row.id}/edit` : `/ho/cases/${row.id}`}
-                      className="flex flex-col"
-                    >
-                      <span className="text-[17px] font-semibold text-primary underline-offset-2 hover:underline">
-                        {caseName(t, row.name, row.childName)}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {row.caseNumber ?? t("noNumber")}
-                        {row.category && ` · ${t(`category.${row.category}`)}`}
-                      </span>
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className="flex flex-col">
-                      <span>{row.officeName}</span>
-                      <span className="text-sm text-muted-foreground">{row.districtName}</span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5">{row.kind ? t(`kindShort.${row.kind}`) : t("none")}</td>
-                  <td className="px-3 py-2.5">
-                    <StatusChip status={row.status} />
-                  </td>
-                  <td className="px-5 py-2.5 tabular-nums">{formatDate(row.updatedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <CaseTable
+          rows={list.rows}
+          href={(row) => (isBeingEntered(row.status) ? `/ho/cases/${row.id}/edit` : `/ho/cases/${row.id}`)}
+        />
         <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={pageHref} />
       </section>
     </div>

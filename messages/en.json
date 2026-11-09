@@ -16,6 +16,9 @@
     "ds": "Divisional Secretariat",
     "dsOffice": "{office} Divisional Secretariat",
     "ho": "Head Office",
+    "district": "{district} District Secretariat",
+    "province": "{province} Provincial Council",
+    "oversight": "View only",
     "admin": "Head Office · Administrator"
   },
   "nav": {
@@ -27,6 +30,8 @@
     "adminLists": "Lists",
     "hoCases": "Beneficiaries",
     "hoCheck": "Checking and releasing allocations",
+    "oversightDashboard": "Summary",
+    "oversightCases": "Beneficiaries",
     "waiting": "Beneficiaries waiting: {count}"
   },
   "shell": {
@@ -446,6 +451,7 @@
     "back": {
       "ds": "Back to my beneficiaries",
       "ho": "Back to the beneficiary list",
+      "oversight": "Back to the beneficiary list",
       "case": "Back to the beneficiary's page"
     },
     "home": {
