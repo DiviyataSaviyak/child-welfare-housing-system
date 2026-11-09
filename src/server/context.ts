@@ -4,17 +4,21 @@ import { notFound, redirect } from "next/navigation";
 import { getLocale } from "next-intl/server";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
-import { localName, NAMES } from "@/lib/names";
+import { localName } from "@/lib/names";
 import { isRole, type Role } from "./auth/roles";
 import { sessionVerdict, shouldRecordActivity } from "./auth/session-rules";
 import { db } from "./db";
 import { logEvent } from "./log";
+import { accountLabel, LABEL_SELECT } from "./users/label";
 
 /** The signed-in user, as every server check sees them. */
 export type Context = {
   userId: string;
   sessionId: string;
+  /** Empty when the account has none (ADM-2). */
   name: string;
+  /** The name, or the designation and place of an account with none, in the screen's language (ADM-10). */
+  label: string;
   role: Role;
   /** A code from src/server/auth/designations.ts; null for an admin. */
   designation: string | null;
@@ -44,15 +48,13 @@ export const getContext = cache(async (): Promise<Context | null> => {
       user: {
         select: {
           id: true,
-          name: true,
           role: true,
           banned: true,
-          designation: true,
           dsOfficeId: true,
           districtId: true,
           provinceId: true,
           mustChangePassword: true,
-          dsOffice: { select: NAMES },
+          ...LABEL_SELECT,
         },
       },
     },
@@ -74,16 +76,18 @@ export const getContext = cache(async (): Promise<Context | null> => {
     await db.session.update({ where: { id: row.id }, data: { lastActiveAt: now } });
   }
 
+  const locale = await getLocale();
   return {
     userId: row.user.id,
     sessionId: row.id,
     name: row.user.name,
+    label: accountLabel(row.user, locale),
     role: row.user.role,
     designation: row.user.designation,
     dsOfficeId: row.user.dsOfficeId,
     districtId: row.user.districtId,
     provinceId: row.user.provinceId,
-    dsOfficeName: row.user.dsOffice ? localName(row.user.dsOffice, await getLocale()) : null,
+    dsOfficeName: row.user.dsOffice ? localName(row.user.dsOffice, locale) : null,
     mustChangePassword: row.user.mustChangePassword,
   };
 });

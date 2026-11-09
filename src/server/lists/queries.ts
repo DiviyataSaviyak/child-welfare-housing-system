@@ -2,6 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { Kind } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
+import { accountLabel, LABEL_SELECT } from "../users/label";
 
 export type DistrictSummary = { id: number; name: string; province: string; offices: number };
 
@@ -23,7 +24,10 @@ export type OfficeRow = Names & {
   id: number;
   code: string;
   active: boolean;
-  /** The names of the office's active Child Rights Promotion Officers (ADM-3); empty if it still needs one. */
+  /**
+   * The office's active Child Rights Promotion Officers (ADM-3) by name, or by designation and office when
+   * they have none (ADM-10); empty if it still needs one.
+   */
   officers: string[];
 };
 
@@ -45,7 +49,11 @@ export async function officesOfDistrict(
           ...NAMES,
           code: true,
           active: true,
-          users: { where: { designation: "DS_CRPO", banned: false }, orderBy: { name: "asc" }, select: { name: true } },
+          users: {
+            where: { designation: "DS_CRPO", banned: false },
+            orderBy: [{ name: "asc" }, { username: "asc" }],
+            select: LABEL_SELECT,
+          },
         },
       },
     },
@@ -65,7 +73,7 @@ export async function officesOfDistrict(
       nameEn: o.nameEn,
       code: o.code,
       active: o.active,
-      officers: o.users.map((u) => u.name),
+      officers: o.users.map((u) => accountLabel(u, locale)),
     })),
   };
 }

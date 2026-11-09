@@ -4,7 +4,7 @@ import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../../../tests/db/client";
 import type { AccountInput } from "@/lib/validation/user";
 import { createAccount, resetPassword, setAccountDisabled, updateAccount, updateProfile } from "./commands";
-import { accountHistory, getProfile, listAccounts } from "./queries";
+import { accountHistory, getProfile, labelOf, listAccounts } from "./queries";
 
 const db = createTestClient();
 const ADMIN = "users-test-admin";
@@ -199,7 +199,7 @@ describe("changing an account (ADM-4)", () => {
     const result = await updateAccount(db, ADMIN, user.id, officer(to));
     expect(result).toEqual({ ok: true, value: { changed: ["dsOfficeId"] } });
 
-    const [latest] = await accountHistory(db, user.id);
+    const [latest] = await accountHistory(db, user.id, "si");
     expect(latest).toMatchObject({
       action: "account_updated",
       actorName: "පරිපාලක",
@@ -226,7 +226,7 @@ describe("changing an account (ADM-4)", () => {
       dsOfficeId: null,
       districtId: office.districtId,
     });
-    const [latest] = await accountHistory(db, user.id);
+    const [latest] = await accountHistory(db, user.id, "si");
     expect(latest).toMatchObject({
       before: { designation: "DS_CRPO", role: "DS_OFFICER", dsOfficeId, districtId: null },
       after: { designation: "DISTRICT_SECRETARY", role: "VIEWER", dsOfficeId: null, districtId: office.districtId },
@@ -236,7 +236,7 @@ describe("changing an account (ADM-4)", () => {
   it("records nothing when nothing changed", async () => {
     const { user, dsOfficeId } = await newOfficer();
     expect(await updateAccount(db, ADMIN, user.id, officer(dsOfficeId))).toEqual({ ok: true, value: { changed: [] } });
-    expect(await accountHistory(db, user.id)).toHaveLength(1);
+    expect(await accountHistory(db, user.id, "si")).toHaveLength(1);
   });
 });
 
@@ -250,7 +250,7 @@ describe("changing one's own profile", () => {
 
     const after = await db.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(after).toMatchObject({ ...details, role: "DS_OFFICER", designation: "DS_CRPO", dsOfficeId });
-    const [latest] = await accountHistory(db, user.id);
+    const [latest] = await accountHistory(db, user.id, "si");
     expect(latest).toMatchObject({
       action: "account_updated",
       actorName: "ජී. පරීක්ෂණ",
@@ -259,22 +259,36 @@ describe("changing one's own profile", () => {
     });
 
     expect(await updateProfile(db, user.id, details)).toEqual({ ok: true, value: { changed: [] } });
-    expect(await accountHistory(db, user.id)).toHaveLength(2);
+    expect(await accountHistory(db, user.id, "si")).toHaveLength(2);
   });
 
-  it("shows the account's username, role, district and office", async () => {
+  it("shows the account's username, office type, designation, role and place (ADM-11)", async () => {
     const { user, dsOfficeId } = await newOfficer();
     const office = await db.dsOffice.findUniqueOrThrow({ where: { id: dsOfficeId }, include: { district: true } });
     expect(await getProfile(db, user.id, "si")).toEqual({
       name: user.name,
       username: user.username,
-      designation: user.designation,
+      officeType: "DS",
+      designation: "DS_CRPO",
       mobile: user.mobile,
       contactEmail: null,
       role: "DS_OFFICER",
-      officeName: office.nameSi,
-      districtName: office.district.nameSi,
+      place: { kind: "dsOffice", office: office.nameSi, district: office.district.nameSi },
     });
+  });
+
+  it("lets an officer clear their own name, mobile and email (ADM-11)", async () => {
+    const { user } = await newOfficer();
+    const empty = { name: "", mobile: null, contactEmail: null };
+    expect(await updateProfile(db, user.id, empty)).toEqual({
+      ok: true,
+      value: { changed: ["name", "mobile"] },
+    });
+    expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject(empty);
+    const [latest] = await accountHistory(db, user.id, "si");
+    // The officer, now nameless, is shown by designation and office (ADM-10).
+    expect(latest.actorName).toBe(await labelOf(db, user.username ?? "", "si"));
+    expect(latest.actorName).toMatch(/, /);
   });
 });
 
@@ -304,7 +318,7 @@ describe("resetting a password (ADM-5)", () => {
       lockedUntil: null,
     });
     expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
-    expect((await accountHistory(db, user.id))[0].action).toBe("password_reset");
+    expect((await accountHistory(db, user.id, "si"))[0].action).toBe("password_reset");
   });
 });
 
@@ -325,7 +339,7 @@ describe("disabling an account (ADM-6)", () => {
     expect(await db.session.count({ where: { userId: user.id } })).toBe(0);
 
     expect(await setAccountDisabled(db, ADMIN, user.id, false)).toEqual({ ok: true, value: null });
-    expect((await accountHistory(db, user.id)).map((h) => h.action).slice(0, 2)).toEqual([
+    expect((await accountHistory(db, user.id, "si")).map((h) => h.action).slice(0, 2)).toEqual([
       "account_enabled",
       "account_disabled",
     ]);

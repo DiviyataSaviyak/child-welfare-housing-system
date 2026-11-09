@@ -6,6 +6,7 @@ import { localName, NAMES } from "@/lib/names";
 import { nicKey, normaliseNic } from "@/lib/nic";
 import { latestDay } from "@/lib/validation/release";
 import { canSeeOffice, OFFICE_PLACE, officeFilter, type Viewer } from "../permissions";
+import { accountLabel, LABEL_SELECT } from "../users/label";
 import { openRequests, REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
 
 export type CaseDetails = {
@@ -161,7 +162,7 @@ export async function getCase(
           releasedOn: true,
           amount: true,
           at: true,
-          by: { select: { name: true } },
+          by: { select: LABEL_SELECT },
           letter: {
             select: {
               id: true,
@@ -227,7 +228,7 @@ export async function getCase(
     release: release && {
       releasedOn: dateToDay(release.releasedOn),
       amount: release.amount,
-      byName: release.by.name,
+      byName: accountLabel(release.by, locale),
       at: release.at,
       letter: {
         id: release.letter.id,

@@ -128,7 +128,7 @@ export default async function AdminUsersPage({
                   <td className="px-5 py-2.5">
                     <span className="flex flex-col">
                       <span className={`font-semibold ${row.active ? "" : "text-muted-foreground"}`}>
-                        {row.name} {row.id === admin.userId && t("you")}
+                        {row.label} {row.id === admin.userId && t("you")}
                       </span>
                       <span className="font-mono text-sm text-muted-foreground">{row.username}</span>
                     </span>
@@ -158,13 +158,7 @@ export default async function AdminUsersPage({
                     </span>
                   </td>
                   <td className="px-5 py-2.5">
-                    {/* An account with no name goes by its username here until task 4's label (ADM-10). */}
-                    <AccountActions
-                      id={row.id}
-                      name={row.name || row.username}
-                      active={row.active}
-                      isSelf={row.id === admin.userId}
-                    />
+                    <AccountActions id={row.id} name={row.label} active={row.active} isSelf={row.id === admin.userId} />
                   </td>
                 </tr>
               ))}

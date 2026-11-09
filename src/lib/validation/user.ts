@@ -17,16 +17,7 @@ import type { Role } from "@/server/auth/roles";
  */
 
 export type AccountErrorKey =
-  | "required"
-  | "tooShort"
-  | "tooLong"
-  | "mobile"
-  | "email"
-  | "officeType"
-  | "designation"
-  | "office"
-  | "district"
-  | "province";
+  "tooShort" | "tooLong" | "mobile" | "email" | "officeType" | "designation" | "office" | "district" | "province";
 
 const contactEmail = z
   .string()
@@ -35,18 +26,11 @@ const contactEmail = z
   .refine((value) => value === "" || z.email().safeParse(value).success, { error: "email" })
   .transform((value) => value || null);
 
-/** The details an officer may change on their own profile page too. */
+/**
+ * ADM-2 and ADM-11: the name, mobile and email may all be left empty, on the account form and on the
+ * officer's own profile alike. An empty name is stored as "", the others as null.
+ */
 const personFields = {
-  name: z.string().trim().min(1, { error: "required" }).min(2, { error: "tooShort" }).max(100, { error: "tooLong" }),
-  mobile: z
-    .string()
-    .transform(normalisePhone)
-    .pipe(z.string().min(1, { error: "required" }).refine(isValidPhone, { error: "mobile" })),
-  contactEmail,
-};
-
-/** ADM-2: on the account form the name, mobile and email may all be left empty. An empty name is stored as "". */
-const optionalPersonFields = {
   name: z
     .string()
     .trim()
@@ -87,7 +71,7 @@ const designationOf = (officeType: OfficeType, value: string): Designation | nul
 
 export const accountSchema = z
   .object({
-    ...optionalPersonFields,
+    ...personFields,
     officeType: z.enum(OFFICE_TYPES, { error: "officeType" }),
     designation: z.string(),
     dsOfficeId: id,
@@ -124,7 +108,7 @@ export const accountSchema = z
   });
 
 export type AccountField =
-  keyof typeof optionalPersonFields | "officeType" | "designation" | "dsOfficeId" | "districtId" | "provinceId";
+  keyof typeof personFields | "officeType" | "designation" | "dsOfficeId" | "districtId" | "provinceId";
 export type AccountErrors = Partial<Record<AccountField, AccountErrorKey>>;
 
 const FIELDS: AccountField[] = [
@@ -162,8 +146,8 @@ export function parseAccountForm(
 }
 
 /**
- * The profile page, where signed-in users change their own details. The role, designation and place
- * stay with the admin (ADM-4), so they aren't on it.
+ * The profile, where signed-in users change their own details, any of which they may leave empty
+ * (ADM-11). The office type, designation and place stay with the admin (ADM-4), so they aren't on it.
  */
 export const profileSchema = z.object(personFields);
 

@@ -21,7 +21,10 @@ export const TEST_MARKER = "Playwright";
 
 /** The name of every DS officer account the tests create; cleanup.ts deletes them before each run. */
 export const TEST_OFFICER_NAME = "ඊ. පරීක්ෂණ";
-/** The district of AC-37's account, which has no name; cleanup.ts finds it there. */
+/**
+ * The district of the nameless test accounts (AC-37, AC-40); cleanup.ts removes the accounts with no name
+ * there and in its DS offices.
+ */
 export const NAMELESS_DISTRICT = "මාතලේ";
 
 /** Every case the tests create has a name starting with this; cleanup.ts deletes those cases before each run. */

@@ -14,7 +14,7 @@ export default async function HoLayout({ children }: { children: React.ReactNode
   return (
     <AppShell
       area="ho"
-      userName={context.name}
+      userName={context.label}
       nav={[
         { href: "/ho", labelKey: "hoDashboard", exact: true },
         { href: "/ho/cases", labelKey: "hoCases" },

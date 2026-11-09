@@ -57,14 +57,12 @@ export function AccountForm({
     setValues((current) => ({ ...current, [field]: event.target.value }));
 
   if (state.created) {
-    const { name, designation } = state.created;
-    const label = name || (designation ? t(`designations.${designation}`) : t("officeTypes.ADMINISTRATOR"));
     return (
       <section aria-labelledby="created-title" className="flex max-w-xl flex-col gap-4 rounded-xl border bg-card p-8">
         <h2 id="created-title" className="text-[22px] font-bold">
           {t("created.title")}
         </h2>
-        <p className="text-muted-foreground">{t("created.text", { name: label })}</p>
+        <p className="text-muted-foreground">{t("created.text", { name: state.created.label })}</p>
         <CredentialsBox username={state.created.username} temporaryPassword={state.created.temporaryPassword} />
         <p className="text-[15px]">{t("created.handOver")}</p>
         <div className="flex gap-3">

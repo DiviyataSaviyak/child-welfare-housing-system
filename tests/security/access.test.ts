@@ -31,6 +31,11 @@ const state = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }));
+// getContext names the account in the screen's language (ADM-10); outside a request that is Sinhala.
+vi.mock("next-intl/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next-intl/server")>()),
+  getLocale: async () => "si",
+}));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers(),
   cookies: async () => ({ get: () => undefined, set: () => undefined, delete: () => undefined }),
@@ -71,6 +76,8 @@ vi.mock("@/server/db", () => {
           provinceId: state.session.provinceId,
           mustChangePassword: state.session.mustChangePassword,
           dsOffice: null,
+          district: null,
+          province: null,
         },
       },
     update: async () => ({}),

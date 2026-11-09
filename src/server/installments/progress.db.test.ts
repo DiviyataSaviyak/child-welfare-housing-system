@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import en from "../../../messages/en.json";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../../../tests/db/client";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "@/lib/dates";
@@ -652,6 +653,37 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
     const row = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_completed" } });
     await expect(db.auditLog.update({ where: { id: row.id }, data: { action: "x" } })).rejects.toThrow(/append-only/);
     await expect(db.auditLog.delete({ where: { id: row.id } })).rejects.toThrow(/append-only/);
+  });
+});
+
+describe("an account with no name in the case history (ADM-10, AC-40)", () => {
+  it("shows its designation and office instead", async () => {
+    const c = await running();
+    const office = await db.dsOffice.findUniqueOrThrow({ where: { id: c.dsOfficeId } });
+    const nameless = await db.user.create({
+      data: {
+        id: randomUUID(),
+        name: "",
+        email: `${randomUUID()}@no-email.invalid`,
+        username: "ds9310",
+        role: "DS_OFFICER",
+        designation: "DS_CRPO",
+        dsOfficeId: c.dsOfficeId,
+      },
+    });
+    await db.auditLog.create({
+      data: {
+        actorId: nameless.id,
+        action: "stage_updated",
+        entityType: "stage_update",
+        entityId: randomUUID(),
+        caseId: c.id,
+        before: { stageId: null },
+        after: { stageIds: [], visitedOn: daysAgo(1), note: "බැලුවා", photos: [] },
+      },
+    });
+    const [latest] = (await caseHistory(db, ho, c.id, "en")) ?? [];
+    expect(latest.actor).toEqual({ name: `${en.users.designations.DS_CRPO}, ${office.nameEn}`, role: "DS_OFFICER" });
   });
 });
 

@@ -47,7 +47,7 @@ function mailBox(works = true) {
 const passwordOf = async (userId: string) =>
   (await db.account.findFirstOrThrow({ where: { userId, providerId: "credential" } })).password ?? "";
 const codesOf = (userId: string) => db.resetCode.count({ where: { userId } });
-const actions = async (userId: string) => (await accountHistory(db, userId)).map((entry) => entry.action);
+const actions = async (userId: string) => (await accountHistory(db, userId, "si")).map((entry) => entry.action);
 
 beforeAll(async () => {
   await seed(db);
@@ -108,7 +108,7 @@ describe("resetting a forgotten password with a code sent by email (AUTH-7)", ()
     expect(await resetPasswordWithCode(db, result.ticket, "Another-Pass-2")).toEqual({ ok: false, error: "expired" });
     expect(await verifyPassword({ hash: await passwordOf(user.id), password: "Own-New-Pass-1" })).toBe(true);
 
-    const history = await accountHistory(db, user.id);
+    const history = await accountHistory(db, user.id, "si");
     expect(history[0]).toMatchObject({ action: "password_reset_by_code", actorName: "කේ. පරීක්ෂණ" });
     expect(history[1]).toMatchObject({ action: "reset_code_sent", actorName: null });
   });

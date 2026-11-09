@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getLocale } from "next-intl/server";
 import { type AccountErrors, parseAccountForm } from "@/lib/validation/user";
-import type { Designation } from "@/server/auth/designations";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import {
@@ -15,12 +15,16 @@ import {
   setAccountDisabled,
   updateAccount,
 } from "@/server/users/commands";
+import { labelOf } from "@/server/users/queries";
 
 export type AccountFormState = {
   errors: AccountErrors;
   error: AccountCommandError | null;
-  /** Set once, after a successful create: shown to the admin a single time (AUTH-6). */
-  created: (Credentials & { name: string; designation: Designation | null }) | null;
+  /**
+   * Set once, after a successful create: shown to the admin a single time (AUTH-6), with the account's
+   * name, or its designation and place (ADM-10).
+   */
+  created: (Credentials & { label: string }) | null;
 };
 
 const read = (form: FormData) => (field: string) => {
@@ -37,11 +41,8 @@ export async function createAccountAction(_previous: AccountFormState, form: For
   if (!result.ok) return { errors: {}, error: result.error, created: null };
 
   revalidatePath("/admin/users");
-  return {
-    errors: {},
-    error: null,
-    created: { ...result.value, name: parsed.value.name, designation: parsed.value.designation },
-  };
+  const label = await labelOf(db, result.value.username, await getLocale());
+  return { errors: {}, error: null, created: { ...result.value, label } };
 }
 
 export async function updateAccountAction(

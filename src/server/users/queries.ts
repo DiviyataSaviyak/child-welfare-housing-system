@@ -3,11 +3,14 @@ import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
 import { type Designation, designationsOf, isDesignation, type OfficeType, officeTypeOf } from "../auth/designations";
 import { isRole, type Role } from "../auth/roles";
+import { accountLabel, designationsNamed, LABEL_SELECT } from "./label";
 
 export type AccountRow = {
   id: string;
   /** Empty when the account has no name (ADM-2). */
   name: string;
+  /** The name, or the designation and place of an account with none (ADM-10). */
+  label: string;
   username: string;
   officeType: OfficeType;
   designation: Designation | null;
@@ -60,8 +63,9 @@ function officeTypeWhere(officeType: OfficeType): Prisma.UserWhereInput {
 }
 
 /**
- * ADM-1: every account, searchable by name, office, district or province (in any of their three names)
- * or username, and filterable by office type. Places come in the screen's language (UI-9).
+ * ADM-1: every account, searchable by name, designation (in the screen's language), office, district or
+ * province (in any of their three names) or username, and filterable by office type. Places come in the
+ * screen's language (UI-9).
  */
 export async function listAccounts(
   db: PrismaClient,
@@ -77,6 +81,7 @@ export async function listAccounts(
             OR: [
               { name: { contains: q, mode: "insensitive" } },
               { username: { contains: q.toLowerCase() } },
+              { designation: { in: designationsNamed(q, locale) } },
               ...nameMatches(q).flatMap((match) => [
                 { dsOffice: match },
                 { dsOffice: { district: match } },
@@ -93,12 +98,11 @@ export async function listAccounts(
     orderBy: [{ role: "asc" }, { name: "asc" }, { username: "asc" }],
     select: {
       id: true,
-      name: true,
       username: true,
-      designation: true,
       role: true,
       banned: true,
       lastSignInAt: true,
+      ...LABEL_SELECT,
       ...PLACE_SELECT,
     },
   });
@@ -109,6 +113,7 @@ export async function listAccounts(
       {
         id: u.id,
         name: u.name,
+        label: accountLabel(u, locale),
         username: u.username,
         officeType: officeTypeOf(designation),
         designation,
@@ -182,18 +187,26 @@ export async function getAccount(db: PrismaClient, id: string): Promise<AccountD
   };
 }
 
+/** ADM-10: how the account with this username is shown, in the screen's language. */
+export async function labelOf(db: PrismaClient, username: string, locale: Locale): Promise<string> {
+  const u = await db.user.findUniqueOrThrow({ where: { username }, select: LABEL_SELECT });
+  return accountLabel(u, locale);
+}
+
 export type Profile = {
+  /** Empty when the officer has none (ADM-11). */
   name: string;
   username: string;
-  designation: string | null;
+  officeType: OfficeType;
+  designation: Designation | null;
   mobile: string | null;
   contactEmail: string | null;
   role: Role;
-  officeName: string | null;
-  districtName: string | null;
+  /** In the screen's language; the profile shows it but can't change it (ADM-11). */
+  place: AccountPlace | null;
 };
 
-/** The signed-in user's own account, for the profile page; office and district in the screen's language. */
+/** The signed-in user's own account, for the profile pop-up; the place in the screen's language. */
 export async function getProfile(db: PrismaClient, userId: string, locale: Locale): Promise<Profile | null> {
   const u = await db.user.findUnique({
     where: { id: userId },
@@ -204,19 +217,20 @@ export async function getProfile(db: PrismaClient, userId: string, locale: Local
       mobile: true,
       contactEmail: true,
       role: true,
-      dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+      ...PLACE_SELECT,
     },
   });
   if (!u || !isRole(u.role) || !u.username) return null;
+  const designation = isDesignation(u.designation) ? u.designation : null;
   return {
     name: u.name,
     username: u.username,
-    designation: u.designation,
+    officeType: officeTypeOf(designation),
+    designation,
     mobile: u.mobile,
     contactEmail: u.contactEmail,
     role: u.role,
-    officeName: u.dsOffice ? localName(u.dsOffice, locale) : null,
-    districtName: u.dsOffice ? localName(u.dsOffice.district, locale) : null,
+    place: placeOfRow(u, locale),
   };
 }
 
@@ -283,13 +297,14 @@ export async function placeNames(db: PrismaClient, locale: Locale): Promise<Plac
 export type HistoryEntry = {
   at: Date;
   action: string;
+  /** The actor's name, or designation and place (ADM-10); null for the system. */
   actorName: string | null;
   before: Prisma.JsonValue;
   after: Prisma.JsonValue;
 };
 
 /** The account's own history from the audit log, newest first (ADM-4). */
-export async function accountHistory(db: PrismaClient, id: string): Promise<HistoryEntry[]> {
+export async function accountHistory(db: PrismaClient, id: string, locale: Locale): Promise<HistoryEntry[]> {
   const rows = await db.auditLog.findMany({
     where: { entityType: "user", entityId: id },
     orderBy: { at: "desc" },
@@ -298,9 +313,9 @@ export async function accountHistory(db: PrismaClient, id: string): Promise<Hist
   });
   const actorIds = [...new Set(rows.flatMap((r) => (r.actorId ? [r.actorId] : [])))];
   const actors = new Map(
-    (await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })).map((a) => [
+    (await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, ...LABEL_SELECT } })).map((a) => [
       a.id,
-      a.name,
+      accountLabel(a, locale),
     ]),
   );
   return rows.map((r) => ({

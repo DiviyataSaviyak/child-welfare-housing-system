@@ -147,7 +147,10 @@ test("AC-37: an account with no name, mobile or email signs in and sets its own 
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
 
   await expect(page.getByRole("heading", { name: "ගිණුම සාදන ලදී" })).toBeVisible();
-  await expect(page.getByText("ප්‍රධාන ගණකාධිකාරී සඳහා ගිණුම සූදානම්.")).toBeVisible();
+  // ADM-10: with no name, the account goes by its designation and place.
+  await expect(
+    page.getByText(`ප්‍රධාන ගණකාධිකාරී, ${NAMELESS_DISTRICT} දිස්ත්‍රික්කය සඳහා ගිණුම සූදානම්.`),
+  ).toBeVisible();
   const username = await page.getByTestId("new-username").innerText();
   const password = await page.getByTestId("new-password").innerText();
   expect(username).toMatch(/^dt\d{4}$/);
@@ -166,6 +169,59 @@ test("AC-37: an account with no name, mobile or email signs in and sets its own 
     await officer.getByRole("button", { name: "සුරකින්න" }).click();
     // The view-only area's pages come with task 5 of change 0005; landing there is what counts here.
     await expect(officer).toHaveURL(/\/oversight$/);
+  });
+});
+
+test("AC-40: an officer with no name goes by designation and office, and changes only their own details (ADM-11)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  await page.goto("/admin/users/new");
+  await chooseDesignation(page, DIVISIONAL_SECRETARIAT, CRPO);
+  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: NAMELESS_DISTRICT });
+  const firstOffice = page.getByRole("group", { name: "ප්‍රාදේශීය ලේකම් කාර්යාලය *" }).getByRole("radio").first();
+  await firstOffice.check();
+  const office = (await page.locator("label", { has: firstOffice }).innerText()).trim();
+  await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
+  await expect(page.getByRole("heading", { name: "ගිණුම සාදන ලදී" })).toBeVisible();
+  const username = await page.getByTestId("new-username").innerText();
+  const password = await page.getByTestId("new-password").innerText();
+  const label = `${CRPO}, ${office}`;
+
+  // The admin's list names it the same way.
+  await openRow(page, username);
+  await expect(page.getByRole("row").nth(1).getByRole("cell").first()).toContainText(label);
+
+  await asNewOfficer(browser, async (officer) => {
+    await signIn(officer, username, password);
+    await officer.getByLabel("දැනට ඇති මුරපදය").fill(password);
+    await officer.getByLabel("නව මුරපදය", { exact: true }).fill("Nameless-Own-Pass-1");
+    await officer.getByLabel("නව මුරපදය නැවත").fill("Nameless-Own-Pass-1");
+    await officer.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(officer).toHaveURL(/\/ds$/);
+    const profileButton = officer.getByRole("banner").getByRole("button", { name: /මගේ ගිණුම/ });
+    await expect(profileButton).toHaveText(label);
+
+    // The profile shows the office type, designation and place, and only the officer's own details to change.
+    await profileButton.click();
+    const dialog = officer.getByRole("dialog");
+    await expect(dialog).toContainText(DIVISIONAL_SECRETARIAT);
+    await expect(dialog).toContainText(CRPO);
+    await expect(dialog).toContainText(NAMELESS_DISTRICT);
+    await expect(dialog.getByRole("radio")).toHaveCount(0);
+    await dialog.getByLabel(NAME).fill(TEST_OFFICER_NAME);
+    await dialog.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(dialog.getByText("ඔබේ විස්තර සුරැකිණි.")).toBeVisible();
+    await expect(profileButton).toHaveText(TEST_OFFICER_NAME);
+
+    // Leaving the name and mobile empty is allowed, and the header goes back to the designation and office.
+    await dialog.getByLabel(NAME).fill("");
+    await dialog.getByLabel(MOBILE).fill("");
+    await dialog.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(dialog.getByText("ඔබේ විස්තර සුරැකිණි.")).toBeVisible();
+    await expect(profileButton).toHaveText(label);
   });
 });
 

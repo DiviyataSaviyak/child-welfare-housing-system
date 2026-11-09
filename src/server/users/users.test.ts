@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseAccountForm, parseProfileForm } from "@/lib/validation/user";
+import en from "../../../messages/en.json";
+import si from "../../../messages/si.json";
+import { accountLabel, designationsNamed } from "./label";
 import { generateTemporaryPassword } from "./passwords";
 import { checkDisable, checkRoleChange } from "./rules";
 import { nextUsername } from "./usernames";
@@ -199,6 +202,54 @@ describe("profile form", () => {
       ok: false,
       errors: { name: "tooShort", mobile: "mobile", contactEmail: "email" },
     });
-    expect(form({})).toEqual({ ok: false, errors: { name: "required", mobile: "required" } });
+  });
+
+  it("lets the officer leave the name, mobile and email empty (ADM-11)", () => {
+    expect(form({})).toEqual({ ok: true, value: { name: "", mobile: null, contactEmail: null } });
+    expect(form({ name: "  ", mobile: " ", contactEmail: " " })).toEqual({
+      ok: true,
+      value: { name: "", mobile: null, contactEmail: null },
+    });
+  });
+});
+
+describe("accountLabel (ADM-10)", () => {
+  const names = (si: string, ta: string, en: string) => ({ nameSi: si, nameTa: ta, nameEn: en });
+  const weligama = names("වැලිගම", "வெலிகம", "Weligama");
+  const nameless = { name: "", designation: null, dsOffice: null, district: null, province: null };
+
+  it("is the name when the account has one", () => {
+    expect(
+      accountLabel({ ...nameless, name: "කේ. පෙරේරා", designation: "DS_ACCOUNTANT", dsOffice: weligama }, "si"),
+    ).toBe("කේ. පෙරේරා");
+  });
+
+  it("is the designation and the place of an account with no name, in the screen's language", () => {
+    const accountant = { ...nameless, designation: "DS_ACCOUNTANT", dsOffice: weligama };
+    expect(accountLabel(accountant, "si")).toBe(`${si.users.designations.DS_ACCOUNTANT}, වැලිගම`);
+    expect(accountLabel(accountant, "en")).toBe(`${en.users.designations.DS_ACCOUNTANT}, Weligama`);
+    const district = { ...nameless, designation: "DISTRICT_SECRETARY", district: names("මාතලේ", "மாத்தளை", "Matale") };
+    expect(accountLabel(district, "en")).toBe(`${en.users.designations.DISTRICT_SECRETARY}, Matale District`);
+    const province = {
+      ...nameless,
+      designation: "PROVINCE_COMMISSIONER",
+      province: names("මධ්‍යම", "மத்திய", "Central"),
+    };
+    expect(accountLabel(province, "en")).toBe(`${en.users.designations.PROVINCE_COMMISSIONER}, Central Province`);
+  });
+
+  it("is the designation alone where there is no place, and Administrator for a nameless admin", () => {
+    expect(accountLabel({ ...nameless, designation: "MINISTRY_SECRETARY" }, "en")).toBe(
+      en.users.designations.MINISTRY_SECRETARY,
+    );
+    expect(accountLabel(nameless, "si")).toBe(si.users.officeTypes.ADMINISTRATOR);
+  });
+});
+
+describe("searching by designation (ADM-1)", () => {
+  it("finds the designations whose label holds the text, in the screen's language", () => {
+    expect(designationsNamed(en.users.designations.DS_ACCOUNTANT.toUpperCase(), "en")).toContain("DS_ACCOUNTANT");
+    expect(designationsNamed(si.users.designations.DS_CRPO, "si")).toContain("DS_CRPO");
+    expect(designationsNamed("nothing like it", "en")).toEqual([]);
   });
 });

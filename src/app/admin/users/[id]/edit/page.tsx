@@ -18,7 +18,7 @@ export default async function EditAccountPage({ params }: { params: Promise<{ id
     getTranslations("users.form"),
     officeChoices(db, locale, account.dsOfficeId),
     provinceChoices(db, locale),
-    accountHistory(db, id),
+    accountHistory(db, id, locale),
     placeNames(db, locale),
   ]);
 
