@@ -5,6 +5,12 @@ import { formatDate } from "@/lib/dates";
 import type { CaseDetails } from "@/server/cases/queries";
 import { caseName } from "./page-header";
 
+/**
+ * Whose case page shows the case: the DS office, Head Office, or the view-only area (PRM-5), which reads
+ * it as Head Office does and links to its own pages.
+ */
+export type Audience = "ds" | "ho" | "oversight";
+
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 
 /** Every field of a case as label and value, for the case page and Head Office's check view (CHK-2). */
@@ -53,7 +59,7 @@ function ReasonBox({ id, title, reason, tone }: { id: string; title: string; rea
  * What the reader must see first, above the case's columns: Head Office's reason when the case was sent
  * back or rejected, and the DS office's note while Head Office has the case.
  */
-export async function CaseNotes({ details, audience }: { details: CaseDetails; audience: "ds" | "ho" }) {
+export async function CaseNotes({ details, audience }: { details: CaseDetails; audience: Audience }) {
   const t = await getTranslations("cases");
   const waiting = audience === "ds" && (details.status === "SUBMITTED" || details.status === "VERIFIED");
   if (details.returnReason === null && details.rejectReason === null && !waiting) return null;
@@ -79,7 +85,7 @@ export async function CaseNotes({ details, audience }: { details: CaseDetails; a
  * decision on it; a case Head Office asked to replace says so, and names its replacement once there is
  * one. Each links to the other case on the reader's own pages.
  */
-export async function ReplacementNotes({ details, audience }: { details: CaseDetails; audience: "ds" | "ho" }) {
+export async function ReplacementNotes({ details, audience }: { details: CaseDetails; audience: Audience }) {
   if (!details.replaces && !details.anotherNameRequested) return null;
   const t = await getTranslations("cases");
   const caseHref = (id: string) => `/${audience}/cases/${id}`;
@@ -208,12 +214,12 @@ export async function CaseDetailsSection({ details, editHref }: { details: CaseD
   );
 }
 
-/** The line under a case page's title: number, office (for Head Office), category and kind. */
-export async function caseSubtitle(details: CaseDetails, audience: "ds" | "ho"): Promise<string> {
+/** The line under a case page's title: number, office (for all but the DS office), category and kind. */
+export async function caseSubtitle(details: CaseDetails, audience: Audience): Promise<string> {
   const t = await getTranslations("cases");
   return [
     details.caseNumber ?? t("noNumber"),
-    ...(audience === "ho" ? [details.officeName] : []),
+    ...(audience !== "ds" ? [details.officeName] : []),
     ...(details.category ? [t(`category.${details.category}`)] : []),
     ...(details.kind ? [t(`kind.${details.kind}`)] : []),
   ].join(" · ");

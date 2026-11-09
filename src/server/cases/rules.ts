@@ -13,7 +13,9 @@ const AFTER_CHECK: readonly CaseStatus[] = ["VERIFIED", "IN_PROGRESS"];
 
 const EDITABLE: Record<Role, readonly CaseStatus[]> = {
   DS_OFFICER: ENTRY,
+  DISTRICT_OFFICER: [],
   HO_OFFICER: [...ENTRY, ...AFTER_CHECK],
+  VIEWER: [],
   ADMIN: [],
 };
 
@@ -39,6 +41,11 @@ export function isBeingEntered(status: CaseStatus): boolean {
 /** A case Head Office has verified must keep every required field filled in (CASE-9). */
 export function mustStayComplete(status: CaseStatus): boolean {
   return AFTER_CHECK.includes(status);
+}
+
+/** Who may start a case or save a case form at all; every other account only looks (PRM-5). */
+export function canEnterCases(role: Role): boolean {
+  return role === "DS_OFFICER" || role === "HO_OFFICER";
 }
 
 /** A draft can be deleted (CASE-8), by its office or by Head Office, who may also start drafts. */

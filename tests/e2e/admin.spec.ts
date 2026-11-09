@@ -4,6 +4,7 @@ import {
   askForCode,
   chooseLanguage,
   lastCodeSentTo,
+  NAMELESS_DISTRICT,
   randomLetters,
   signIn,
   signInAs,
@@ -13,7 +14,16 @@ import {
   TEXT,
 } from "./helpers";
 
-const DS_OFFICER = /ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී/;
+/** The account form's office type, then designation (ADM-2). Each designation's card also says what it can do. */
+async function chooseDesignation(page: Page, officeType: string, designation: string) {
+  await page.getByRole("radio", { name: officeType, exact: true }).check();
+  await page.getByRole("radio", { name: new RegExp(`^${designation}`) }).check();
+}
+
+const DIVISIONAL_SECRETARIAT = "ප්‍රාදේශීය ලේකම් කාර්යාලය";
+const CRPO = "ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී";
+const NAME = "නම (අවශ්‍ය නම් පමණි)";
+const MOBILE = "ජංගම දුරකතන අංකය (අවශ්‍ය නම් පමණි)";
 
 /**
  * The Gampaha offices have no sample officer. Each test that creates one uses its own office, so it sees
@@ -28,17 +38,16 @@ const OFFICES = {
   resetByEmail: "අත්තනගල්ල",
 } as const;
 
-/** Creates a Divisional Secretariat Officer through the admin screens; returns the credentials shown once. */
+/** Creates a Child Rights Promotion Officer through the admin screens; returns the credentials shown once. */
 async function createOfficer(page: Page, office: string, email = ""): Promise<{ username: string; password: string }> {
   await page.goto("/admin/users");
   await page.getByRole("link", { name: "නව පරිශීලකයෙකු එක් කරන්න" }).click();
-  await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
-  await page.getByLabel("තනතුර (අවශ්‍ය නම් පමණි)").fill("සංවර්ධන නිලධාරී");
-  await page.getByLabel("ජංගම දුරකතන අංකය *").fill("071 000 0301");
-  await page.getByLabel("ඊමේල් (අවශ්‍ය නම් පමණි)").fill(email);
-  await page.getByRole("radio", { name: DS_OFFICER }).check();
+  await chooseDesignation(page, DIVISIONAL_SECRETARIAT, CRPO);
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await page.getByRole("radio", { name: new RegExp(`^${office}`) }).check();
+  await page.getByLabel(NAME).fill(TEST_OFFICER_NAME);
+  await page.getByLabel(MOBILE).fill("071 000 0301");
+  await page.getByLabel("ඊමේල් (අවශ්‍ය නම් පමණි)").fill(email);
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
 
   await expect(page.getByRole("heading", { name: "ගිණුම සාදන ලදී" })).toBeVisible();
@@ -86,14 +95,151 @@ test("AC-3: the admin creates a DS officer, who signs in and must set a new pass
 test("the form explains what is wrong and keeps what was typed", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
   await page.goto("/admin/users/new");
-  await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
-  await page.getByLabel("ජංගම දුරකතන අංකය *").fill("12345");
-  await page.getByRole("radio", { name: DS_OFFICER }).check();
+  await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
+  await expect(page.getByText("කාර්යාල වර්ගය තෝරන්න.")).toBeVisible();
+
+  await page.getByRole("radio", { name: DIVISIONAL_SECRETARIAT, exact: true }).check();
+  await page.getByLabel(NAME).fill(TEST_OFFICER_NAME);
+  await page.getByLabel(MOBILE).fill("12345");
   await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
 
   await expect(page.getByText("0 න් පටන් ගන්නා ඉලක්කම් 10ක දුරකතන අංකයක් ඇතුළත් කරන්න.")).toBeVisible();
+  await expect(page.getByText("තනතුර තෝරන්න.")).toBeVisible();
   await expect(page.getByText("ප්‍රාදේශීය ලේකම් කාර්යාලය තෝරන්න.")).toBeVisible();
-  await expect(page.getByLabel("සම්පූර්ණ නම *")).toHaveValue(TEST_OFFICER_NAME);
+  await expect(page.getByLabel(NAME)).toHaveValue(TEST_OFFICER_NAME);
+  await expect(page.getByRole("radio", { name: DIVISIONAL_SECRETARIAT, exact: true })).toBeChecked();
+});
+
+test("each office type offers its own designations and asks for its own place (AC-38)", async ({ page }) => {
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  await page.goto("/admin/users/new");
+  const designations = page.getByRole("group", { name: "තනතුර *" }).getByRole("radio");
+
+  await page.getByRole("radio", { name: "දිස්ත්‍රික් ලේකම් කාර්යාලය", exact: true }).check();
+  await expect(designations).toHaveCount(4);
+  await expect(page.getByLabel("දිස්ත්‍රික්කය *")).toBeVisible();
+  await expect(page.getByLabel("පළාත *")).toHaveCount(0);
+
+  await page.getByRole("radio", { name: "පළාත් කාර්යාලය", exact: true }).check();
+  await expect(designations).toHaveCount(2);
+  await expect(page.getByLabel("පළාත *")).toBeVisible();
+  await expect(page.getByLabel("දිස්ත්‍රික්කය *")).toHaveCount(0);
+
+  await page.getByRole("radio", { name: "කාන්තා සහ ළමා කටයුතු අමාත්‍යංශය", exact: true }).check();
+  await expect(designations).toHaveCount(4);
+  await expect(page.getByLabel("පළාත *")).toHaveCount(0);
+
+  // An administrator is asked for no designation and no place.
+  await page.getByRole("radio", { name: "පරිපාලක", exact: true }).check();
+  await expect(page.getByRole("group", { name: "තනතුර *" })).toHaveCount(0);
+  await expect(page.getByLabel("දිස්ත්‍රික්කය *")).toHaveCount(0);
+});
+
+test("AC-37: an account with no name, mobile or email signs in and sets its own password", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  await page.goto("/admin/users/new");
+  await chooseDesignation(page, "දිස්ත්‍රික් ලේකම් කාර්යාලය", "ප්‍රධාන ගණකාධිකාරී");
+  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: NAMELESS_DISTRICT });
+  await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
+
+  await expect(page.getByRole("heading", { name: "ගිණුම සාදන ලදී" })).toBeVisible();
+  // ADM-10: with no name, the account goes by its designation and place.
+  await expect(
+    page.getByText(`ප්‍රධාන ගණකාධිකාරී, ${NAMELESS_DISTRICT} දිස්ත්‍රික්කය සඳහා ගිණුම සූදානම්.`),
+  ).toBeVisible();
+  const username = await page.getByTestId("new-username").innerText();
+  const password = await page.getByTestId("new-password").innerText();
+  expect(username).toMatch(/^dt\d{4}$/);
+
+  await openRow(page, username);
+  const row = page.getByRole("row").nth(1);
+  await expect(row).toContainText("ප්‍රධාන ගණකාධිකාරී");
+  await expect(row).toContainText(`${NAMELESS_DISTRICT} දිස්ත්‍රික්කය`);
+
+  await asNewOfficer(browser, async (officer) => {
+    await signIn(officer, username, password);
+    await expect(officer).toHaveURL(/\/change-password$/);
+    await officer.getByLabel("දැනට ඇති මුරපදය").fill(password);
+    await officer.getByLabel("නව මුරපදය", { exact: true }).fill("Nameless-Own-Pass-1");
+    await officer.getByLabel("නව මුරපදය නැවත").fill("Nameless-Own-Pass-1");
+    await officer.getByRole("button", { name: "සුරකින්න" }).click();
+    // PRM-4: the view-only area, for the account's own district only.
+    await expect(officer).toHaveURL(/\/oversight$/);
+    await expect(officer.getByText(`${NAMELESS_DISTRICT} දිස්ත්‍රික් ලේකම් කාර්යාලය`)).toBeVisible();
+    await expect(officer.getByRole("heading", { name: "සාරාංශය", level: 1 })).toBeVisible();
+    await expect(officer.getByLabel("දිස්ත්‍රික්කය", { exact: true })).toHaveCount(0);
+
+    await officer.getByRole("navigation").getByRole("link", { name: "ප්‍රතිලාභීන්" }).click();
+    await expect(officer).toHaveURL(/\/oversight\/cases$/);
+    // One district: only its DS offices to choose from, and nothing to add (PRM-5).
+    await expect(officer.getByLabel("දිස්ත්‍රික්කය", { exact: true })).toHaveCount(0);
+    const offices = officer.getByLabel("ප්‍රා.ලේ. කොට්ඨාසය");
+    await expect(offices).toBeVisible();
+    await expect(offices.locator("option")).not.toHaveCount(1);
+    await expect(officer.getByRole("link", { name: /නව ප්‍රතිලාභියෙකු/ })).toHaveCount(0);
+
+    // Another role's area answers "not found".
+    await officer.goto("/ho");
+    await expect(officer.getByRole("heading", { name: "මෙම පිටුව සොයාගත නොහැක" })).toBeVisible();
+  });
+});
+
+test("AC-40: an officer with no name goes by designation and office, and changes only their own details (ADM-11)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  await page.goto("/admin/users/new");
+  await chooseDesignation(page, DIVISIONAL_SECRETARIAT, CRPO);
+  await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: NAMELESS_DISTRICT });
+  const firstOffice = page.getByRole("group", { name: "ප්‍රාදේශීය ලේකම් කාර්යාලය *" }).getByRole("radio").first();
+  await firstOffice.check();
+  // Each office radio sits inside its own label, which holds the office's name.
+  const office = (await firstOffice.locator("xpath=..").innerText()).trim();
+  await page.getByRole("button", { name: "ගිණුම සාදන්න" }).click();
+  await expect(page.getByRole("heading", { name: "ගිණුම සාදන ලදී" })).toBeVisible();
+  const username = await page.getByTestId("new-username").innerText();
+  const password = await page.getByTestId("new-password").innerText();
+  const label = `${CRPO}, ${office}`;
+
+  // The admin's list names it the same way.
+  await openRow(page, username);
+  await expect(page.getByRole("row").nth(1).getByRole("cell").first()).toContainText(label);
+
+  await asNewOfficer(browser, async (officer) => {
+    await signIn(officer, username, password);
+    await officer.getByLabel("දැනට ඇති මුරපදය").fill(password);
+    await officer.getByLabel("නව මුරපදය", { exact: true }).fill("Nameless-Own-Pass-1");
+    await officer.getByLabel("නව මුරපදය නැවත").fill("Nameless-Own-Pass-1");
+    await officer.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(officer).toHaveURL(/\/ds$/);
+    const profileButton = officer.getByRole("banner").getByRole("button", { name: /මගේ ගිණුම/ });
+    await expect(profileButton).toHaveText(label);
+
+    // The profile shows the office type, designation and place, and only the officer's own details to change.
+    await profileButton.click();
+    const dialog = officer.getByRole("dialog");
+    await expect(dialog).toContainText(DIVISIONAL_SECRETARIAT);
+    await expect(dialog).toContainText(CRPO);
+    await expect(dialog).toContainText(NAMELESS_DISTRICT);
+    await expect(dialog.getByRole("radio")).toHaveCount(0);
+    await dialog.getByLabel(NAME).fill(TEST_OFFICER_NAME);
+    await dialog.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(dialog.getByText("ඔබේ විස්තර සුරැකිණි.")).toBeVisible();
+    await expect(profileButton).toHaveText(TEST_OFFICER_NAME);
+
+    // Leaving the name and mobile empty is allowed, and the header goes back to the designation and office.
+    await dialog.getByLabel(NAME).fill("");
+    await dialog.getByLabel(MOBILE).fill("");
+    await dialog.getByRole("button", { name: "සුරකින්න" }).click();
+    await expect(dialog.getByText("ඔබේ විස්තර සුරැකිණි.")).toBeVisible();
+    await expect(profileButton).toHaveText(label);
+  });
 });
 
 // AC-23: both officers getting the office's notices is in src/server/cases/review.db.test.ts.
@@ -112,7 +258,7 @@ test("AC-23: an office that has an officer takes a second one (ADM-3)", async ({
 
   // The form still offers the office, by its name alone.
   await page.goto("/admin/users/new");
-  await page.getByRole("radio", { name: DS_OFFICER }).check();
+  await chooseDesignation(page, DIVISIONAL_SECRETARIAT, CRPO);
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
   await expect(page.getByText("කාර්යාලයකට ගිණුම් කිහිපයක් තිබිය හැක.")).toBeVisible();
   await expect(page.getByRole("radio", { name: OFFICES.second, exact: true })).toBeEnabled();

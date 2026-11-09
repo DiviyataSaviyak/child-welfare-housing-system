@@ -10,7 +10,8 @@
  * On the server: the Infrastructure repository's create-admin.sh, with the same flags, which runs
  * `scripts/tools.ts create-admin` in the tools image. It refuses while an active admin exists, who
  * would create the account on the users screen instead; --another adds one anyway, for when no admin
- * can sign in.
+ * can sign in. An admin has no designation, so --designation is accepted and ignored (the flags are
+ * an interface with the Infrastructure repository).
  */
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
@@ -34,11 +35,13 @@ export async function createAdmin(
 
   const parsed = accountSchema.safeParse({
     name: details.name,
-    designation: details.designation ?? "",
+    officeType: "ADMINISTRATOR",
+    designation: "",
     mobile: details.mobile,
     contactEmail: details.email ?? "",
-    role: "ADMIN",
     dsOfficeId: "",
+    districtId: "",
+    provinceId: "",
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

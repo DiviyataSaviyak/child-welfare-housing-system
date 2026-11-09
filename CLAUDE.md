@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
+The system is for the Ministry of Women and Child Affairs (Sri Lanka) and tracks the **Diviyata Saviyak (දිවියට සවියක්)** housing programme. For each case it records the financial progress (four installment releases) and the physical construction progress.
+
 ## Repositories
 
 The system has three repositories, kept side by side on disk. This one is the application.
@@ -33,6 +35,7 @@ Phases 1 (foundation), 2 (sign-in and permissions), 3 (admin: accounts and lists
 - replacing a beneficiary (12 Oct 2026): Head Office asks for another name when rejecting or stopping, and the DS office's new case is linked to the old one
 - several officer accounts for one DS office (14 Oct 2026)
 - resetting a forgotten password with a code sent by email (14 Oct 2026)
+- offices and designations (Docs change 0005, Nov 2026): six office types, a fixed list of designations, two more roles, accounts with no name, and the view-only `/oversight` area (see "Offices and designations" below)
 - tests and CI
 - Phase 9's first tasks: the two production images and their signed releases, the first-admin script and the security tests (the servers are the Infrastructure repository's; the runbook is in Docs)
 
@@ -55,7 +58,8 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 | No hard-coded screen text (UI-1) | `npm run check:strings` |
 | Unit tests | `npm test`; one file: `npx vitest run src/lib/dates.test.ts`; one test: add `-t "<name>"` |
 | Database tests (database must be up) | `npm run test:db`; one file: `npx vitest run --config vitest.db.config.mts prisma/seed.db.test.ts` |
-| End-to-end tests | `npm run test:e2e`; one test: `npx playwright test tests/e2e/smoke.spec.ts -g "/ds"` |
+| End-to-end tests | `npm run test:e2e`; one test: `npx playwright test tests/e2e/smoke.spec.ts -g "/ds"`. Locally it starts `next dev` on port 3100, or reuses whatever already answers there, even a stale server. Its global setup runs `tests/e2e/cleanup.ts` and `prisma/seed-users.ts --reset`, which signs out anyone using a sample account (such as `ad0001`) in the same dev database and puts its password back |
+| Everything CI checks, in its order | actionlint (below), `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm run check:strings`, `npm test`, `npm run test:db`, `npm run build`, the end-to-end tests against the standalone build, `npm audit --omit=dev --audit-level=high` |
 | Production build and server | `npm run build`, then `npm run start:standalone` |
 | Change the database schema (it must work beside the previous release: "Migrations without downtime" below) | edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <change>` and `npx prisma generate` (Prisma 7's `migrate dev` no longer regenerates the client). When `migrate dev` stops to ask about a change (for example a new unique column), write the SQL with `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` into a new `prisma/migrations/<timestamp>_<change>/migration.sql` and apply it with `npx prisma migrate deploy` |
 | Put the sample accounts back to their start state | `npx tsx prisma/seed-users.ts --reset` (the end-to-end tests do this themselves) |
@@ -74,11 +78,12 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **The fonts are committed** in `src/app/fonts/`, copied from `@fontsource-variable/noto-sans-sinhala` and `noto-sans-tamil`. Nothing loads from Google at runtime.
 - **The `overrides` in `package.json`** force patched `deepmerge-ts` and `mysql2` inside the Prisma CLI, and `uuid` inside ExcelJS. Remove them once Prisma and ExcelJS ship fixed versions.
 - **Pinned versions.** `.npmrc` saves exact versions. Upgrade one dependency at a time, on purpose.
+- **A dev server that hangs or panics in Turbopack** usually has a corrupted `.next/dev` cache: stop every `next` process and delete `.next/dev` (git-ignored, rebuilt on start). On Windows, stopping a background `next dev` can leave it holding its port.
 
 ### Sign-in and permissions (Phase 2)
 
 - **Every page and Server Action starts with `requireRole(...)`** or `requireSignedIn()` from `src/server/context.ts`. Put the check in each page as well as its layout, because layouts don't re-run on client-side navigation. Anything out of scope answers `notFound()`, never "forbidden" (PRM-1, ERR-2).
-- **Limit case queries with `officeFilter(viewer)`** from `src/server/permissions.ts`. A DS officer sees only their own office, Head Office sees every office, and an admin sees none.
+- **Limit case queries with `officeFilter(viewer)`** from `src/server/permissions.ts`, and check one office with `canSeeOffice`. Both follow `caseScope(viewer)`: a DS officer, or a viewer of a DS, sees their own office; a district's accounts their district; a province's accounts their province; Head Office and the Department's and Ministry's viewers every office; an admin none (PRM-3, PRM-4).
 - **Every change calls `writeAudit(tx, …)`** (`src/server/audit.ts`) in the same `db.$transaction` as the change. A database trigger refuses any update or delete of `audit_log`.
 - **Better Auth's HTTP endpoints are deliberately not mounted.** Sign-in, sign-out and password changes are Server Actions in `src/app/(auth)/actions.ts`. They pass through our lockout (`src/server/auth/lockout.ts`) and the per-IP rate limit.
 - **The rate limits and the unknown-username lockout are kept in PostgreSQL (22 Oct 2026)**, because the servers run two app containers, which would each keep their own count in memory. `createRateLimiter` (`src/server/auth/rate-limit.ts`, table `rate_limit`) counts in fixed windows, and each attempt removes its limit's ended windows; `src/server/auth/unknown-names.ts` (table `unknown_sign_in_name`) forgets a name with no wrong try for 30 days. Both store only an HMAC of the address or name (`keyedHash`, `src/server/auth/keyed-hash.ts`, keyed by `BETTER_AUTH_SECRET`), because a "username" is sometimes a password typed into the wrong box.
@@ -96,6 +101,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
   - `ds0102` (Maharagama; has a temporary password)
   - `ds0199` (Kesbewa; kept for the lockout test)
   - `ho0001` and `ad0001`
+  - the view-only accounts (Change 0005), where the demo data has cases: `ds0104` (Kaduwela's accountant, with no name), `dt0101` (Colombo's District Secretary), `dt0102` (Kandy's District CRPO), `pv0101` (the Western Province's Commissioner), `pd0101` (the Department's Commissioner) and `ho0101` (the Ministry's Secretary). They start at 0101 so they don't meet the accounts an admin adds from 0001, and none is in Matale (see the clean-up below)
 
   The password is `Sample-Pass-2026`, and the temporary one is `Temp-Pass-2026` (`prisma/seed-users.ts`).
 - **Raw SQL doesn't get the `?schema=` from the URL.** Name the schema in the query, or rely on the default `public`.
@@ -109,7 +115,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
   - Server Actions (`actions.ts` beside the page) call `requireRole`, parse the form, call the command and `revalidatePath`.
 - **Forms keep what was typed.** React 19 resets uncontrolled fields after an action, so forms that can be refused use controlled fields (`account-form.tsx`, `list-forms.tsx`).
 - **A temporary password is shown once.** It comes back in the action's state and is never stored in plain text or put in a URL. Remounting the component (`key`) clears it.
-- **Usernames are generated** as `ds`/`ho`/`ad` plus four digits (`src/server/users/usernames.ts`), and accounts have a placeholder email. Accounts, offices and stages are never deleted, only disabled or deactivated (ADM-7, LST-3).
+- **Usernames are generated** as the office type's prefix (`ds`, `dt` district, `pv` province, `pd` Department, `ho` Ministry, `ad`) plus four digits (`src/server/users/usernames.ts`), and accounts have a placeholder email. Accounts, offices and stages are never deleted, only disabled or deactivated (ADM-7, LST-3).
 - **A DS office can have several active DS officers (ADM-3, 14 Oct 2026).** The screens call the `DS_OFFICER` role Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී), in Tamil பிரதேச செயலக உத்தியோகத்தர். Until 14 Oct it was Child Rights Promotion Officer (ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී); the user renamed it because an office's officers are not all Child Rights Promotion Officers.
   - From 29 Sep to 14 Oct an office had at most one, with an `officeTaken` refusal and a partial unique index; migration `20261014090000_several_officers_per_office` dropped the index. Don't bring the limit back unless asked.
   - Cases are scoped by office, never by who entered them, so the office's officers share them; `notifyOffice` tells every active officer.
@@ -119,7 +125,7 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
 - **Database test files share one schema per run** and run one after another. A test must not assume it sees only its own rows, and must put back anything shared that it changes. A test that adds a DS officer and wants the office's cases and notices to itself takes a free office from `freeOfficeId()` (`tests/db/client.ts`).
 - **End-to-end tests add data.** `tests/e2e/cleanup.ts` runs before each run:
   - It removes the offices and stages the tests added, which carry `TEST_MARKER`.
-  - It deletes the officer accounts they created in the Gampaha offices, named "ඊ. පරීක්ෂණ" (AC-23 gives Wattala two). This is the one exception to ADM-7, for test accounts only. Their audit records stay, with an actor id that no longer exists (`audit_log.actor_id` has no foreign key). An account that still holds case records is only disabled.
+  - It deletes the officer accounts they created in the Gampaha offices, named "ඊ. පරීක්ෂණ" (AC-23 gives Wattala two), and every account with no name in Matale district or its DS offices (`NAMELESS_DISTRICT`, used by AC-37 and AC-40). So no sample account may be nameless in Matale. This is the one exception to ADM-7, for test accounts only. Their audit records stay, with an actor id that no longer exists (`audit_log.actor_id` has no foreign key). An account that still holds case records is only disabled.
 
 ### Cases (Phase 4)
 
@@ -197,9 +203,10 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
   - "No update for 30 days" is `staleBefore(now)` in `src/server/cases/queries.ts`, shared with the DS to-do panel.
   - Its database test (AC-17, AC-21) adds 5,000 load-test cases and removes them again, which takes about 20 seconds.
 - **A filter form on a page whose links change only its address needs a `key` made from the filter values.** Otherwise the uncontrolled fields keep their old choices after a client-side move, such as "clear filters". The dashboard and the Head Office case list both do this.
-- **The Excel exports** (EXP-1, EXP-3) are route handlers that answer with a file: `/ho/cases/export` and `/ds/export`. Each list links to its own with `ExportLink` (`src/components/cases/export-link.tsx`), a plain `<a download>`, not `<Link>`.
-  - Each route reads the address with its list page's own reader, `readFilters` (`src/app/ho/cases/filters.ts`) or `readHomeList` (`src/app/ds/list.ts`), and the query uses `caseWhere` from `src/server/cases/queries.ts`. So the file holds exactly the screen's cases, every page of them.
-  - `exportCaseList` (`src/server/exports/case-list.ts`) builds the file and writes a `cases_exported` audit record (entity `case_list`, id `ho_cases` or `ds_cases`) with the filters used and the number of rows. It answers null for an admin.
+- **The Excel exports** (EXP-1, EXP-3) are route handlers that answer with a file: `/ho/cases/export`, `/ds/export` and `/oversight/cases/export`. Each list links to its own with `ExportLink` (`src/components/cases/export-link.tsx`), a plain `<a download>`, not `<Link>`.
+  - Each route reads the address with its list page's own reader, `readFilters` (`src/components/cases/list-filters.ts`) or `readHomeList` (`src/app/ds/list.ts`), and the query uses `caseWhere` from `src/server/cases/queries.ts`. So the file holds exactly the screen's cases, every page of them.
+  - `exportCaseList` (`src/server/exports/case-list.ts`) builds the file and writes a `cases_exported` audit record (entity `case_list`, id `ho_cases`, `ds_cases` or `oversight_cases`) with the filters used, the viewer's area (`officeScope`, `districtScope` or `provinceScope`) and the number of rows. It answers null for an admin.
+  - A list shows its export link only when something matches; a test that wants an empty file fetches the link's address.
   - ExcelJS is a `serverExternalPackages` entry in `next.config.ts`: Node loads it from `node_modules`. Compiling it in the dev server held up the other pages, and the end-to-end tests timed out.
   - `src/server/exports/workbook.ts` holds the shared parts: `addSheet` (a bold header row that stays in view, filter buttons, days as real dates shown `yyyy.mm.dd`, amounts as `#,##0`, text kept as text) and `xlsxResponse`.
   - **The progress-report columns (6 Oct 2026).** The file has Head Office's monthly progress report's two groups: four installment columns right after "ප්‍රා.ලේ. කාර්යාලයට නිදහස් කළ මුදල" (in place of "ගෙවූ වාරික ගණන", removed at the user's request), and four building columns right after "ප්‍රා.ලේ. කාර්යාලය සතුව ඉතිරි" (in place of "ළඟා වූ මට්ටම", also removed at the user's request; the DS home's own stage name in `src/server/cases/queries.ts` is separate and stays). The other case-list columns keep their order and headers. Each group cell is a short dated note as the old sheet had ("<date> දින ගෙවා ඇත", "<date> දින ගෙවීමට අපේක්ෂිතයි", "<date> දින නිම කර ඇත"; `export.progress` in `si.json`), so they are text, not Excel dates. A column with a `group` makes `addSheet` write two header rows: the group merged across its columns, every other header merged down both rows, and the filter buttons on row 2. So data starts on row 3. `progressStages` picks each building column's stage: the last column is always the kind's last active stage, and the others take its first stages. The headers are the report's own words (`export.progress` in `si.json`), not the stage names, which the admin may change.
@@ -208,6 +215,16 @@ First run: `cp .env.example .env`, `npm install`, `npm run db:up` (needs Docker 
   - The button says එක්සෙල් (Tamil எக்செல்), not "Excel", because the smoke test allows no Latin letters on the Sinhala and Tamil `/ds` and `/ho` (AC-20).
   - With 5,000 cases the whole export takes about 3 seconds (PRF-4 allows 60). Its database test adds 5,000 load-test cases too.
 - **There is no export in the old sheet's layout.** Task 7.4 built one (EXP-2), and it was removed on 2026-10-04 because the Ministry no longer needs it. Don't add it back unless asked.
+
+### Offices and designations (Change 0005, Nov 2026)
+
+Docs change `0005-offices-and-designations` (proposal, design, tasks), built one task at a time from 6 to 9 Nov 2026.
+
+- **The designation decides everything.** `src/server/auth/designations.ts` holds the fixed list (ADM-8): each designation's office type (DS, district, province, Department, Ministry, administrator) and role. The office type isn't stored. There are five roles: `DS_OFFICER` (a DS's CRPO), `DISTRICT_OFFICER` (a District CRPO), `HO_OFFICER` (the Ministry's Programme Officer and Chief Accountant), `VIEWER` (every other designation) and `ADMIN` (no designation). A database check holds the pairs of role and designation (migration `20261106090000_offices_and_designations`), so a new designation needs a migration as well as its labels in the three message files.
+- **An account has the one place its office type needs:** `ds_office_id`, `district_id` or `province_id`, or none (a database check). The account form asks for the office type first, and the server sets the role from the designation.
+- **An account may have no name, and its mobile is optional (ADM-10).** `name` is then an empty string, and `accountLabel(account, locale)` (`src/server/users/label.ts`; select with `LABEL_SELECT`) shows the designation and place instead, such as "ගණකාධිකාරී, කඩුවෙල". Every screen that shows an account uses it, including the header, the history and the lists screen.
+- **The view-only area `/oversight`** is for `VIEWER` and `DISTRICT_OFFICER` (PRM-4, PRM-5): a summary, the case list, a read-only case page and the export, each with `requireRole("VIEWER", "DISTRICT_OFFICER")`. `oversightArea(context)` (`src/app/oversight/area.ts`, over `viewerArea` in `src/server/lists/queries.ts`) gives the header's place and the places the filters offer: none for one DS, its DS offices for a district, the districts for a province or the whole country. For now a District CRPO only views too.
+- **Head Office and the view-only area share their screens:** `DashboardScreen` (`src/components/dashboard/`), `CaseTable` and `CaseFilters` (`src/components/cases/`, with `action` and `places`), and the case view's `Audience` (`"ds" | "ho" | "oversight"`). A change to one changes both.
 
 ### Languages (7 Oct 2026)
 
@@ -280,8 +297,6 @@ So never, in one release, rename or drop a column or table that the previous rel
 - **Don't add it back unless asked.** How the sheet's cases come into the system is still open with the Ministry. The import as it was built, and the application spec's IMP-1 to IMP-7 as they read then, are in the git history up to commit `9a5ce1b`.
 - `scripts/made-up.ts` (made-up names, NICs and phone numbers) came from task 8.1 and stays; the load-test data uses it.
 
-The system is for the Ministry of Women and Child Affairs (Sri Lanka) and tracks the **Diviyata Saviyak (දිවියට සවියක්)** housing programme. For each case it records the financial progress (four installment releases) and the physical construction progress.
-
 ## Workflow: specs and changes before code
 
 The Docs repository (`../Docs`) is the source this code is built from. Its `docs/CONTRIBUTING.md` sets the rules.
@@ -297,10 +312,11 @@ These may not be in the product spec yet. Once it is approved, it overrides this
 
 - **Platform:** a web app used on office PCs and on phones. Since 28 Sep, screens are designed for desktop first, for DS officers as well as Head Office.
 - **Language and ease of use (28 Sep, widened 7 Oct):** the screens are in Sinhala, Tamil and English; each officer picks one, and Sinhala is the default. Officers are non-technical, and most of their other systems are in Sinhala. Keep screens simple: one main task per screen, plain words, and the sheet's own terms (for example නිවාසගත, අවදානම් දරුවන්, පළමු වාරිකය).
-- **Roles (v1 only):**
+- **Roles (v1; Change 0005 added more in Nov 2026, see "Offices and designations"):**
   - AG (Divisional Secretariat) officer: sees their own office only. The screens call the role Divisional Secretariat Officer (ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී) (14 Oct; it was Child Rights Promotion Officer). A DS can have more than one active officer account (14 Oct; from 29 Sep it had one).
   - Head Office officer: sees everything and can add and edit beneficiaries.
   - Head Office admin: manages accounts and master lists.
+  - Since Change 0005, every other designation of a DS, district, province, the Department and the Ministry only views its own area's cases, with every detail and document, and can download them (the owner's decision of 5 Nov 2026). So does the District CRPO, for now.
 - **Money:** Rs. 2,000,000 per case, paid as 4 fixed installments of Rs. 500,000. This includes land-only cases.
 - **Releases:**
   - The AG office checks each case on site and ticks off each installment. Head Office does not approve releases.

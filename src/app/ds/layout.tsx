@@ -10,7 +10,7 @@ export default async function DsLayout({ children }: { children: React.ReactNode
   return (
     <AppShell
       area="ds"
-      userName={context.name}
+      userName={context.label}
       officeName={context.dsOfficeName}
       nav={[
         { href: "/ds", labelKey: "dsHome", exact: true },

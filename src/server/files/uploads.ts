@@ -3,7 +3,8 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { FileKind } from "@/generated/prisma/enums";
 import { documentProblem, type FileProblem, photoProblem, SNIFF_BYTES, sniffType } from "@/lib/file-types";
 import { logError } from "../log";
-import { canSeeOffice, caseScope, type Viewer } from "../permissions";
+import { canEnterCases } from "../cases/rules";
+import { canSeeOffice, caseScope, OFFICE_PLACE, type Viewer } from "../permissions";
 import { processPhoto } from "./images";
 import { deleteStoredFile, writeStoredFile } from "./storage";
 
@@ -36,7 +37,8 @@ export async function uploadDocument(
   actor: Actor,
   file: { name: string; bytes: Uint8Array },
 ): Promise<{ ok: true; value: UploadedFile } | { ok: false; error: UploadError }> {
-  if (caseScope(actor).kind === "none") return { ok: false, error: "notAllowed" };
+  // Documents go with a case form, which only an office's officers and Head Office save (PRM-5).
+  if (!canEnterCases(actor.role) || caseScope(actor).kind === "none") return { ok: false, error: "notAllowed" };
   const problem = documentProblem(file.bytes.length, file.bytes.subarray(0, SNIFF_BYTES));
   if (problem) return { ok: false, error: problem };
 
@@ -175,15 +177,15 @@ export async function fileForViewer(
       mimeType: true,
       uploadedById: true,
       removedAt: true,
-      case: { select: { dsOfficeId: true } },
-      letter: { select: { releases: { select: { case: { select: { dsOfficeId: true } } } } } },
+      case: { select: { dsOffice: OFFICE_PLACE } },
+      letter: { select: { releases: { select: { case: { select: { dsOffice: OFFICE_PLACE } } } } } },
     },
   });
   if (!file || file.removedAt) return null;
   const allowed = file.case
-    ? canSeeOffice(viewer, file.case.dsOfficeId)
+    ? canSeeOffice(viewer, file.case.dsOffice)
     : file.letter
-      ? file.letter.releases.some((release) => canSeeOffice(viewer, release.case.dsOfficeId))
+      ? file.letter.releases.some((release) => canSeeOffice(viewer, release.case.dsOffice))
       : file.uploadedById === viewer.userId;
   if (!allowed) return null;
   if (variant === "thumb") {

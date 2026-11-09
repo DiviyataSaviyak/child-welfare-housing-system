@@ -23,7 +23,14 @@ const PDF = new TextEncoder().encode("%PDF-1.7\n% a made-up document\n");
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
-const admin: Actor = { userId: "cases-test-admin", role: "ADMIN", dsOfficeId: null };
+const admin: Actor = {
+  userId: "cases-test-admin",
+  role: "ADMIN",
+  designation: null,
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 let codeA: string;
 let inactiveOfficeId: number;
 
@@ -69,9 +76,16 @@ async function sendBack(id: string, reason = "ලිපිනය සම්පූ
 async function officer(id: string): Promise<Actor> {
   const dsOfficeId = await freeOfficeId(db);
   await db.user.create({
-    data: { id, name: "ප. පරීක්ෂණ", email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId },
+    data: {
+      id,
+      name: "ප. පරීක්ෂණ",
+      email: `${id}@no-email.invalid`,
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      dsOfficeId,
+    },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 beforeAll(async () => {
@@ -79,9 +93,22 @@ beforeAll(async () => {
   dsA = await officer("cases-test-ds-a");
   dsB = await officer("cases-test-ds-b");
   await db.user.create({
-    data: { id: "cases-test-ho", name: "ප්‍ර. පරීක්ෂණ", email: "cases-test-ho@no-email.invalid", role: "HO_OFFICER" },
+    data: {
+      id: "cases-test-ho",
+      name: "ප්‍ර. පරීක්ෂණ",
+      email: "cases-test-ho@no-email.invalid",
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+    },
   });
-  ho = { userId: "cases-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "cases-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "cases-test-admin@no-email.invalid", role: "ADMIN" },
   });

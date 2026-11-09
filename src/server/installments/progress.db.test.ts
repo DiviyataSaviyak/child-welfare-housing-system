@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import en from "../../../messages/en.json";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../../../tests/db/client";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "@/lib/dates";
@@ -29,7 +30,14 @@ const db = createTestClient();
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
-const admin: Actor = { userId: "progress-test-admin", role: "ADMIN", dsOfficeId: null };
+const admin: Actor = {
+  userId: "progress-test-admin",
+  role: "ADMIN",
+  designation: null,
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 
 const today = () => colomboDay(new Date());
 const daysAgo = (days: number) => addDays(today(), -days);
@@ -143,9 +151,16 @@ async function newHouseStages() {
 async function officer(id: string): Promise<Actor> {
   const dsOfficeId = await freeOfficeId(db);
   await db.user.create({
-    data: { id, name: "ප්‍රා. පරීක්ෂණ", email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId },
+    data: {
+      id,
+      name: "ප්‍රා. පරීක්ෂණ",
+      email: `${id}@no-email.invalid`,
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      dsOfficeId,
+    },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 /** A made-up phone photo with a GPS position in its metadata (AC-16). */
@@ -169,9 +184,17 @@ beforeAll(async () => {
       name: "ප්‍ර. පරීක්ෂණ",
       email: "progress-test-ho@no-email.invalid",
       role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
-  ho = { userId: "progress-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "progress-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "progress-test-admin@no-email.invalid", role: "ADMIN" },
   });
@@ -630,6 +653,37 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
     const row = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_completed" } });
     await expect(db.auditLog.update({ where: { id: row.id }, data: { action: "x" } })).rejects.toThrow(/append-only/);
     await expect(db.auditLog.delete({ where: { id: row.id } })).rejects.toThrow(/append-only/);
+  });
+});
+
+describe("an account with no name in the case history (ADM-10, AC-40)", () => {
+  it("shows its designation and office instead", async () => {
+    const c = await running();
+    const office = await db.dsOffice.findUniqueOrThrow({ where: { id: c.dsOfficeId } });
+    const nameless = await db.user.create({
+      data: {
+        id: randomUUID(),
+        name: "",
+        email: `${randomUUID()}@no-email.invalid`,
+        username: "ds9310",
+        role: "DS_OFFICER",
+        designation: "DS_CRPO",
+        dsOfficeId: c.dsOfficeId,
+      },
+    });
+    await db.auditLog.create({
+      data: {
+        actorId: nameless.id,
+        action: "stage_updated",
+        entityType: "stage_update",
+        entityId: randomUUID(),
+        caseId: c.id,
+        before: { stageId: null },
+        after: { stageIds: [], visitedOn: daysAgo(1), note: "බැලුවා", photos: [] },
+      },
+    });
+    const [latest] = (await caseHistory(db, ho, c.id, "en")) ?? [];
+    expect(latest.actor).toEqual({ name: `${en.users.designations.DS_CRPO}, ${office.nameEn}`, role: "DS_OFFICER" });
   });
 });
 

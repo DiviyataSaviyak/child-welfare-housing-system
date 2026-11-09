@@ -4,6 +4,7 @@ import type { InstallmentStatus } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
 import { formatRupees, paidOut } from "@/lib/money";
 import type { InstallmentDetails, ReleaseDetails } from "@/server/cases/queries";
+import type { Audience } from "./case-view";
 
 /** Installment status colours from the prototype; each pair meets WCAG AA contrast (UI-6). */
 const DOT: Record<InstallmentStatus, string> = {
@@ -21,7 +22,7 @@ const STATUS_TEXT: Record<InstallmentStatus, string> = {
  * "මූල්‍ය ප්‍රගතිය" as in the prototype: the Rs. 2,000,000 released through the District Secretary by
  * an allocation letter, what has been paid to the beneficiary, what the office still holds, the letter
  * itself, and the four installments (REL-3, INS-1). Head Office reads it as released to the District
- * Secretary, the DS office as received through them. `correction` is Head Office's button to correct
+ * Secretary (and so does the view-only area), the DS office as received through them. `correction` is Head Office's button to correct
  * the letter (REL-4). `actions` gives each installment's button, if any: the DS office's next step
  * (INS-3, INS-4) or Head Office's undo (INS-6).
  */
@@ -32,7 +33,7 @@ export async function MoneySection({
   correction,
   actions,
 }: {
-  audience: "ds" | "ho";
+  audience: Audience;
   release: ReleaseDetails;
   installments: InstallmentDetails[];
   correction?: React.ReactNode;
@@ -43,7 +44,7 @@ export async function MoneySection({
   const paidAmount = paidOut(installments);
   const { letter } = release;
   const tiles = [
-    audience === "ho"
+    audience !== "ds"
       ? {
           label: t("money.released"),
           amount: release.amount,
@@ -81,7 +82,7 @@ export async function MoneySection({
         <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
         <p className="flex-1">
           <strong className="text-foreground">{t("money.letterName", { number: letter.letterNumber })}</strong>{" "}
-          {audience === "ho"
+          {audience !== "ds"
             ? t("money.letterHo", {
                 date: formatDate(letter.letterDate),
                 district: letter.districtName,

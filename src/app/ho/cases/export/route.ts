@@ -5,7 +5,7 @@ import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { exportCaseList } from "@/server/exports/case-list";
 import { xlsxResponse } from "@/server/exports/workbook";
-import { readFilters } from "../filters";
+import { readFilters } from "@/components/cases/list-filters";
 
 /** EXP-1: Head Office's case list as an Excel file, with the filters the list page shows (FND-1). */
 export async function GET(request: NextRequest) {

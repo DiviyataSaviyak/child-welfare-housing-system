@@ -6,7 +6,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <AppShell
       area="admin"
-      userName={context.name}
+      userName={context.label}
       nav={[
         { href: "/admin/users", labelKey: "adminUsers" },
         { href: "/admin/lists", labelKey: "adminLists" },

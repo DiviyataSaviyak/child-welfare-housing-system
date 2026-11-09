@@ -10,8 +10,10 @@ import { updateProfileAction } from "./actions";
 import { ProfileForm } from "./profile-form";
 
 /**
- * The name in the header, which opens the user's profile in a pop-up: the username, role, district and
- * DS office to read, and their own details to change. Only the admin changes the rest (ADM-4).
+ * The name in the header, which opens the user's profile in a pop-up: the username, office type,
+ * designation, role and place to read, and their own details to change, any of which may be left empty
+ * (ADM-11). Only the admin changes the rest (ADM-4). An account with no name shows its designation and
+ * place in the header instead (ADM-10).
  */
 export function ProfileDialog({ userName, profile }: { userName: string; profile: Profile }) {
   const t = useTranslations();
@@ -23,11 +25,22 @@ export function ProfileDialog({ userName, profile }: { userName: string; profile
     setOpen(true);
   };
 
+  const { place } = profile;
   const facts = [
     { label: t("profile.username"), value: profile.username },
+    { label: t("profile.officeType"), value: t(`users.officeTypes.${profile.officeType}`) },
+    ...(profile.designation
+      ? [{ label: t("profile.designation"), value: t(`users.designations.${profile.designation}`) }]
+      : []),
     { label: t("profile.role"), value: t(`users.roles.${profile.role}`) },
-    ...(profile.districtName ? [{ label: t("profile.district"), value: profile.districtName }] : []),
-    ...(profile.officeName ? [{ label: t("profile.office"), value: profile.officeName }] : []),
+    ...(place?.kind === "dsOffice"
+      ? [
+          { label: t("profile.district"), value: place.district },
+          { label: t("profile.office"), value: place.office },
+        ]
+      : []),
+    ...(place?.kind === "district" ? [{ label: t("profile.district"), value: place.district }] : []),
+    ...(place?.kind === "province" ? [{ label: t("profile.province"), value: place.province }] : []),
   ];
 
   return (

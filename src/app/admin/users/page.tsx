@@ -2,31 +2,41 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { FormNotice } from "@/components/forms/form-field";
 import { formatDate } from "@/lib/dates";
-import { isRole, ROLES } from "@/server/auth/roles";
+import { OFFICE_TYPES, type OfficeType } from "@/server/auth/designations";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { accountCounts, listAccounts } from "@/server/users/queries";
+import { type AccountPlace, accountCounts, listAccounts } from "@/server/users/queries";
 import { AccountActions } from "./account-actions";
 
 const NOTICES = ["saved", "transferred"] as const;
 
+const isOfficeType = (value: unknown): value is OfficeType =>
+  typeof value === "string" && (OFFICE_TYPES as readonly string[]).includes(value);
+
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; role?: string | string[]; notice?: string | string[] }>;
+  searchParams: Promise<{ q?: string | string[]; officeType?: string | string[]; notice?: string | string[] }>;
 }) {
   const admin = await requireRole("ADMIN");
   const locale = await getLocale();
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.slice(0, 100) : "";
-  const role = isRole(params.role) ? params.role : undefined;
+  const officeType = isOfficeType(params.officeType) ? params.officeType : undefined;
   const notice = NOTICES.find((n) => n === params.notice);
 
   const [t, rows, counts] = await Promise.all([
     getTranslations("users"),
-    listAccounts(db, { q, role }, locale),
+    listAccounts(db, { q, officeType }, locale),
     accountCounts(db),
   ]);
+
+  const placeLine = (place: AccountPlace) =>
+    place.kind === "dsOffice"
+      ? `${t("officeOf", { office: place.office })} · ${t("districtOf", { district: place.district })}`
+      : place.kind === "district"
+        ? t("districtOf", { district: place.district })
+        : t("provinceOf", { province: place.province });
 
   return (
     <div className="flex flex-col gap-5">
@@ -61,19 +71,19 @@ export default async function AdminUsersPage({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="role" className="text-[15px] font-semibold">
-              {t("roleFilter")}
+            <label htmlFor="officeType" className="text-[15px] font-semibold">
+              {t("officeTypeFilter")}
             </label>
             <select
-              id="role"
-              name="role"
-              defaultValue={role ?? ""}
-              className="h-11 w-64 rounded-lg border border-input bg-card px-3 text-base"
+              id="officeType"
+              name="officeType"
+              defaultValue={officeType ?? ""}
+              className="h-11 w-72 rounded-lg border border-input bg-card px-3 text-base"
             >
-              <option value="">{t("allRoles")}</option>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {t(`roles.${r}`)}
+              <option value="">{t("allOfficeTypes")}</option>
+              {OFFICE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {t(`officeTypes.${type}`)}
                 </option>
               ))}
             </select>
@@ -96,7 +106,7 @@ export default async function AdminUsersPage({
                   {t("columns.name")}
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-semibold">
-                  {t("columns.role")}
+                  {t("columns.designation")}
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-semibold">
                   {t("columns.office")}
@@ -118,25 +128,23 @@ export default async function AdminUsersPage({
                   <td className="px-5 py-2.5">
                     <span className="flex flex-col">
                       <span className={`font-semibold ${row.active ? "" : "text-muted-foreground"}`}>
-                        {row.name} {row.id === admin.userId && t("you")}
+                        {row.label} {row.id === admin.userId && t("you")}
                       </span>
-                      <span className="text-sm text-muted-foreground">
-                        <span className="font-mono">{row.username}</span>
-                        {row.designation && ` · ${row.designation}`}
-                      </span>
+                      <span className="font-mono text-sm text-muted-foreground">{row.username}</span>
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-[15px]">{t(`roles.${row.role}`)}</td>
                   <td className="px-3 py-2.5">
                     <span className="flex flex-col">
                       <span className="text-[15px]">
-                        {row.officeName ? t("officeOf", { office: row.officeName }) : t("headOffice")}
+                        {row.designation ? t(`designations.${row.designation}`) : t("officeTypes.ADMINISTRATOR")}
                       </span>
-                      {row.districtName && (
-                        <span className="text-sm text-muted-foreground">
-                          {t("districtOf", { district: row.districtName })}
-                        </span>
-                      )}
+                      <span className="text-sm text-muted-foreground">{t(`roles.${row.role}`)}</span>
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="flex flex-col">
+                      <span className="text-[15px]">{t(`officeTypes.${row.officeType}`)}</span>
+                      {row.place && <span className="text-sm text-muted-foreground">{placeLine(row.place)}</span>}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-[15px] tabular-nums">
@@ -150,7 +158,7 @@ export default async function AdminUsersPage({
                     </span>
                   </td>
                   <td className="px-5 py-2.5">
-                    <AccountActions id={row.id} name={row.name} active={row.active} isSelf={row.id === admin.userId} />
+                    <AccountActions id={row.id} name={row.label} active={row.active} isSelf={row.id === admin.userId} />
                   </td>
                 </tr>
               ))}

@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
-import { canSeeOffice } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE } from "../permissions";
 import type { Actor } from "./commands";
 import { Refusal, type Result } from "./refusal";
 import { applyMove, type Move, type MoveError, moveRefusal } from "./transitions";
@@ -30,9 +30,9 @@ export async function decideCase(
 ): Promise<Result<CaseStatus, DecideError>> {
   const found = await db.case.findUnique({
     where: { id: input.caseId },
-    select: { id: true, status: true, dsOfficeId: true, version: true },
+    select: { id: true, status: true, dsOfficeId: true, dsOffice: OFFICE_PLACE, version: true },
   });
-  if (!found || !canSeeOffice(actor, found.dsOfficeId)) return { ok: false, error: "notFound" };
+  if (!found || !canSeeOffice(actor, found.dsOffice)) return { ok: false, error: "notFound" };
   const refusal = moveRefusal(actor.role, input.decision, found.status);
   if (refusal) return { ok: false, error: refusal };
 

@@ -42,11 +42,19 @@ export const REQUEST_SELECT = {
   decisions: CLOSING_DECISION,
 } as const satisfies Prisma.CaseSelect;
 
-export function toRequest({
-  decisions,
-  ...found
-}: Prisma.CaseGetPayload<{ select: typeof REQUEST_SELECT }>): ReplacementRequest {
-  return { ...found, decidedAt: decisions[0]?.at ?? null, reason: decisions[0]?.reason ?? null };
+/** Takes only the request's own fields, so a caller may select more (such as the office's place). */
+export function toRequest(found: Prisma.CaseGetPayload<{ select: typeof REQUEST_SELECT }>): ReplacementRequest {
+  const { id, caseNumber, dsOfficeId, name, childName, status, decisions } = found;
+  return {
+    id,
+    caseNumber,
+    dsOfficeId,
+    name,
+    childName,
+    status,
+    decidedAt: decisions[0]?.at ?? null,
+    reason: decisions[0]?.reason ?? null,
+  };
 }
 
 /**
@@ -62,8 +70,8 @@ export async function openRequests(
   if (!scope) return [];
   const found = await db.case.findMany({
     where: {
-      ...scope,
-      ...(options.dsOfficeId ? { dsOfficeId: options.dsOfficeId } : {}),
+      // AND, not a spread: a chosen office must narrow the viewer's area, never replace it.
+      AND: [scope, options.dsOfficeId ? { dsOfficeId: options.dsOfficeId } : {}],
       anotherNameRequested: true,
       OR: [
         { replacedBy: { is: null } },

@@ -16,7 +16,14 @@ const t = createTranslator({ locale: "si", messages, namespace: "cases" });
 const LOAD = 5_000;
 
 /** The audit log has no foreign key to the account, so a made-up actor is enough. */
-const ho = { role: "HO_OFFICER", dsOfficeId: null, userId: "export-test-ho" } as const satisfies Viewer & {
+const ho = {
+  role: "HO_OFFICER",
+  designation: "MINISTRY_PROGRAMME_OFFICER",
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+  userId: "export-test-ho",
+} as const satisfies Viewer & {
   userId: string;
 };
 
@@ -131,7 +138,14 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
   });
 
   it("keeps a DS officer to their own office, and gives an admin nothing (PRM-1, PRM-2)", async () => {
-    const ds = { role: "DS_OFFICER", dsOfficeId: busiestOffice, userId: "export-test-ds" } as const;
+    const ds = {
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      districtId: null,
+      provinceId: null,
+      dsOfficeId: busiestOffice,
+      userId: "export-test-ds",
+    } as const;
     const rows = (await caseListRows(db, ds, {}, "si"))!;
     const own = await db.dsOffice.findUniqueOrThrow({ where: { id: busiestOffice }, select: { nameSi: true } });
     expect(rows.length).toBe(await db.case.count({ where: { dsOfficeId: busiestOffice } }));
@@ -144,7 +158,14 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     });
     expect(await caseListRows(db, ds, { q: other.caseNumber! }, "si")).toEqual([]);
 
-    const admin = { role: "ADMIN", dsOfficeId: null, userId: "export-test-admin" } as const;
+    const admin = {
+      role: "ADMIN",
+      designation: null,
+      districtId: null,
+      provinceId: null,
+      dsOfficeId: null,
+      userId: "export-test-admin",
+    } as const;
     expect(await exportCaseList(db, admin, "ho_cases", {}, t, "si")).toBeNull();
     expect(await lastExportAudit(admin.userId)).toBeNull();
   });
@@ -159,7 +180,14 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       rows: file.rows,
     });
 
-    const ds = { role: "DS_OFFICER", dsOfficeId: busiestOffice, userId: "export-test-ds" } as const;
+    const ds = {
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      districtId: null,
+      provinceId: null,
+      dsOfficeId: busiestOffice,
+      userId: "export-test-ds",
+    } as const;
     const own = (await exportCaseList(db, ds, "ds_cases", { statuses: ["COMPLETED"] }, t, "si"))!;
     expect((await lastExportAudit(ds.userId))?.after).toEqual({
       filters: { statuses: ["COMPLETED"], officeScope: busiestOffice },

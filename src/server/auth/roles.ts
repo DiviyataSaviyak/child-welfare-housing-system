@@ -1,5 +1,9 @@
-/** The three roles of version 1 (application spec, Roles and permissions). */
-export const ROLES = ["DS_OFFICER", "HO_OFFICER", "ADMIN"] as const;
+/**
+ * What an account can do (application spec, Roles and permissions). The designation decides the
+ * role (designations.ts), and the admin has no designation. VIEWER can change nothing, so every check
+ * that names the roles allowed to act refuses it.
+ */
+export const ROLES = ["DS_OFFICER", "DISTRICT_OFFICER", "HO_OFFICER", "VIEWER", "ADMIN"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -10,13 +14,17 @@ export function isRole(value: unknown): value is Role {
 /** The part of the site each role works in. */
 const AREA: Record<Role, string> = {
   DS_OFFICER: "/ds",
+  DISTRICT_OFFICER: "/oversight",
   HO_OFFICER: "/ho",
+  VIEWER: "/oversight",
   ADMIN: "/admin",
 };
 
 const HOME: Record<Role, string> = {
   DS_OFFICER: "/ds",
+  DISTRICT_OFFICER: "/oversight",
   HO_OFFICER: "/ho",
+  VIEWER: "/oversight",
   ADMIN: "/admin/users",
 };
 

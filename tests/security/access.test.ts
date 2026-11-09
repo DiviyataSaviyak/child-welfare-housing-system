@@ -4,8 +4,9 @@
  * page, and nothing but their own session is read from the database before that.
  *
  * The real `requireRole` and `requireSignedIn` run (src/server/context.ts); only the session behind
- * them is made up, and the database refuses anything but that session. Whether an allowed role then
- * sees only its own office is for the database and end-to-end tests.
+ * them is made up, and the database refuses anything but that session. Each of the five roles signs in,
+ * and a view-only account of each office type. Whether an allowed role then sees only its own area is
+ * for the database and end-to-end tests.
  *
  * A new actions.ts or route.ts, or a new export in one, fails this test until it is added to RULES.
  */
@@ -13,15 +14,28 @@ import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Designation, roleOf } from "@/server/auth/designations";
 import type { Role } from "@/server/auth/roles";
 
 const state = vi.hoisted(() => ({
-  session: null as null | { role: string; mustChangePassword: boolean },
+  session: null as null | {
+    role: string;
+    designation: string | null;
+    dsOfficeId: number | null;
+    districtId: number | null;
+    provinceId: number | null;
+    mustChangePassword: boolean;
+  },
   touched: [] as string[],
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }));
+// getContext names the account in the screen's language (ADM-10); outside a request that is Sinhala.
+vi.mock("next-intl/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next-intl/server")>()),
+  getLocale: async () => "si",
+}));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers(),
   cookies: async () => ({ get: () => undefined, set: () => undefined, delete: () => undefined }),
@@ -56,9 +70,14 @@ vi.mock("@/server/db", () => {
           name: "පරීක්ෂණ",
           role: state.session.role,
           banned: false,
-          dsOfficeId: state.session.role === "DS_OFFICER" ? 1 : null,
+          designation: state.session.designation,
+          dsOfficeId: state.session.dsOfficeId,
+          districtId: state.session.districtId,
+          provinceId: state.session.provinceId,
           mustChangePassword: state.session.mustChangePassword,
           dsOffice: null,
+          district: null,
+          province: null,
         },
       },
     update: async () => ({}),
@@ -81,20 +100,45 @@ vi.mock("@/server/db", () => {
   return { db };
 });
 
-type Visitor = "signedOut" | "temporaryPassword" | Role;
-const VISITORS: Visitor[] = ["signedOut", "temporaryPassword", "DS_OFFICER", "HO_OFFICER", "ADMIN"];
+/** A signed-in account: its designation, which gives the role, and its place. */
+type Account = { role: Role; designation: Designation | null; place: Partial<Record<PlaceField, number>> };
+type PlaceField = "dsOfficeId" | "districtId" | "provinceId";
+
+const account = (designation: Designation | null, place: Account["place"] = {}): Account => ({
+  role: roleOf(designation),
+  designation,
+  place,
+});
+
+const ACCOUNTS = {
+  crpo: account("DS_CRPO", { dsOfficeId: 1 }),
+  dsAccountant: account("DS_ACCOUNTANT", { dsOfficeId: 1 }),
+  districtCrpo: account("DISTRICT_CRPO", { districtId: 1 }),
+  districtSecretary: account("DISTRICT_SECRETARY", { districtId: 1 }),
+  provincialCommissioner: account("PROVINCE_COMMISSIONER", { provinceId: 1 }),
+  departmentCommissioner: account("DEPARTMENT_COMMISSIONER"),
+  ministrySecretary: account("MINISTRY_SECRETARY"),
+  programmeOfficer: account("MINISTRY_PROGRAMME_OFFICER"),
+  chiefAccountant: account("MINISTRY_CHIEF_ACCOUNTANT"),
+  admin: account(null),
+} satisfies Record<string, Account>;
+
+type Visitor = "signedOut" | "temporaryPassword" | keyof typeof ACCOUNTS;
+const VISITORS: Visitor[] = ["signedOut", "temporaryPassword", ...(Object.keys(ACCOUNTS) as (keyof typeof ACCOUNTS)[])];
 
 /** Who may call it. */
 type Rule =
-  | { role: Role } // requireRole: the sign-in page, the password page, or "not found"
+  | { role: Role | Role[] } // requireRole: the sign-in page, the password page, or "not found"
   | { signedIn: "temporaryAllowed" } // changing one's own password
   | { signedIn: "own" } // changing one's own details: any role, once the temporary password is changed
-  | { signedIn: "file" } // a file: "not found" unless a DS or Head Office officer; the case's own check follows
+  | { signedIn: "file" } // a file: "not found" unless the account sees cases; the case's own check follows
   | { anyone: string }; // open to all, with the reason
 
 const DS: Rule = { role: "DS_OFFICER" };
 const HO: Rule = { role: "HO_OFFICER" };
 const ADMIN: Rule = { role: "ADMIN" };
+/** The view-only area (PRM-4, PRM-5): it changes nothing, and only reads within the account's own area. */
+const OVERSIGHT: Rule = { role: ["VIEWER", "DISTRICT_OFFICER"] };
 
 const RULES: Record<string, Record<string, Rule>> = {
   "src/app/(auth)/actions.ts": {
@@ -158,6 +202,7 @@ const RULES: Record<string, Record<string, Rule>> = {
   },
   "src/app/ho/cases/export/route.ts": { GET: HO },
   "src/app/ho/waiting/route.ts": { GET: HO },
+  "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
   "src/app/files/[id]/route.ts": { GET: { signedIn: "file" } },
   "src/app/files/[id]/thumb/route.ts": { GET: { signedIn: "file" } },
 };
@@ -167,14 +212,17 @@ type Outcome = "signIn" | "changePassword" | "notFound" | "passes";
 function expected(rule: Rule, visitor: Visitor): Outcome {
   if ("anyone" in rule) return "passes";
   if ("signedIn" in rule) {
-    // The admin sees no cases (PRM-1), so no files either.
-    if (rule.signedIn === "file") return visitor === "DS_OFFICER" || visitor === "HO_OFFICER" ? "passes" : "notFound";
     if (rule.signedIn === "own" && visitor === "temporaryPassword") return "changePassword";
+    if (rule.signedIn === "file") {
+      if (visitor === "signedOut" || visitor === "temporaryPassword") return "notFound";
+      // Every account that sees cases may open their files (PRM-4); the admin sees none (PRM-2).
+      return ACCOUNTS[visitor].role === "ADMIN" ? "notFound" : "passes";
+    }
     return visitor === "signedOut" ? "signIn" : "passes";
   }
   if (visitor === "signedOut") return "signIn";
   if (visitor === "temporaryPassword") return "changePassword";
-  return visitor === rule.role ? "passes" : "notFound";
+  return [rule.role].flat().includes(ACCOUNTS[visitor].role) ? "passes" : "notFound";
 }
 
 /** Next's redirect() and notFound() throw errors that carry a digest. */
@@ -218,12 +266,19 @@ function load(file: string): Promise<Record<string, unknown>> {
 }
 
 function signInAs(visitor: Visitor) {
-  state.session =
-    visitor === "signedOut"
-      ? null
-      : visitor === "temporaryPassword"
-        ? { role: "DS_OFFICER", mustChangePassword: true }
-        : { role: visitor, mustChangePassword: false };
+  if (visitor === "signedOut") {
+    state.session = null;
+    return;
+  }
+  const { role, designation, place } = visitor === "temporaryPassword" ? ACCOUNTS.crpo : ACCOUNTS[visitor];
+  state.session = {
+    role,
+    designation,
+    dsOfficeId: place.dsOfficeId ?? null,
+    districtId: place.districtId ?? null,
+    provinceId: place.provinceId ?? null,
+    mustChangePassword: visitor === "temporaryPassword",
+  };
 }
 
 beforeEach(() => {

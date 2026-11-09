@@ -20,7 +20,14 @@ const db = createTestClient();
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
-const admin: Actor = { userId: "review-test-admin", role: "ADMIN", dsOfficeId: null };
+const admin: Actor = {
+  userId: "review-test-admin",
+  role: "ADMIN",
+  designation: null,
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 
 /** A complete, made-up case (SEC-11). Each test gives its own NIC so tests don't match each other. */
 const values = (nic: string, overrides: Partial<CaseValues> = {}): CaseValues => ({
@@ -101,9 +108,16 @@ async function released(...nics: string[]) {
 async function officer(id: string): Promise<Actor> {
   const dsOfficeId = await freeOfficeId(db);
   await db.user.create({
-    data: { id, name: "ප. පරීක්ෂණ", email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId },
+    data: {
+      id,
+      name: "ප. පරීක්ෂණ",
+      email: `${id}@no-email.invalid`,
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      dsOfficeId,
+    },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 beforeAll(async () => {
@@ -111,9 +125,22 @@ beforeAll(async () => {
   dsA = await officer("review-test-ds-a");
   dsB = await officer("review-test-ds-b");
   await db.user.create({
-    data: { id: "review-test-ho", name: "ප්‍ර. පරීක්ෂණ", email: "review-test-ho@no-email.invalid", role: "HO_OFFICER" },
+    data: {
+      id: "review-test-ho",
+      name: "ප්‍ර. පරීක්ෂණ",
+      email: "review-test-ho@no-email.invalid",
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+    },
   });
-  ho = { userId: "review-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "review-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "review-test-admin@no-email.invalid", role: "ADMIN" },
   });
@@ -269,7 +296,15 @@ describe("checking a case (CHK-3)", () => {
     const office = dsA.dsOfficeId as number;
     const colleague = (id: string, name: string, banned: boolean) =>
       db.user.create({
-        data: { id, name, email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId: office, banned },
+        data: {
+          id,
+          name,
+          email: `${id}@no-email.invalid`,
+          role: "DS_OFFICER",
+          designation: "DS_CRPO",
+          dsOfficeId: office,
+          banned,
+        },
       });
     await colleague("review-test-ds-old", "පැරණි නිලධාරී", true);
     await colleague("review-test-ds-a2", "දෙවන නිලධාරී", false);
@@ -508,9 +543,22 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     const scan = await uploadLetterScan(db, ho, pdf);
     if (!scan.ok) throw new Error(scan.error);
     // Someone else's upload can't be attached.
-    const other: Actor = { userId: "review-test-ho-2", role: "HO_OFFICER", dsOfficeId: null };
+    const other: Actor = {
+      userId: "review-test-ho-2",
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+      districtId: null,
+      provinceId: null,
+      dsOfficeId: null,
+    };
     await db.user.create({
-      data: { id: other.userId, name: "ප්‍ර. දෙවන", email: "review-test-ho-2@no-email.invalid", role: "HO_OFFICER" },
+      data: {
+        id: other.userId,
+        name: "ප්‍ර. දෙවන",
+        email: "review-test-ho-2@no-email.invalid",
+        role: "HO_OFFICER",
+        designation: "MINISTRY_PROGRAMME_OFFICER",
+      },
     });
     expect(await recordLetter(db, other, { ...(await letter([ready])), scanId: scan.value.id })).toEqual({
       ok: false,

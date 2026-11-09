@@ -6,16 +6,17 @@
  * - deletes the cases they created (named with TEST_CASE_NAME), with their files and photos, decisions,
  *   release, installments, stage updates and notifications, and the allocation letters left with no case,
  *   with their scans;
- * - deletes the DS officer accounts they created (named TEST_OFFICER_NAME), so the admin's users screen
- *   doesn't fill up with them. Their audit records stay, with an actor id that no longer exists. An account
- *   that still holds case records is disabled instead.
+ * - deletes the DS officer accounts they created (named TEST_OFFICER_NAME), and the accounts with no name
+ *   in NAMELESS_DISTRICT or its DS offices (AC-37, AC-40), so the admin's users screen doesn't fill up with
+ *   them. Their audit records stay, with an actor id that no longer exists. An account that still holds
+ *   case records is disabled instead.
  * Runs only where sample accounts are allowed (development and test databases).
  */
 import "dotenv/config";
 import { sampleUsersAllowed } from "../../prisma/seed-users";
 import { createPrismaClient } from "../../src/server/db";
 import { deleteStoredFile } from "../../src/server/files/storage";
-import { TEST_CASE_NAME, TEST_MARKER, TEST_OFFICER_NAME } from "./helpers";
+import { NAMELESS_DISTRICT, TEST_CASE_NAME, TEST_MARKER, TEST_OFFICER_NAME } from "./helpers";
 
 async function main() {
   if (!sampleUsersAllowed()) throw new Error("End-to-end cleanup only runs on development and test databases.");
@@ -52,7 +53,15 @@ async function main() {
     for (const name of files.flatMap((f) => [f.storedName, f.thumbName])) if (name) await deleteStoredFile(name);
     // The officer accounts the tests created, now that their cases are gone. Sessions and sign-in rows go
     // with them (cascade); their audit records stay (HIS-3). One still holding case records is only disabled.
-    const officerWhere = { name: TEST_OFFICER_NAME, role: "DS_OFFICER" };
+    // The accounts of AC-37 and AC-40 have no name, so they are found by their district instead.
+    const nameless = { nameSi: NAMELESS_DISTRICT };
+    const officerWhere = {
+      OR: [
+        { name: TEST_OFFICER_NAME, role: "DS_OFFICER" },
+        { name: "", district: nameless },
+        { name: "", dsOffice: { district: nameless } },
+      ],
+    };
     const deletable = await prisma.user.findMany({
       where: {
         ...officerWhere,

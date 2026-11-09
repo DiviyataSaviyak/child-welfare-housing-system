@@ -1,23 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { parseAccountForm, parseProfileForm } from "@/lib/validation/user";
+import en from "../../../messages/en.json";
+import si from "../../../messages/si.json";
+import { accountLabel, designationsNamed } from "./label";
 import { generateTemporaryPassword } from "./passwords";
 import { checkDisable, checkRoleChange } from "./rules";
 import { nextUsername } from "./usernames";
 
 describe("usernames (ADM-2)", () => {
-  it("uses the role's prefix and the next number", () => {
-    expect(nextUsername("DS_OFFICER", [])).toBe("ds0001");
-    expect(nextUsername("DS_OFFICER", ["ds0101", "ds0199", "ds0102"])).toBe("ds0200");
-    expect(nextUsername("HO_OFFICER", ["ds0101", "ho0001"])).toBe("ho0002");
-    expect(nextUsername("ADMIN", ["ho0009"])).toBe("ad0001");
+  it("uses the office type's prefix and the next number", () => {
+    expect(nextUsername("DS", [])).toBe("ds0001");
+    expect(nextUsername("DS", ["ds0101", "ds0199", "ds0102"])).toBe("ds0200");
+    expect(nextUsername("MINISTRY", ["ds0101", "ho0001"])).toBe("ho0002");
+    expect(nextUsername("ADMINISTRATOR", ["ho0009"])).toBe("ad0001");
+  });
+
+  it("gives the new office types their own prefixes", () => {
+    expect(nextUsername("DISTRICT", ["ds0007"])).toBe("dt0001");
+    expect(nextUsername("PROVINCE", ["pd0004", "pv0002"])).toBe("pv0003");
+    expect(nextUsername("DEPARTMENT", ["pv0009"])).toBe("pd0001");
   });
 
   it("ignores names that don't follow the pattern", () => {
-    expect(nextUsername("DS_OFFICER", ["ds12", "dsx999", "ds0005"])).toBe("ds0006");
+    expect(nextUsername("DS", ["ds12", "dsx999", "ds0005"])).toBe("ds0006");
   });
 
   it("keeps counting past 9999", () => {
-    expect(nextUsername("DS_OFFICER", ["ds9999"])).toBe("ds10000");
+    expect(nextUsername("DS", ["ds9999"])).toBe("ds10000");
   });
 });
 
@@ -58,51 +67,125 @@ describe("account rules (ADM-6)", () => {
   });
 });
 
-describe("account form (ADM-2)", () => {
+describe("account form (ADM-2, ADM-8)", () => {
   const form = (values: Record<string, string>) => parseAccountForm((field) => values[field] ?? "");
-  const valid = { name: "කේ. පෙරේරා", mobile: "071 000 0101", role: "DS_OFFICER", dsOfficeId: "1" };
+  const crpo = {
+    name: "කේ. පෙරේරා",
+    mobile: "071 000 0101",
+    officeType: "DS",
+    designation: "DS_CRPO",
+    districtId: "1",
+    dsOfficeId: "1",
+  };
 
-  it("accepts a DS officer with an office, and tidies the mobile number", () => {
-    const result = form(valid);
-    expect(result).toEqual({
+  it("accepts a CRPO with an office, tidies the mobile number and keeps only the office", () => {
+    expect(form(crpo)).toEqual({
       ok: true,
       value: {
         name: "කේ. පෙරේරා",
-        designation: null,
         mobile: "0710000101",
         contactEmail: null,
+        designation: "DS_CRPO",
         role: "DS_OFFICER",
         dsOfficeId: 1,
+        districtId: null,
+        provinceId: null,
       },
     });
   });
 
-  it("drops the office for Head Office and admin accounts", () => {
-    const result = form({ ...valid, role: "HO_OFFICER" });
-    expect(result.ok && result.value.dsOfficeId).toBeNull();
+  it("leaves the name, mobile and email optional (AC-37)", () => {
+    expect(form({ officeType: "DISTRICT", designation: "DISTRICT_CHIEF_ACCOUNTANT", districtId: "4" })).toEqual({
+      ok: true,
+      value: {
+        name: "",
+        mobile: null,
+        contactEmail: null,
+        designation: "DISTRICT_CHIEF_ACCOUNTANT",
+        role: "VIEWER",
+        dsOfficeId: null,
+        districtId: 4,
+        provinceId: null,
+      },
+    });
+  });
+
+  it("asks each office type for its own place only (AC-38)", () => {
+    const place = (officeType: string, designation: string) => {
+      const result = form({ officeType, designation, dsOfficeId: "1", districtId: "2", provinceId: "3" });
+      return result.ok && [result.value.dsOfficeId, result.value.districtId, result.value.provinceId];
+    };
+    expect(place("DS", "DS_ACCOUNTANT")).toEqual([1, null, null]);
+    expect(place("DISTRICT", "DISTRICT_CRPO")).toEqual([null, 2, null]);
+    expect(place("PROVINCE", "PROVINCE_COMMISSIONER")).toEqual([null, null, 3]);
+    expect(place("DEPARTMENT", "DEPARTMENT_COMMISSIONER")).toEqual([null, null, null]);
+    expect(place("MINISTRY", "MINISTRY_SECRETARY")).toEqual([null, null, null]);
+    expect(place("ADMINISTRATOR", "")).toEqual([null, null, null]);
+
+    expect(form({ officeType: "DS", designation: "DS_CRPO" })).toMatchObject({ errors: { dsOfficeId: "office" } });
+    expect(form({ officeType: "DISTRICT", designation: "DISTRICT_SECRETARY" })).toMatchObject({
+      errors: { districtId: "district" },
+    });
+    expect(form({ officeType: "PROVINCE", designation: "PROVINCE_COMMISSIONER", provinceId: "x" })).toMatchObject({
+      errors: { provinceId: "province" },
+    });
+  });
+
+  it("sets the role from the designation, whatever else is sent", () => {
+    const result = form({ officeType: "MINISTRY", designation: "MINISTRY_CHIEF_ACCOUNTANT", role: "ADMIN" });
+    expect(result.ok && result.value.role).toBe("HO_OFFICER");
+    const secretary = form({ officeType: "MINISTRY", designation: "MINISTRY_SECRETARY" });
+    expect(secretary.ok && secretary.value.role).toBe("VIEWER");
+  });
+
+  it("refuses a designation of another office type, or one not on the list (AC-38)", () => {
+    for (const [officeType, designation] of [
+      ["DS", "DISTRICT_CRPO"],
+      ["DISTRICT", "DS_CRPO"],
+      ["MINISTRY", "DEPARTMENT_COMMISSIONER"],
+      ["MINISTRY", "සංවර්ධන නිලධාරී"],
+      ["PROVINCE", ""],
+    ]) {
+      expect(form({ officeType, designation, districtId: "1", provinceId: "1" }), designation).toMatchObject({
+        ok: false,
+        errors: { designation: "designation" },
+      });
+    }
+  });
+
+  it("gives an administrator no designation and no place (AC-38)", () => {
+    const admin = form({ officeType: "ADMINISTRATOR", designation: "DS_CRPO", dsOfficeId: "1" });
+    expect(admin).toMatchObject({ ok: true, value: { designation: null, role: "ADMIN", dsOfficeId: null } });
   });
 
   it("names each problem", () => {
-    const result = form({ name: "ක", mobile: "12345", contactEmail: "not-an-address", role: "DS_OFFICER" });
+    const result = form({ name: "ක", mobile: "12345", contactEmail: "not-an-address", officeType: "DS" });
     expect(result).toEqual({
       ok: false,
-      errors: { name: "tooShort", mobile: "mobile", contactEmail: "email", dsOfficeId: "office" },
+      errors: {
+        name: "tooShort",
+        mobile: "mobile",
+        contactEmail: "email",
+        designation: "designation",
+        dsOfficeId: "office",
+      },
     });
-    expect(form({ ...valid, name: "", mobile: "" })).toMatchObject({
+    expect(form({})).toEqual({ ok: false, errors: { officeType: "officeType" } });
+    expect(form({ ...crpo, officeType: "HEAD_OFFICE" })).toMatchObject({
       ok: false,
-      errors: { name: "required", mobile: "required" },
+      errors: { officeType: "officeType" },
     });
-    expect(form({ ...valid, role: "user" })).toMatchObject({ ok: false, errors: { role: "role" } });
+    expect(form({ ...crpo, name: "x".repeat(101) })).toMatchObject({ ok: false, errors: { name: "tooLong" } });
   });
 });
 
 describe("profile form", () => {
   const form = (values: Record<string, string>) => parseProfileForm((field) => values[field] ?? "");
 
-  it("reads only the officer's own details, never a role or an office", () => {
+  it("reads only the officer's own details, never a role, a designation or an office", () => {
     const result = form({
       name: " කේ. පෙරේරා ",
-      designation: "",
+      designation: "DS_CRPO",
       mobile: "071 000 0101",
       contactEmail: "kp@example.lk",
       role: "ADMIN",
@@ -110,7 +193,7 @@ describe("profile form", () => {
     });
     expect(result).toEqual({
       ok: true,
-      value: { name: "කේ. පෙරේරා", designation: null, mobile: "0710000101", contactEmail: "kp@example.lk" },
+      value: { name: "කේ. පෙරේරා", mobile: "0710000101", contactEmail: "kp@example.lk" },
     });
   });
 
@@ -119,6 +202,54 @@ describe("profile form", () => {
       ok: false,
       errors: { name: "tooShort", mobile: "mobile", contactEmail: "email" },
     });
-    expect(form({})).toEqual({ ok: false, errors: { name: "required", mobile: "required" } });
+  });
+
+  it("lets the officer leave the name, mobile and email empty (ADM-11)", () => {
+    expect(form({})).toEqual({ ok: true, value: { name: "", mobile: null, contactEmail: null } });
+    expect(form({ name: "  ", mobile: " ", contactEmail: " " })).toEqual({
+      ok: true,
+      value: { name: "", mobile: null, contactEmail: null },
+    });
+  });
+});
+
+describe("accountLabel (ADM-10)", () => {
+  const names = (si: string, ta: string, en: string) => ({ nameSi: si, nameTa: ta, nameEn: en });
+  const weligama = names("වැලිගම", "வெலிகம", "Weligama");
+  const nameless = { name: "", designation: null, dsOffice: null, district: null, province: null };
+
+  it("is the name when the account has one", () => {
+    expect(
+      accountLabel({ ...nameless, name: "කේ. පෙරේරා", designation: "DS_ACCOUNTANT", dsOffice: weligama }, "si"),
+    ).toBe("කේ. පෙරේරා");
+  });
+
+  it("is the designation and the place of an account with no name, in the screen's language", () => {
+    const accountant = { ...nameless, designation: "DS_ACCOUNTANT", dsOffice: weligama };
+    expect(accountLabel(accountant, "si")).toBe(`${si.users.designations.DS_ACCOUNTANT}, වැලිගම`);
+    expect(accountLabel(accountant, "en")).toBe(`${en.users.designations.DS_ACCOUNTANT}, Weligama`);
+    const district = { ...nameless, designation: "DISTRICT_SECRETARY", district: names("මාතලේ", "மாத்தளை", "Matale") };
+    expect(accountLabel(district, "en")).toBe(`${en.users.designations.DISTRICT_SECRETARY}, Matale District`);
+    const province = {
+      ...nameless,
+      designation: "PROVINCE_COMMISSIONER",
+      province: names("මධ්‍යම", "மத்திய", "Central"),
+    };
+    expect(accountLabel(province, "en")).toBe(`${en.users.designations.PROVINCE_COMMISSIONER}, Central Province`);
+  });
+
+  it("is the designation alone where there is no place, and Administrator for a nameless admin", () => {
+    expect(accountLabel({ ...nameless, designation: "MINISTRY_SECRETARY" }, "en")).toBe(
+      en.users.designations.MINISTRY_SECRETARY,
+    );
+    expect(accountLabel(nameless, "si")).toBe(si.users.officeTypes.ADMINISTRATOR);
+  });
+});
+
+describe("searching by designation (ADM-1)", () => {
+  it("finds the designations whose label holds the text, in the screen's language", () => {
+    expect(designationsNamed(en.users.designations.DS_ACCOUNTANT.toUpperCase(), "en")).toContain("DS_ACCOUNTANT");
+    expect(designationsNamed(si.users.designations.DS_CRPO, "si")).toContain("DS_CRPO");
+    expect(designationsNamed("nothing like it", "en")).toEqual([]);
   });
 });

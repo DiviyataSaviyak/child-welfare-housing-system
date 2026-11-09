@@ -12,7 +12,13 @@ import type { Viewer } from "../permissions";
 import { dashboard, type DashboardFilter, type Figures, noFigures, STALE_SHOWN, tableRows } from "./queries";
 
 const db = createTestClient();
-const ho: Viewer = { role: "HO_OFFICER", dsOfficeId: null };
+const ho: Viewer = {
+  role: "HO_OFFICER",
+  designation: "MINISTRY_PROGRAMME_OFFICER",
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 const LOAD = 5_000;
 
 let districts: DistrictOptions[];
@@ -142,11 +148,21 @@ describe("Head Office dashboard (DSH-1)", () => {
     const all = await dashboard(db, ho, {}, "si");
     const [officeId] = [...all.byOffice.entries()].toSorted(([, a], [, b]) => b.cases - a.cases)[0];
 
-    const own = await dashboard(db, { role: "DS_OFFICER", dsOfficeId: officeId }, {}, "si");
+    const own = await dashboard(
+      db,
+      { role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId: officeId },
+      {},
+      "si",
+    );
     expect([...own.byOffice.keys()]).toEqual([officeId]);
     expect(own.totals).toEqual(await direct({ dsOfficeId: officeId }));
 
-    const admin = await dashboard(db, { role: "ADMIN", dsOfficeId: null }, {}, "si");
+    const admin = await dashboard(
+      db,
+      { role: "ADMIN", designation: null, districtId: null, provinceId: null, dsOfficeId: null },
+      {},
+      "si",
+    );
     expect(admin).toEqual({ totals: noFigures(), byOffice: new Map(), stale: { total: 0, cases: [] } });
   });
 

@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { AccountInput, ProfileInput } from "@/lib/validation/user";
 import { writeAudit } from "../audit";
 import { placeholderEmail } from "../auth/accounts";
+import { officeTypeOf } from "../auth/designations";
 import { generateTemporaryPassword } from "./passwords";
 import { activeAdminCount } from "./queries";
 import { type AccountRuleError, checkDisable, checkRoleChange } from "./rules";
@@ -17,11 +18,27 @@ type Result<T> = { ok: true; value: T } | { ok: false; error: AccountCommandErro
 const isUniqueViolation = (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 
-/** A DS officer's office must exist and be active; inactive offices get no new accounts (LST-3). */
-async function officeUsable(db: PrismaClient, dsOfficeId: number | null): Promise<boolean> {
-  if (dsOfficeId === null) return true;
-  const office = await db.dsOffice.findUnique({ where: { id: dsOfficeId }, select: { active: true } });
-  return office?.active === true;
+/**
+ * The account's place must exist; a DS office must also be active, since inactive offices get no new
+ * accounts (LST-3). Only the place that changed is checked, so an account can keep an office that has
+ * since been closed.
+ */
+async function placeUsable(
+  db: PrismaClient,
+  input: Pick<AccountInput, "dsOfficeId" | "districtId" | "provinceId">,
+  current?: Pick<AccountInput, "dsOfficeId" | "districtId" | "provinceId">,
+): Promise<boolean> {
+  if (input.dsOfficeId !== null && input.dsOfficeId !== current?.dsOfficeId) {
+    const office = await db.dsOffice.findUnique({ where: { id: input.dsOfficeId }, select: { active: true } });
+    if (office?.active !== true) return false;
+  }
+  if (input.districtId !== null && input.districtId !== current?.districtId) {
+    if (!(await db.district.findUnique({ where: { id: input.districtId }, select: { id: true } }))) return false;
+  }
+  if (input.provinceId !== null && input.provinceId !== current?.provinceId) {
+    if (!(await db.province.findUnique({ where: { id: input.provinceId }, select: { id: true } }))) return false;
+  }
+  return true;
 }
 
 /**
@@ -34,19 +51,20 @@ export async function createAccount(
   actorId: string | null,
   input: AccountInput,
 ): Promise<Result<Credentials>> {
-  if (!(await officeUsable(db, input.dsOfficeId))) return { ok: false, error: "officeUnavailable" };
+  if (!(await placeUsable(db, input))) return { ok: false, error: "officeUnavailable" };
 
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await hashPassword(temporaryPassword);
+  const officeType = officeTypeOf(input.designation);
 
   // Two admins creating accounts at the same moment could pick the same username: try again.
   for (let attempt = 1; ; attempt += 1) {
     const taken = await db.user.findMany({
-      where: { username: { startsWith: USERNAME_PREFIX[input.role] } },
+      where: { username: { startsWith: USERNAME_PREFIX[officeType] } },
       select: { username: true },
     });
     const username = nextUsername(
-      input.role,
+      officeType,
       taken.flatMap((u) => (u.username ? [u.username] : [])),
     );
     const id = randomUUID();
@@ -65,6 +83,8 @@ export async function createAccount(
             mobile: input.mobile,
             contactEmail: input.contactEmail,
             dsOfficeId: input.dsOfficeId,
+            districtId: input.districtId,
+            provinceId: input.provinceId,
             mustChangePassword: true,
             temporaryPasswordSetAt: new Date(),
           },
@@ -90,12 +110,24 @@ export async function createAccount(
   }
 }
 
-const EDITABLE = ["name", "designation", "mobile", "contactEmail", "role", "dsOfficeId"] as const;
+const EDITABLE = [
+  "name",
+  "designation",
+  "mobile",
+  "contactEmail",
+  "role",
+  "dsOfficeId",
+  "districtId",
+  "provinceId",
+] as const;
+
+/** The fields that say where an account belongs: changing one is a transfer (ADM-4). */
+export const PLACE_FIELDS = ["dsOfficeId", "districtId", "provinceId"] as const;
 
 /**
- * ADM-4: changes an account's details. Moving a DS officer to another office is how a transfer is
- * recorded; the audit record keeps the old and the new office, and the change applies to the
- * officer's next request (PRM-3).
+ * ADM-4: changes an account's details, including its office type, designation and place. Moving an
+ * officer to another place is how a transfer is recorded; the audit record keeps the old and the new
+ * place, and the change applies to the officer's next request (PRM-3).
  */
 export async function updateAccount(
   db: PrismaClient,
@@ -114,15 +146,15 @@ export async function updateAccount(
       mobile: true,
       contactEmail: true,
       dsOfficeId: true,
+      districtId: true,
+      provinceId: true,
     },
   });
   if (!current) return { ok: false, error: "notFound" };
 
   const roleProblem = checkRoleChange(actorId, current, input.role, await activeAdminCount(db));
   if (roleProblem) return { ok: false, error: roleProblem };
-  if (input.dsOfficeId !== current.dsOfficeId && !(await officeUsable(db, input.dsOfficeId))) {
-    return { ok: false, error: "officeUnavailable" };
-  }
+  if (!(await placeUsable(db, input, current))) return { ok: false, error: "officeUnavailable" };
 
   const changed = EDITABLE.filter((field) => current[field] !== input[field]);
   if (changed.length === 0) return { ok: true, value: { changed } };
@@ -143,11 +175,11 @@ export async function updateAccount(
   return { ok: true, value: { changed } };
 }
 
-const PROFILE_EDITABLE = ["name", "designation", "mobile", "contactEmail"] as const;
+const PROFILE_EDITABLE = ["name", "mobile", "contactEmail"] as const;
 
 /**
- * The profile page: signed-in users change their own name, designation, mobile number and email.
- * The role, district and DS office are not theirs to change (ADM-4). It is logged as
+ * The profile page: signed-in users change their own name, mobile number and email. The role,
+ * designation and place are not theirs to change (ADM-4). It is logged as
  * `account_updated` with the officer as the actor, so the admin's history of the account shows it.
  */
 export async function updateProfile(
@@ -157,7 +189,7 @@ export async function updateProfile(
 ): Promise<Result<{ changed: string[] }>> {
   const current = await db.user.findUnique({
     where: { id: userId },
-    select: { name: true, designation: true, mobile: true, contactEmail: true },
+    select: { name: true, mobile: true, contactEmail: true },
   });
   if (!current) return { ok: false, error: "notFound" };
 

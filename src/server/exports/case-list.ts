@@ -8,7 +8,7 @@ import { localName, NAMES } from "@/lib/names";
 import { KINDS } from "@/lib/validation/case";
 import { writeAudit } from "../audit";
 import { type CaseFilter, caseWhere } from "../cases/queries";
-import type { Viewer } from "../permissions";
+import { caseScope, type Viewer } from "../permissions";
 import { addSheet, type CellValue, type Column, workbookBytes } from "./workbook";
 
 export type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
@@ -17,7 +17,7 @@ export type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 export type ListFilter = Omit<CaseFilter, "page">;
 
 /** Which list was exported, as the audit record names it (EXP-3). */
-export type ListName = "ho_cases" | "ds_cases";
+export type ListName = "ho_cases" | "ds_cases" | "oversight_cases";
 
 export type ExportRow = {
   caseNumber: string | null;
@@ -218,7 +218,7 @@ export function caseListColumns(t: CasesT): Column<ExportRow>[] {
   ];
 }
 
-/** The filters as the audit record keeps them: only those used, plus the office a DS officer's list covers. */
+/** The filters as the audit record keeps them: only those used, plus the area the viewer's list covers. */
 function usedFilters(viewer: Viewer, filter: ListFilter): Prisma.InputJsonObject {
   const used: Record<string, Prisma.InputJsonValue> = {};
   const q = filter.q?.trim();
@@ -228,7 +228,10 @@ function usedFilters(viewer: Viewer, filter: ListFilter): Prisma.InputJsonObject
   if (filter.kind) used.kind = filter.kind;
   if (filter.districtId) used.districtId = filter.districtId;
   if (filter.dsOfficeId) used.dsOfficeId = filter.dsOfficeId;
-  if (viewer.role === "DS_OFFICER" && viewer.dsOfficeId !== null) used.officeScope = viewer.dsOfficeId;
+  const scope = caseScope(viewer);
+  if (scope.kind === "office") used.officeScope = scope.dsOfficeId;
+  if (scope.kind === "district") used.districtScope = scope.districtId;
+  if (scope.kind === "province") used.provinceScope = scope.provinceId;
   return used;
 }
 

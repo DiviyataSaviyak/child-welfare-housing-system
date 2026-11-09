@@ -2,14 +2,18 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
 import { isRole, type Role } from "../auth/roles";
-import { canSeeOffice, type Viewer } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE, type Viewer } from "../permissions";
+import { accountLabel, LABEL_SELECT } from "../users/label";
 
 export type HistoryEntry = {
   id: string;
   at: Date;
   /** The audit action, such as "case_submitted" or "installment_paid". */
   action: string;
-  /** Who did it; null for something the system did by itself, such as finishing a case (CLS-1). */
+  /**
+   * Who did it: their name, or the designation and place of an account with none (ADM-10). Null for
+   * something the system did by itself, such as finishing a case (CLS-1).
+   */
   actor: { name: string; role: Role | null } | null;
   before: Record<string, unknown>;
   after: Record<string, unknown>;
@@ -73,8 +77,8 @@ export async function caseHistory(
   caseId: string,
   locale: Locale,
 ): Promise<HistoryEntry[] | null> {
-  const found = await db.case.findUnique({ where: { id: caseId }, select: { dsOfficeId: true } });
-  if (!found || !canSeeOffice(viewer, found.dsOfficeId)) return null;
+  const found = await db.case.findUnique({ where: { id: caseId }, select: { dsOffice: OFFICE_PLACE } });
+  if (!found || !canSeeOffice(viewer, found.dsOffice)) return null;
 
   const rows = await db.auditLog.findMany({
     where: { caseId },
@@ -84,9 +88,11 @@ export async function caseHistory(
   const actorIds = [...new Set(rows.flatMap((row) => (row.actorId ? [row.actorId] : [])))];
   const actors = await db.user.findMany({
     where: { id: { in: actorIds } },
-    select: { id: true, name: true, role: true },
+    select: { id: true, role: true, ...LABEL_SELECT },
   });
-  const byId = new Map(actors.map((a) => [a.id, { name: a.name, role: isRole(a.role) ? a.role : null }]));
+  const byId = new Map(
+    actors.map((a) => [a.id, { name: accountLabel(a, locale), role: isRole(a.role) ? a.role : null }]),
+  );
   const records = rows.map((row) => ({ ...row, before: asObject(row.before), after: asObject(row.after) }));
   const { districtOfLetter, stageName } = await localPlaces(db, records, locale);
 

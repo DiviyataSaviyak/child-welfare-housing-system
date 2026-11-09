@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import si from "../../../messages/si.json";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../../../tests/db/client";
 import { addOffice, addStage, moveStage, renameOffice, renameStage, setOfficeActive, setStageActive } from "./commands";
@@ -73,6 +74,7 @@ describe("DS offices (LST-2, LST-3)", () => {
           email: `${id}@no-email.invalid`,
           username,
           role: "DS_OFFICER",
+          designation: "DS_CRPO",
           dsOfficeId: office.id,
           banned,
         },
@@ -81,6 +83,13 @@ describe("DS offices (LST-2, LST-3)", () => {
     await officer("lists-officer-2", "ඒ. නිලධාරී", "ds9301");
     await officer("lists-officer-old", "ප. නිලධාරී", "ds9302", true);
     expect(await officersOf()).toEqual(["ඒ. නිලධාරී", "කේ. නිලධාරී"]);
+    // One with no name is named by designation and office (ADM-10, AC-40).
+    await officer("lists-officer-nameless", "", "ds9303");
+    expect(await officersOf()).toEqual([
+      `${si.users.designations.DS_CRPO}, ${office.nameSi}`,
+      "ඒ. නිලධාරී",
+      "කේ. නිලධාරී",
+    ]);
   });
 
   it("names districts and provinces in the screen's language (UI-9)", async () => {

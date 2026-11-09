@@ -10,7 +10,7 @@ import type { ProfileFormState } from "./actions";
 
 const EMPTY: ProfileFormState = { errors: {}, error: null, saved: false };
 
-/** The officer's own name, designation, mobile number and email, checked as on the admin's account form. */
+/** The officer's own name, mobile number and email, checked as on the admin's account form. */
 export function ProfileForm({
   profile,
   action,
@@ -26,7 +26,6 @@ export function ProfileForm({
   // Controlled fields keep what was typed when the server sends the form back with errors.
   const [values, setValues] = useState<Record<ProfileField, string>>(() => ({
     name: profile.name,
-    designation: profile.designation ?? "",
     mobile: profile.mobile ?? "",
     contactEmail: profile.contactEmail ?? "",
   }));
@@ -49,15 +48,6 @@ export function ProfileForm({
           value={values.name}
           onChange={set("name")}
           error={error("name")}
-        />
-        <FormField
-          id="designation"
-          name="designation"
-          label={t("designation")}
-          help={t("designationHint")}
-          value={values.designation}
-          onChange={set("designation")}
-          error={error("designation")}
         />
         <FormField
           id="mobile"

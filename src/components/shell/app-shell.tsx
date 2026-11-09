@@ -15,6 +15,7 @@ export async function AppShell({
   area,
   userName,
   officeName,
+  areaLabel: place,
   nav,
   bell,
   children,
@@ -23,6 +24,8 @@ export async function AppShell({
   userName: string;
   /** The DS office of a DS officer; shown in the header instead of the general area name. */
   officeName?: string | null;
+  /** The place a view-only account sees (PRM-4), shown in the header instead of the general area name. */
+  areaLabel?: string | null;
   nav: NavEntry[];
   /** NTF-1: the notifications page and how many are unread. */
   bell?: { href: string; unread: LiveCount };
@@ -31,7 +34,7 @@ export async function AppShell({
   const [t, locale, context] = await Promise.all([getTranslations(), getLocale(), getContext()]);
   // The name in the header opens the signed-in user's profile in a pop-up.
   const profile = context ? await getProfile(db, context.userId, locale) : null;
-  const areaLabel = officeName ? t("areas.dsOffice", { office: officeName }) : t(`areas.${area}`);
+  const areaLabel = place ?? (officeName ? t("areas.dsOffice", { office: officeName }) : t(`areas.${area}`));
 
   return (
     <div className="flex min-h-screen flex-col">

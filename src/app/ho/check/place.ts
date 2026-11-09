@@ -1,6 +1,6 @@
 import type { QueuePlace } from "@/server/cases/queues";
 import type { DistrictOptions } from "@/server/lists/queries";
-import { positive } from "../cases/filters";
+import { positive } from "@/components/cases/list-filters";
 
 /** A district or DS office to narrow a queue to, with how many cases wait there (CHK-4). */
 export type PlaceChoice = { id: number; name: string; count: number; active: boolean };
