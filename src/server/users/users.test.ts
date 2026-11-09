@@ -5,19 +5,25 @@ import { checkDisable, checkRoleChange } from "./rules";
 import { nextUsername } from "./usernames";
 
 describe("usernames (ADM-2)", () => {
-  it("uses the role's prefix and the next number", () => {
-    expect(nextUsername("DS_OFFICER", [])).toBe("ds0001");
-    expect(nextUsername("DS_OFFICER", ["ds0101", "ds0199", "ds0102"])).toBe("ds0200");
-    expect(nextUsername("HO_OFFICER", ["ds0101", "ho0001"])).toBe("ho0002");
-    expect(nextUsername("ADMIN", ["ho0009"])).toBe("ad0001");
+  it("uses the office type's prefix and the next number", () => {
+    expect(nextUsername("DS", [])).toBe("ds0001");
+    expect(nextUsername("DS", ["ds0101", "ds0199", "ds0102"])).toBe("ds0200");
+    expect(nextUsername("MINISTRY", ["ds0101", "ho0001"])).toBe("ho0002");
+    expect(nextUsername("ADMINISTRATOR", ["ho0009"])).toBe("ad0001");
+  });
+
+  it("gives the new office types their own prefixes", () => {
+    expect(nextUsername("DISTRICT", ["ds0007"])).toBe("dt0001");
+    expect(nextUsername("PROVINCE", ["pd0004", "pv0002"])).toBe("pv0003");
+    expect(nextUsername("DEPARTMENT", ["pv0009"])).toBe("pd0001");
   });
 
   it("ignores names that don't follow the pattern", () => {
-    expect(nextUsername("DS_OFFICER", ["ds12", "dsx999", "ds0005"])).toBe("ds0006");
+    expect(nextUsername("DS", ["ds12", "dsx999", "ds0005"])).toBe("ds0006");
   });
 
   it("keeps counting past 9999", () => {
-    expect(nextUsername("DS_OFFICER", ["ds9999"])).toBe("ds10000");
+    expect(nextUsername("DS", ["ds9999"])).toBe("ds10000");
   });
 });
 
@@ -68,7 +74,7 @@ describe("account form (ADM-2)", () => {
       ok: true,
       value: {
         name: "කේ. පෙරේරා",
-        designation: null,
+        designation: "DS_CRPO",
         mobile: "0710000101",
         contactEmail: null,
         role: "DS_OFFICER",
@@ -80,6 +86,17 @@ describe("account form (ADM-2)", () => {
   it("drops the office for Head Office and admin accounts", () => {
     const result = form({ ...valid, role: "HO_OFFICER" });
     expect(result.ok && result.value.dsOfficeId).toBeNull();
+  });
+
+  it("sets the designation itself, whatever is sent", () => {
+    const headOffice = form({ ...valid, role: "HO_OFFICER", designation: "සංවර්ධන නිලධාරී" });
+    expect(headOffice.ok && headOffice.value.designation).toBe("MINISTRY_PROGRAMME_OFFICER");
+    const admin = form({ ...valid, role: "ADMIN", designation: "DS_CRPO" });
+    expect(admin.ok && admin.value.designation).toBeNull();
+  });
+
+  it("refuses the view-only roles until the form asks for a designation", () => {
+    expect(form({ ...valid, role: "VIEWER" })).toMatchObject({ ok: false, errors: { role: "role" } });
   });
 
   it("names each problem", () => {
@@ -99,10 +116,10 @@ describe("account form (ADM-2)", () => {
 describe("profile form", () => {
   const form = (values: Record<string, string>) => parseProfileForm((field) => values[field] ?? "");
 
-  it("reads only the officer's own details, never a role or an office", () => {
+  it("reads only the officer's own details, never a role, a designation or an office", () => {
     const result = form({
       name: " කේ. පෙරේරා ",
-      designation: "",
+      designation: "DS_CRPO",
       mobile: "071 000 0101",
       contactEmail: "kp@example.lk",
       role: "ADMIN",
@@ -110,7 +127,7 @@ describe("profile form", () => {
     });
     expect(result).toEqual({
       ok: true,
-      value: { name: "කේ. පෙරේරා", designation: null, mobile: "0710000101", contactEmail: "kp@example.lk" },
+      value: { name: "කේ. පෙරේරා", mobile: "0710000101", contactEmail: "kp@example.lk" },
     });
   });
 

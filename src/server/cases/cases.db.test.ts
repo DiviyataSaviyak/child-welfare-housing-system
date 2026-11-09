@@ -69,7 +69,14 @@ async function sendBack(id: string, reason = "ලිපිනය සම්පූ
 async function officer(id: string): Promise<Actor> {
   const dsOfficeId = await freeOfficeId(db);
   await db.user.create({
-    data: { id, name: "ප. පරීක්ෂණ", email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId },
+    data: {
+      id,
+      name: "ප. පරීක්ෂණ",
+      email: `${id}@no-email.invalid`,
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      dsOfficeId,
+    },
   });
   return { userId: id, role: "DS_OFFICER", dsOfficeId };
 }
@@ -79,7 +86,13 @@ beforeAll(async () => {
   dsA = await officer("cases-test-ds-a");
   dsB = await officer("cases-test-ds-b");
   await db.user.create({
-    data: { id: "cases-test-ho", name: "ප්‍ර. පරීක්ෂණ", email: "cases-test-ho@no-email.invalid", role: "HO_OFFICER" },
+    data: {
+      id: "cases-test-ho",
+      name: "ප්‍ර. පරීක්ෂණ",
+      email: "cases-test-ho@no-email.invalid",
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+    },
   });
   ho = { userId: "cases-test-ho", role: "HO_OFFICER", dsOfficeId: null };
   await db.user.create({

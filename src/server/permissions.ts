@@ -16,6 +16,8 @@ export function caseScope(viewer: Viewer): CaseScope {
     case "DS_OFFICER":
       // A DS officer without an office is a broken account: show nothing rather than everything.
       return viewer.dsOfficeId === null ? { kind: "none" } : { kind: "office", dsOfficeId: viewer.dsOfficeId };
+    case "DISTRICT_OFFICER":
+    case "VIEWER":
     case "ADMIN":
       return { kind: "none" };
   }

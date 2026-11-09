@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { AccountInput, ProfileInput } from "@/lib/validation/user";
 import { writeAudit } from "../audit";
 import { placeholderEmail } from "../auth/accounts";
+import { officeTypeOf } from "../auth/designations";
 import { generateTemporaryPassword } from "./passwords";
 import { activeAdminCount } from "./queries";
 import { type AccountRuleError, checkDisable, checkRoleChange } from "./rules";
@@ -38,15 +39,16 @@ export async function createAccount(
 
   const temporaryPassword = generateTemporaryPassword();
   const passwordHash = await hashPassword(temporaryPassword);
+  const officeType = officeTypeOf(input.designation);
 
   // Two admins creating accounts at the same moment could pick the same username: try again.
   for (let attempt = 1; ; attempt += 1) {
     const taken = await db.user.findMany({
-      where: { username: { startsWith: USERNAME_PREFIX[input.role] } },
+      where: { username: { startsWith: USERNAME_PREFIX[officeType] } },
       select: { username: true },
     });
     const username = nextUsername(
-      input.role,
+      officeType,
       taken.flatMap((u) => (u.username ? [u.username] : [])),
     );
     const id = randomUUID();
@@ -143,11 +145,11 @@ export async function updateAccount(
   return { ok: true, value: { changed } };
 }
 
-const PROFILE_EDITABLE = ["name", "designation", "mobile", "contactEmail"] as const;
+const PROFILE_EDITABLE = ["name", "mobile", "contactEmail"] as const;
 
 /**
- * The profile page: signed-in users change their own name, designation, mobile number and email.
- * The role, district and DS office are not theirs to change (ADM-4). It is logged as
+ * The profile page: signed-in users change their own name, mobile number and email. The role,
+ * designation and place are not theirs to change (ADM-4). It is logged as
  * `account_updated` with the officer as the actor, so the admin's history of the account shows it.
  */
 export async function updateProfile(
@@ -157,7 +159,7 @@ export async function updateProfile(
 ): Promise<Result<{ changed: string[] }>> {
   const current = await db.user.findUnique({
     where: { id: userId },
-    select: { name: true, designation: true, mobile: true, contactEmail: true },
+    select: { name: true, mobile: true, contactEmail: true },
   });
   if (!current) return { ok: false, error: "notFound" };
 

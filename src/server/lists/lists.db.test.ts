@@ -73,6 +73,7 @@ describe("DS offices (LST-2, LST-3)", () => {
           email: `${id}@no-email.invalid`,
           username,
           role: "DS_OFFICER",
+          designation: "DS_CRPO",
           dsOfficeId: office.id,
           banned,
         },

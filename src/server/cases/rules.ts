@@ -13,7 +13,9 @@ const AFTER_CHECK: readonly CaseStatus[] = ["VERIFIED", "IN_PROGRESS"];
 
 const EDITABLE: Record<Role, readonly CaseStatus[]> = {
   DS_OFFICER: ENTRY,
+  DISTRICT_OFFICER: [],
   HO_OFFICER: [...ENTRY, ...AFTER_CHECK],
+  VIEWER: [],
   ADMIN: [],
 };
 

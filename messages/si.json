@@ -177,8 +177,28 @@
     },
     "roles": {
       "DS_OFFICER": "ප්‍රාදේශීය ලේකම් කාර්යාල නිලධාරී",
+      "DISTRICT_OFFICER": "දිස්ත්‍රික් ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී",
       "HO_OFFICER": "ප්‍රධාන කාර්යාල නිලධාරී",
+      "VIEWER": "නැරඹීමට පමණි",
       "ADMIN": "පරිපාලක"
+    },
+    "designations": {
+      "DS_CRPO": "ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී",
+      "DS_SECRETARY": "ප්‍රාදේශීය ලේකම්",
+      "DS_ASSISTANT_SECRETARY": "සහකාර ප්‍රාදේශීය ලේකම්",
+      "DS_ACCOUNTANT": "ගණකාධිකාරී",
+      "DISTRICT_SECRETARY": "දිස්ත්‍රික් ලේකම්",
+      "DISTRICT_ADDITIONAL_SECRETARY": "අතිරේක ලේකම්",
+      "DISTRICT_CRPO": "දිස්ත්‍රික් ළමා හිමිකම් ප්‍රවර්ධන නිලධාරී",
+      "DISTRICT_CHIEF_ACCOUNTANT": "ප්‍රධාන ගණකාධිකාරී",
+      "PROVINCE_COMMISSIONER": "පළාත් කොමසාරිස්",
+      "PROVINCE_PROBATION_OFFICER": "පළාත් පරිවාස නිලධාරී",
+      "DEPARTMENT_ASSISTANT_COMMISSIONER": "සහකාර කොමසාරිස් (තාක්ෂණ)",
+      "DEPARTMENT_COMMISSIONER": "කොමසාරිස්",
+      "MINISTRY_SECRETARY": "ලේකම්",
+      "MINISTRY_ADDITIONAL_SECRETARY": "අතිරේක ලේකම්",
+      "MINISTRY_CHIEF_ACCOUNTANT": "ප්‍රධාන ගණකාධිකාරී",
+      "MINISTRY_PROGRAMME_OFFICER": "දිවියට සවියක් වැඩසටහන් නිලධාරී"
     },
     "roleHints": {
       "DS_OFFICER": "තම ප්‍රා.ලේ. කාර්යාලයේ ප්‍රතිලාභීන් පමණි",
@@ -1068,7 +1088,9 @@
     "who": "{name} ({role})",
     "roles": {
       "DS_OFFICER": "ප්‍රා.ලේ.",
+      "DISTRICT_OFFICER": "දිස්ත්‍රික් ලේකම් කාර්යාලය",
       "HO_OFFICER": "ප්‍රධාන කාර්යාලය",
+      "VIEWER": "නැරඹීමට පමණි",
       "ADMIN": "පරිපාලක"
     },
     "actions": {

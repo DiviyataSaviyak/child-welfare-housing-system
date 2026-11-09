@@ -22,11 +22,24 @@ beforeAll(async () => {
     [SECOND_OFFICER, "දෙ. පරීක්ෂණ"],
   ] as const) {
     await db.user.create({
-      data: { id, name, email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId: officeId },
+      data: {
+        id,
+        name,
+        email: `${id}@no-email.invalid`,
+        role: "DS_OFFICER",
+        designation: "DS_CRPO",
+        dsOfficeId: officeId,
+      },
     });
   }
   await db.user.create({
-    data: { id: HEAD_OFFICE, name: "ප්‍ර. පරීක්ෂණ", email: `${HEAD_OFFICE}@no-email.invalid`, role: "HO_OFFICER" },
+    data: {
+      id: HEAD_OFFICE,
+      name: "ප්‍ර. පරීක්ෂණ",
+      email: `${HEAD_OFFICE}@no-email.invalid`,
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+    },
   });
 });
 

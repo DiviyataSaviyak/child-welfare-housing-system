@@ -177,8 +177,28 @@
     },
     "roles": {
       "DS_OFFICER": "Divisional Secretariat Officer",
+      "DISTRICT_OFFICER": "District Child Rights Promotion Officer",
       "HO_OFFICER": "Head Office officer",
+      "VIEWER": "View only",
       "ADMIN": "Administrator"
+    },
+    "designations": {
+      "DS_CRPO": "Child Rights Promotion Officer",
+      "DS_SECRETARY": "Divisional Secretary",
+      "DS_ASSISTANT_SECRETARY": "Assistant Divisional Secretary",
+      "DS_ACCOUNTANT": "Accountant",
+      "DISTRICT_SECRETARY": "District Secretary",
+      "DISTRICT_ADDITIONAL_SECRETARY": "Additional Secretary",
+      "DISTRICT_CRPO": "District Child Rights Promotion Officer",
+      "DISTRICT_CHIEF_ACCOUNTANT": "Chief Accountant",
+      "PROVINCE_COMMISSIONER": "Provincial Commissioner",
+      "PROVINCE_PROBATION_OFFICER": "Provincial Probation Officer",
+      "DEPARTMENT_ASSISTANT_COMMISSIONER": "Assistant Commissioner (Technical)",
+      "DEPARTMENT_COMMISSIONER": "Commissioner",
+      "MINISTRY_SECRETARY": "Secretary",
+      "MINISTRY_ADDITIONAL_SECRETARY": "Additional Secretary",
+      "MINISTRY_CHIEF_ACCOUNTANT": "Chief Accountant",
+      "MINISTRY_PROGRAMME_OFFICER": "Diviyata Saviyak Programme Officer"
     },
     "roleHints": {
       "DS_OFFICER": "Only the beneficiaries of their own DS office",
@@ -1068,7 +1088,9 @@
     "who": "{name} ({role})",
     "roles": {
       "DS_OFFICER": "DS",
+      "DISTRICT_OFFICER": "District Secretariat",
       "HO_OFFICER": "Head Office",
+      "VIEWER": "View only",
       "ADMIN": "Administrator"
     },
     "actions": {

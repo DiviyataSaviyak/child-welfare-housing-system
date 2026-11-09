@@ -143,7 +143,14 @@ async function newHouseStages() {
 async function officer(id: string): Promise<Actor> {
   const dsOfficeId = await freeOfficeId(db);
   await db.user.create({
-    data: { id, name: "ප්‍රා. පරීක්ෂණ", email: `${id}@no-email.invalid`, role: "DS_OFFICER", dsOfficeId },
+    data: {
+      id,
+      name: "ප්‍රා. පරීක්ෂණ",
+      email: `${id}@no-email.invalid`,
+      role: "DS_OFFICER",
+      designation: "DS_CRPO",
+      dsOfficeId,
+    },
   });
   return { userId: id, role: "DS_OFFICER", dsOfficeId };
 }
@@ -169,6 +176,7 @@ beforeAll(async () => {
       name: "ප්‍ර. පරීක්ෂණ",
       email: "progress-test-ho@no-email.invalid",
       role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
   ho = { userId: "progress-test-ho", role: "HO_OFFICER", dsOfficeId: null };

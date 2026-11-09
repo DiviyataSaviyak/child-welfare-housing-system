@@ -11,7 +11,7 @@ import { hashPassword } from "better-auth/crypto";
 import { pathToFileURL } from "node:url";
 import type { PrismaClient } from "../src/generated/prisma/client";
 import { placeholderEmail } from "../src/server/auth/accounts";
-import type { Role } from "../src/server/auth/roles";
+import { type Designation, roleOf } from "../src/server/auth/designations";
 import { createPrismaClient } from "../src/server/db";
 
 /** Password of the sample accounts that are ready to use. */
@@ -19,18 +19,24 @@ export const SAMPLE_PASSWORD = "Sample-Pass-2026";
 /** Temporary password of the sample account that must set a new one at first sign-in. */
 export const SAMPLE_TEMPORARY_PASSWORD = "Temp-Pass-2026";
 
-type SampleUser = { username: string; name: string; role: Role; officeCode?: string; temporary?: boolean };
+type SampleUser = {
+  username: string;
+  name: string;
+  designation: Designation | null;
+  officeCode?: string;
+  temporary?: boolean;
+};
 
 // An office can have several officers (ADM-3), but each sample officer has their own, so tests signed in as
 // different officers don't see each other's cases.
 export const SAMPLE_USERS: SampleUser[] = [
-  { username: "ds0101", name: "එන්. පෙරේරා", role: "DS_OFFICER", officeCode: "HMG" },
-  { username: "ds0102", name: "එස්. නවරත්න", role: "DS_OFFICER", officeCode: "MHG", temporary: true },
-  { username: "ds0103", name: "ඩී. වීරසිංහ", role: "DS_OFFICER", officeCode: "KDW" },
+  { username: "ds0101", name: "එන්. පෙරේරා", designation: "DS_CRPO", officeCode: "HMG" },
+  { username: "ds0102", name: "එස්. නවරත්න", designation: "DS_CRPO", officeCode: "MHG", temporary: true },
+  { username: "ds0103", name: "ඩී. වීරසිංහ", designation: "DS_CRPO", officeCode: "KDW" },
   // Used only by the lockout test, which locks it on purpose.
-  { username: "ds0199", name: "ටී. ඒකනායක", role: "DS_OFFICER", officeCode: "KSB" },
-  { username: "ho0001", name: "එස්. ජයසිංහ", role: "HO_OFFICER" },
-  { username: "ad0001", name: "ආර්. සිල්වා", role: "ADMIN" },
+  { username: "ds0199", name: "ටී. ඒකනායක", designation: "DS_CRPO", officeCode: "KSB" },
+  { username: "ho0001", name: "එස්. ජයසිංහ", designation: "MINISTRY_PROGRAMME_OFFICER" },
+  { username: "ad0001", name: "ආර්. සිල්වා", designation: null },
 ];
 
 export function sampleUsersAllowed(): boolean {
@@ -59,7 +65,8 @@ export async function putSampleUsers(prisma: PrismaClient, { reset }: { reset: b
       email: placeholderEmail(sample.username),
       username: sample.username,
       displayUsername: sample.username,
-      role: sample.role,
+      role: roleOf(sample.designation),
+      designation: sample.designation,
       banned: false,
       dsOfficeId,
       mustChangePassword: Boolean(sample.temporary),

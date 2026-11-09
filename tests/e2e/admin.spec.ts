@@ -33,7 +33,6 @@ async function createOfficer(page: Page, office: string, email = ""): Promise<{ 
   await page.goto("/admin/users");
   await page.getByRole("link", { name: "නව පරිශීලකයෙකු එක් කරන්න" }).click();
   await page.getByLabel("සම්පූර්ණ නම *").fill(TEST_OFFICER_NAME);
-  await page.getByLabel("තනතුර (අවශ්‍ය නම් පමණි)").fill("සංවර්ධන නිලධාරී");
   await page.getByLabel("ජංගම දුරකතන අංකය *").fill("071 000 0301");
   await page.getByLabel("ඊමේල් (අවශ්‍ය නම් පමණි)").fill(email);
   await page.getByRole("radio", { name: DS_OFFICER }).check();

@@ -21,7 +21,7 @@ const MINUTE = 60_000;
 async function newAccount(contactEmail: string | null = "officer401@example.com") {
   const created = await createAccount(db, ADMIN, {
     name: "කේ. පරීක්ෂණ",
-    designation: null,
+    designation: "MINISTRY_PROGRAMME_OFFICER",
     mobile: "0710000401",
     contactEmail,
     role: "HO_OFFICER",

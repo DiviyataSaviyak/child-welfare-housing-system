@@ -177,8 +177,28 @@
     },
     "roles": {
       "DS_OFFICER": "பிரதேச செயலக உத்தியோகத்தர்",
+      "DISTRICT_OFFICER": "மாவட்ட சிறுவர் உரிமை மேம்பாட்டு உத்தியோகத்தர்",
       "HO_OFFICER": "தலைமை அலுவலக உத்தியோகத்தர்",
+      "VIEWER": "பார்வைக்கு மட்டும்",
       "ADMIN": "நிர்வாகி"
+    },
+    "designations": {
+      "DS_CRPO": "சிறுவர் உரிமை மேம்பாட்டு உத்தியோகத்தர்",
+      "DS_SECRETARY": "பிரதேச செயலாளர்",
+      "DS_ASSISTANT_SECRETARY": "உதவிப் பிரதேச செயலாளர்",
+      "DS_ACCOUNTANT": "கணக்காளர்",
+      "DISTRICT_SECRETARY": "மாவட்ட செயலாளர்",
+      "DISTRICT_ADDITIONAL_SECRETARY": "மேலதிக செயலாளர்",
+      "DISTRICT_CRPO": "மாவட்ட சிறுவர் உரிமை மேம்பாட்டு உத்தியோகத்தர்",
+      "DISTRICT_CHIEF_ACCOUNTANT": "பிரதம கணக்காளர்",
+      "PROVINCE_COMMISSIONER": "மாகாண ஆணையாளர்",
+      "PROVINCE_PROBATION_OFFICER": "மாகாண நன்னடத்தை உத்தியோகத்தர்",
+      "DEPARTMENT_ASSISTANT_COMMISSIONER": "உதவி ஆணையாளர் (தொழில்நுட்பம்)",
+      "DEPARTMENT_COMMISSIONER": "ஆணையாளர்",
+      "MINISTRY_SECRETARY": "செயலாளர்",
+      "MINISTRY_ADDITIONAL_SECRETARY": "மேலதிக செயலாளர்",
+      "MINISTRY_CHIEF_ACCOUNTANT": "பிரதம கணக்காளர்",
+      "MINISTRY_PROGRAMME_OFFICER": "திவியட சவியக் நிகழ்ச்சித்திட்ட உத்தியோகத்தர்"
     },
     "roleHints": {
       "DS_OFFICER": "தமது பி.செ. அலுவலகத்தின் பயனாளிகள் மட்டும்",
@@ -1068,7 +1088,9 @@
     "who": "{name} ({role})",
     "roles": {
       "DS_OFFICER": "பி.செ.",
+      "DISTRICT_OFFICER": "மாவட்ட செயலகம்",
       "HO_OFFICER": "தலைமை அலுவலகம்",
+      "VIEWER": "பார்வைக்கு மட்டும்",
       "ADMIN": "நிர்வாகி"
     },
     "actions": {

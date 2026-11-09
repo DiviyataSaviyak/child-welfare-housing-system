@@ -11,12 +11,18 @@ const ADMIN = "users-test-admin";
 
 const officer = (dsOfficeId: number | null): AccountInput => ({
   name: "ජී. පරීක්ෂණ",
-  designation: "සංවර්ධන නිලධාරී",
+  designation: "DS_CRPO",
   mobile: "0710000201",
   contactEmail: null,
   role: "DS_OFFICER",
   dsOfficeId,
 });
+
+const headOfficeOfficer: AccountInput = {
+  ...officer(null),
+  role: "HO_OFFICER",
+  designation: "MINISTRY_PROGRAMME_OFFICER",
+};
 
 /** Creates a DS officer at a free office and returns the account and its office. */
 async function newOfficer() {
@@ -95,7 +101,7 @@ describe("several DS officers at one office (ADM-3)", () => {
       value: { changed: ["dsOfficeId"] },
     });
 
-    const ho = await createAccount(db, ADMIN, { ...officer(null), role: "HO_OFFICER" });
+    const ho = await createAccount(db, ADMIN, headOfficeOfficer);
     if (!ho.ok) throw new Error(ho.error);
     const headOffice = await db.user.findUniqueOrThrow({ where: { username: ho.value.username } });
     expect((await updateAccount(db, ADMIN, headOffice.id, officer(office))).ok).toBe(true);
@@ -130,19 +136,19 @@ describe("changing an account (ADM-4)", () => {
 describe("changing one's own profile", () => {
   it("changes the officer's own details, keeps the role and office, and logs the officer as the actor", async () => {
     const { user, dsOfficeId } = await newOfficer();
-    const details = { name: "ජී. පරීක්ෂණ", designation: null, mobile: "0770000202", contactEmail: "g@example.lk" };
+    const details = { name: "ජී. පරීක්ෂණ", mobile: "0770000202", contactEmail: "g@example.lk" };
 
     const result = await updateProfile(db, user.id, details);
-    expect(result).toEqual({ ok: true, value: { changed: ["designation", "mobile", "contactEmail"] } });
+    expect(result).toEqual({ ok: true, value: { changed: ["mobile", "contactEmail"] } });
 
     const after = await db.user.findUniqueOrThrow({ where: { id: user.id } });
-    expect(after).toMatchObject({ ...details, role: "DS_OFFICER", dsOfficeId });
+    expect(after).toMatchObject({ ...details, role: "DS_OFFICER", designation: "DS_CRPO", dsOfficeId });
     const [latest] = await accountHistory(db, user.id);
     expect(latest).toMatchObject({
       action: "account_updated",
       actorName: "ජී. පරීක්ෂණ",
-      before: { designation: "සංවර්ධන නිලධාරී", mobile: "0710000201", contactEmail: null },
-      after: { designation: null, mobile: "0770000202", contactEmail: "g@example.lk" },
+      before: { mobile: "0710000201", contactEmail: null },
+      after: { mobile: "0770000202", contactEmail: "g@example.lk" },
     });
 
     expect(await updateProfile(db, user.id, details)).toEqual({ ok: true, value: { changed: [] } });
@@ -220,7 +226,7 @@ describe("disabling an account (ADM-6)", () => {
 
   it("won't let an admin disable themselves, or the last active admin", async () => {
     expect(await setAccountDisabled(db, ADMIN, ADMIN, true)).toEqual({ ok: false, error: "self" });
-    const otherAdmin = await createAccount(db, ADMIN, { ...officer(null), role: "ADMIN" });
+    const otherAdmin = await createAccount(db, ADMIN, { ...officer(null), role: "ADMIN", designation: null });
     if (!otherAdmin.ok) throw new Error(otherAdmin.error);
     const other = await db.user.findUniqueOrThrow({ where: { username: otherAdmin.value.username } });
 
@@ -229,7 +235,7 @@ describe("disabling an account (ADM-6)", () => {
     // ...and once ADMIN is the only active admin left (other test files may have made admins too),
     // it can't be demoted by someone else either.
     await db.user.updateMany({ where: { role: "ADMIN", id: { not: ADMIN } }, data: { banned: true } });
-    expect(await updateAccount(db, other.id, ADMIN, { ...officer(null), role: "HO_OFFICER" })).toEqual({
+    expect(await updateAccount(db, other.id, ADMIN, headOfficeOfficer)).toEqual({
       ok: false,
       error: "lastAdmin",
     });

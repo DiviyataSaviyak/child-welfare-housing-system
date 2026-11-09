@@ -6,8 +6,7 @@ import { useActionState, useState } from "react";
 import { CredentialsBox } from "@/components/credentials-box";
 import { FormError, FormField } from "@/components/forms/form-field";
 import { Button } from "@/components/ui/button";
-import type { AccountField } from "@/lib/validation/user";
-import { ROLES, type Role } from "@/server/auth/roles";
+import { type AccountField, FORM_ROLES } from "@/lib/validation/user";
 import type { AccountDetails, DistrictChoice } from "@/server/users/queries";
 import type { AccountFormState } from "./actions";
 
@@ -18,7 +17,6 @@ const EMPTY: AccountFormState = { errors: {}, error: null, created: null };
 function startValues(account: AccountDetails | null): Values {
   return {
     name: account?.name ?? "",
-    designation: account?.designation ?? "",
     mobile: account?.mobile ?? "",
     contactEmail: account?.contactEmail ?? "",
     role: account?.role ?? "",
@@ -90,15 +88,6 @@ export function AccountForm({
           error={error("name")}
         />
         <FormField
-          id="designation"
-          name="designation"
-          label={t("form.designation")}
-          help={t("form.designationHint")}
-          value={values.designation}
-          onChange={set("designation")}
-          error={error("designation")}
-        />
-        <FormField
           id="mobile"
           name="mobile"
           type="tel"
@@ -122,7 +111,7 @@ export function AccountForm({
       <fieldset className="flex flex-col gap-2" aria-describedby={error("role") ? "role-error" : undefined}>
         <legend className="mb-2 text-base font-semibold">{t("form.role")}</legend>
         <div className="grid grid-cols-3 gap-3">
-          {ROLES.map((role: Role) => {
+          {FORM_ROLES.map((role) => {
             const checked = values.role === role;
             return (
               <label

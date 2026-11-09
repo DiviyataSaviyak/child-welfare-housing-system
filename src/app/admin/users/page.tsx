@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { FormNotice } from "@/components/forms/form-field";
 import { formatDate } from "@/lib/dates";
+import { isDesignation } from "@/server/auth/designations";
 import { isRole, ROLES } from "@/server/auth/roles";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -122,7 +123,7 @@ export default async function AdminUsersPage({
                       </span>
                       <span className="text-sm text-muted-foreground">
                         <span className="font-mono">{row.username}</span>
-                        {row.designation && ` · ${row.designation}`}
+                        {isDesignation(row.designation) && ` · ${t(`designations.${row.designation}`)}`}
                       </span>
                     </span>
                   </td>
