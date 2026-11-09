@@ -32,7 +32,7 @@ export async function DashboardScreen({
   side,
 }: {
   /** The dashboard's own address; its cases open under `${path}/cases`. */
-  path: "/ho" | "/oversight";
+  path: "/ministry" | "/oversight";
   viewer: Viewer;
   params: Record<string, string | string[] | undefined>;
   /** The districts the viewer may choose from, each with its DS offices. */

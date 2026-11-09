@@ -15,7 +15,7 @@ test("the menu's waiting count agrees with the dashboard after a DS office sends
   browser,
 }) => {
   test.slow();
-  await signInAs(ho, "ho0001", /\/ho$/);
+  await signInAs(ho, "ho0001", /\/ministry$/);
   await asUser(browser, "ds0101", async (ds) => {
     await newSubmittedCase(ds, { name: `${TEST_CASE_NAME} මෙනුව ${Date.now()}`, nic: randomNic() });
   });
@@ -26,9 +26,9 @@ test("the menu's waiting count agrees with the dashboard after a DS office sends
   // Other tests change the queues at the same time, so move again until the two readings meet.
   await expect(async () => {
     await nav.getByRole("link", { name: "ප්‍රතිලාභීන්", exact: true }).click();
-    await expect(ho).toHaveURL(/\/ho\/cases$/);
+    await expect(ho).toHaveURL(/\/ministry\/cases$/);
     await nav.getByRole("link", { name: "සාරාංශය" }).click();
-    await expect(ho).toHaveURL(/\/ho$/);
+    await expect(ho).toHaveURL(/\/ministry$/);
     const count = async (name: RegExp) => Number((await queue(name).innerText()).replace(/\D/g, ""));
     const total = (await count(/^පරීක්ෂා කිරීමට/)) + (await count(/^ප්‍රතිපාදන මුදා හැරීමට/));
     expect(total).toBeGreaterThan(0);
@@ -55,7 +55,7 @@ test("the bell counts a new notice while the DS moves by the menu, and clears wh
   const name = `${TEST_CASE_NAME} සීනුව ${Date.now()}`;
   const { url } = await newSubmittedCase(ds, { name, nic: randomNic() });
   const ho = await openAs(browser, "ho0001");
-  await ho.goto(url.replace("/ds/", "/ho/"));
+  await ho.goto(url.replace("/ds/", "/ministry/"));
   await ho.getByRole("button", { name: "අනුමත කරන්න", exact: true }).click();
   await ho.getByRole("dialog").getByRole("button", { name: "ඔව්, අනුමත කරන්න" }).click();
   await expect(ho).toHaveURL(/\?notice=verified$/);
@@ -77,10 +77,10 @@ test("the counts answer only their own role (PRM-1)", async ({ page }) => {
   await signInAs(page, "ds0101", /\/ds$/);
   const unread = await (await page.request.get("/ds/notifications/unread")).json();
   expect(unread).toEqual({ count: expect.any(Number), at: expect.any(Number) });
-  expect((await page.request.get("/ho/waiting")).status()).toBe(404);
+  expect((await page.request.get("/ministry/waiting")).status()).toBe(404);
 
   await asUser(page.context().browser()!, "ho0001", async (ho) => {
-    const waiting = await (await ho.request.get("/ho/waiting")).json();
+    const waiting = await (await ho.request.get("/ministry/waiting")).json();
     expect(waiting).toEqual({ count: expect.any(Number), at: expect.any(Number) });
     expect((await ho.request.get("/ds/notifications/unread")).status()).toBe(404);
   });
@@ -88,6 +88,6 @@ test("the counts answer only their own role (PRM-1)", async ({ page }) => {
   // Signed out: the sign-in page, never a count.
   await page.getByRole("button", { name: TEXT.signOutButton }).click();
   await expect(page).toHaveURL(/\/login/);
-  const response = await page.request.get("/ho/waiting");
-  expect(response.url()).toMatch(/\/login\?next=%2Fho%2Fwaiting$/);
+  const response = await page.request.get("/ministry/waiting");
+  expect(response.url()).toMatch(/\/login\?next=%2Fministry%2Fwaiting$/);
 });

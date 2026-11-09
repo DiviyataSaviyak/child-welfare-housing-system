@@ -96,13 +96,13 @@ beforeAll(async () => {
       id: "replace-test-ho",
       name: "ප්‍ර. පරීක්ෂණ",
       email: "replace-test-ho@no-email.invalid",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
   ho = {
     userId: "replace-test-ho",
-    role: "HO_OFFICER",
+    role: "MINISTRY_OFFICER",
     designation: "MINISTRY_PROGRAMME_OFFICER",
     districtId: null,
     provinceId: null,

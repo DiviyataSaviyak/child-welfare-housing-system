@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState, useState, useTransition } from "react";
-import type { DecisionState } from "@/app/ho/check/actions";
+import type { DecisionState } from "@/app/ministry/check/actions";
 import { FormError, FormTextArea } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";

@@ -116,7 +116,7 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   });
 
   // STG-6, HIS-2: Head Office sees the stages with the photo, and the history in plain sentences.
-  await ho.goto(url.replace("/ds/", "/ho/"));
+  await ho.goto(url.replace("/ds/", "/ministry/"));
   await ho
     .getByRole("region", { name: STAGES })
     .getByRole("button", { name: `${third}: ඡායාරූපය 1 විශාල කර බලන්න` })
@@ -128,7 +128,7 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   await expect(history).toContainText(`ළඟා වූ මට්ටම: ${first}, ${second}, ${third} (${SHOWN_TODAY})`);
   await expect(history).toContainText(`පළමු වාරිකය ගෙවන ලදී (ගෙවූ දිනය ${SHOWN_TODAY})`);
   await expect(history).toContainText("(ප්‍රා.ලේ.)");
-  await expect(history).toContainText("(ප්‍රධාන කාර්යාලය)");
+  await expect(history).toContainText("(අමාත්‍යංශය)");
   // Head Office records no progress itself.
   await expect(ho.getByRole("button", { name: UPDATE_STAGES })).toBeHidden();
   await expect(money(ho).getByRole("button", { name: START })).toBeHidden();
@@ -157,7 +157,7 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   const row = ds.getByRole("row", { name: new RegExp(name) });
   await expect(row).toContainText("4 / 4");
   await expect(row).toContainText("නිමයි");
-  await expect(ds.getByRole("region", { name: "මුදල්" })).toContainText("ප්‍රධාන කාර්යාලයෙන් ලැබුණු");
+  await expect(ds.getByRole("region", { name: "මුදල්" })).toContainText("අමාත්‍යංශයෙන් ලැබුණු");
   await ds.goto("/ds/notifications");
   await expect(ds.getByRole("button", { name: new RegExp(`^${name} නිම කර ඇත`) })).toBeVisible();
 
@@ -177,7 +177,7 @@ test("AC-14, INS-6: Head Office undoes a payment, stops the case with its balanc
   await markPaid(ds, "පළමු වාරිකය");
 
   // INS-6: the last payment goes back, with a reason.
-  const hoUrl = url.replace("/ds/", "/ho/");
+  const hoUrl = url.replace("/ds/", "/ministry/");
   await ho.goto(hoUrl);
   await money(ho).getByRole("button", { name: "ගෙවූ බව අවලංගු කරන්න" }).click();
   const undo = ho.getByRole("dialog", { name: "පළමු වාරිකය ගෙවූ බව අවලංගු කරන්නද?" });

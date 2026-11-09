@@ -41,15 +41,15 @@ function target(form: FormData): { caseId: string; version: number } | null {
  */
 function goOn(form: FormData, queue: Queue, caseId: string, notice: string): never {
   // The menu's waiting counts live in the layout (NTF-1).
-  revalidatePath("/ho", "layout");
-  if (read(form, "from") === "case") redirect(`/ho/cases/${caseId}?notice=${notice}`);
+  revalidatePath("/ministry", "layout");
+  if (read(form, "from") === "case") redirect(`/ministry/cases/${caseId}?notice=${notice}`);
   const query = new URLSearchParams({ notice, done: caseId });
   for (const [key, value] of placeQuery(readPlace((key) => read(form, key)))) query.set(key, value);
-  redirect(`/ho/${queue}?${query}`);
+  redirect(`/ministry/${queue}?${query}`);
 }
 
 export async function decideAction(_previous: DecisionState, form: FormData): Promise<DecisionState> {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const decision = read(form, "decision");
   const chosen = target(form);
   if (!chosen || !isDecision(decision)) return { error: "notFound" };
@@ -81,7 +81,7 @@ function letterCases(form: FormData): { id: string; version: number }[] | null {
  * page then shows the letter's notice by its id, never by names (SEC-8), and stays on the district.
  */
 export async function recordLetterAction(_previous: LetterState, form: FormData): Promise<LetterState> {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const districtId = positive(read(form, "districtId"));
   const cases = letterCases(form);
   if (!districtId || !cases) return { error: "notFound", errors: {} };
@@ -95,27 +95,27 @@ export async function recordLetterAction(_previous: LetterState, form: FormData)
   });
   if (!result.ok) return { error: result.error, errors: result.errors };
   // The menu's waiting counts live in the layout (NTF-1).
-  revalidatePath("/ho", "layout");
+  revalidatePath("/ministry", "layout");
   redirect(
-    `/ho/release?${new URLSearchParams({ notice: "letterRecorded", letter: result.letterId, districtId: String(districtId) })}`,
+    `/ministry/release?${new URLSearchParams({ notice: "letterRecorded", letter: result.letterId, districtId: String(districtId) })}`,
   );
 }
 
 /** Stores the scan of an allocation letter as soon as it is chosen (REL-2). */
 export async function uploadLetterScanAction(form: FormData) {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const file = form.get("file");
   if (!(file instanceof File)) return { ok: false as const, error: "fileEmpty" as const };
   return uploadLetterScan(db, actor, { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
 }
 
 export async function correctReleaseAction(_previous: ReleaseState, form: FormData): Promise<ReleaseState> {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const chosen = target(form);
   if (!chosen) return { error: "notFound", errors: {} };
 
   const result = await correctRelease(db, actor, { ...chosen, form: releaseForm(form) });
   if (!result.ok) return { error: result.error, errors: result.errors };
-  revalidatePath(`/ho/cases/${chosen.caseId}`);
-  redirect(`/ho/cases/${chosen.caseId}?notice=corrected`);
+  revalidatePath(`/ministry/cases/${chosen.caseId}`);
+  redirect(`/ministry/cases/${chosen.caseId}?notice=corrected`);
 }

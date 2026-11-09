@@ -30,12 +30,12 @@ export default async function HoEditCasePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ notice?: string | string[] }>;
 }) {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
   const { id } = await params;
   const details = await getCase(db, viewer, id, locale);
   if (!details) notFound();
-  if (!canEditDetails(viewer.role, details.status)) redirect(`/ho/cases/${id}`);
+  if (!canEditDetails(viewer.role, details.status)) redirect(`/ministry/cases/${id}`);
 
   const t = await getTranslations("cases");
   const notice = (await searchParams).notice === "saved";
@@ -59,8 +59,8 @@ export default async function HoEditCasePage({
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        backHref={isBeingEntered(details.status) ? "/ho/cases" : `/ho/cases/${details.id}`}
-        backLabel={isBeingEntered(details.status) ? t("back.ho") : t("back.case")}
+        backHref={isBeingEntered(details.status) ? "/ministry/cases" : `/ministry/cases/${details.id}`}
+        backLabel={isBeingEntered(details.status) ? t("back.ministry") : t("back.case")}
         title={t("form.editTitle")}
         subtitle={
           <span className="flex items-center gap-3">

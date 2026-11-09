@@ -3,8 +3,8 @@ import { askForCode, screenText, signInAs } from "./helpers";
 
 const shells = [
   { username: "ds0101", home: /\/ds$/, heading: "මගේ ප්‍රතිලාභීන්", office: "හෝමාගම ප්‍රාදේශීය ලේකම් කාර්යාලය" },
-  { username: "ho0001", home: /\/ho$/, heading: "සාරාංශය", office: "ප්‍රධාන කාර්යාලය" },
-  { username: "ad0001", home: /\/admin\/users$/, heading: "පරිශීලකයින්", office: "ප්‍රධාන කාර්යාලය · පරිපාලක" },
+  { username: "ho0001", home: /\/ministry$/, heading: "සාරාංශය", office: "අමාත්‍යංශය" },
+  { username: "ad0001", home: /\/admin\/users$/, heading: "පරිශීලකයින්", office: "අමාත්‍යංශය · පරිපාලක" },
 ];
 
 for (const shell of shells) {
@@ -32,6 +32,14 @@ test("the page for a forgotten password is in Sinhala only, at both steps (AUTH-
   // The code step, with "email" written in Sinhala letters.
   await askForCode(page, "ds9999");
   expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
+});
+
+test("an old /ho address leads to the same page under /ministry (UI-10, AC-58)", async ({ page }) => {
+  await signInAs(page, "ho0001", /\/ministry$/);
+  await page.goto("/ho/cases?q=1");
+  await expect(page).toHaveURL(/\/ministry\/cases\?q=1$/);
+  await page.goto("/ho");
+  await expect(page).toHaveURL(/\/ministry$/);
 });
 
 test("/admin opens the users page", async ({ page }) => {

@@ -85,7 +85,7 @@ test("AC-41, AC-42: each view-only account sees only its own area's cases, with 
   expect(await exportedNames(accountant, kaduwela.nic)).toEqual([kaduwela.name]);
   expect(await exportedNames(accountant, homagama.nic)).toEqual([]);
   // No other area's pages, and none of the Server Actions' screens (PRM-5).
-  for (const path of ["/ds", "/ds/cases/new", "/ho", "/admin/users"]) {
+  for (const path of ["/ds", "/ds/cases/new", "/ministry", "/admin/users"]) {
     await accountant.goto(path);
     await expect(accountant.getByRole("heading", { name: TEXT.notFound })).toBeVisible();
   }

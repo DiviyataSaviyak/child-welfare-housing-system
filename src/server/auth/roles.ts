@@ -3,7 +3,7 @@
  * role (designations.ts), and the admin has no designation. VIEWER can change nothing, so every check
  * that names the roles allowed to act refuses it.
  */
-export const ROLES = ["DS_OFFICER", "DISTRICT_OFFICER", "HO_OFFICER", "VIEWER", "ADMIN"] as const;
+export const ROLES = ["DS_OFFICER", "DISTRICT_OFFICER", "MINISTRY_OFFICER", "VIEWER", "ADMIN"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -15,7 +15,7 @@ export function isRole(value: unknown): value is Role {
 const AREA: Record<Role, string> = {
   DS_OFFICER: "/ds",
   DISTRICT_OFFICER: "/oversight",
-  HO_OFFICER: "/ho",
+  MINISTRY_OFFICER: "/ministry",
   VIEWER: "/oversight",
   ADMIN: "/admin",
 };
@@ -23,7 +23,7 @@ const AREA: Record<Role, string> = {
 const HOME: Record<Role, string> = {
   DS_OFFICER: "/ds",
   DISTRICT_OFFICER: "/oversight",
-  HO_OFFICER: "/ho",
+  MINISTRY_OFFICER: "/ministry",
   VIEWER: "/oversight",
   ADMIN: "/admin/users",
 };

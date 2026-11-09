@@ -56,13 +56,13 @@ describe("account rules (ADM-6)", () => {
   it("keeps at least one active admin", () => {
     expect(checkDisable("a2", admin, 1)).toBe("lastAdmin");
     expect(checkDisable("a2", admin, 2)).toBeNull();
-    expect(checkRoleChange("a2", admin, "HO_OFFICER", 1)).toBe("lastAdmin");
-    expect(checkRoleChange("a1", admin, "HO_OFFICER", 3)).toBe("self");
+    expect(checkRoleChange("a2", admin, "MINISTRY_OFFICER", 1)).toBe("lastAdmin");
+    expect(checkRoleChange("a1", admin, "MINISTRY_OFFICER", 3)).toBe("self");
   });
 
   it("allows everything else", () => {
     expect(checkDisable("a1", officer, 1)).toBeNull();
-    expect(checkRoleChange("a1", officer, "HO_OFFICER", 1)).toBeNull();
+    expect(checkRoleChange("a1", officer, "MINISTRY_OFFICER", 1)).toBeNull();
     expect(checkRoleChange("a1", admin, "ADMIN", 1)).toBeNull();
   });
 });
@@ -133,7 +133,7 @@ describe("account form (ADM-2, ADM-8)", () => {
 
   it("sets the role from the designation, whatever else is sent", () => {
     const result = form({ officeType: "MINISTRY", designation: "MINISTRY_CHIEF_ACCOUNTANT", role: "ADMIN" });
-    expect(result.ok && result.value.role).toBe("HO_OFFICER");
+    expect(result.ok && result.value.role).toBe("MINISTRY_OFFICER");
     const secretary = form({ officeType: "MINISTRY", designation: "MINISTRY_SECRETARY" });
     expect(secretary.ok && secretary.value.role).toBe("VIEWER");
   });

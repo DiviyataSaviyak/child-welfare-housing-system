@@ -219,7 +219,7 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
     },
   });
   if (!found || !canSeeOffice(actor, found.dsOffice)) return refused("notFound");
-  if (actor.role !== "HO_OFFICER") return refused("roleNotAllowed");
+  if (actor.role !== "MINISTRY_OFFICER") return refused("roleNotAllowed");
   const current = found.release?.letter;
   if (!current) return refused("noRelease");
   const cases = current.releases.map((release) => release.case);

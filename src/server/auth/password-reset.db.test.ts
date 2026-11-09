@@ -24,7 +24,7 @@ async function newAccount(contactEmail: string | null = "officer401@example.com"
     designation: "MINISTRY_PROGRAMME_OFFICER",
     mobile: "0710000401",
     contactEmail,
-    role: "HO_OFFICER",
+    role: "MINISTRY_OFFICER",
     dsOfficeId: null,
     districtId: null,
     provinceId: null,

@@ -50,8 +50,8 @@ describe("what a designation can do (roles table)", () => {
     expect(Object.fromEntries(acting.map((designation) => [designation, roleOf(designation)]))).toEqual({
       DS_CRPO: "DS_OFFICER",
       DISTRICT_CRPO: "DISTRICT_OFFICER",
-      MINISTRY_CHIEF_ACCOUNTANT: "HO_OFFICER",
-      MINISTRY_PROGRAMME_OFFICER: "HO_OFFICER",
+      MINISTRY_CHIEF_ACCOUNTANT: "MINISTRY_OFFICER",
+      MINISTRY_PROGRAMME_OFFICER: "MINISTRY_OFFICER",
     });
   });
 

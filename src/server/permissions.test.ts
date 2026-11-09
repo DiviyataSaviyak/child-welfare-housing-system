@@ -92,8 +92,13 @@ describe("which cases each account may see (PRM-1, PRM-2, PRM-4)", () => {
 
   it("shows nothing to an account whose designation is unknown or doesn't go with its role", () => {
     const unknown: Viewer = { role: "VIEWER", designation: "සංවර්ධන නිලධාරී", ...nowhere };
-    const mismatched: Viewer = { role: "HO_OFFICER", designation: "DS_CRPO", ...nowhere, dsOfficeId: HOMAGAMA.id };
-    const noDesignation: Viewer = { role: "HO_OFFICER", designation: null, ...nowhere };
+    const mismatched: Viewer = {
+      role: "MINISTRY_OFFICER",
+      designation: "DS_CRPO",
+      ...nowhere,
+      dsOfficeId: HOMAGAMA.id,
+    };
+    const noDesignation: Viewer = { role: "MINISTRY_OFFICER", designation: null, ...nowhere };
     const adminWithOne: Viewer = { role: "ADMIN", designation: "MINISTRY_SECRETARY", ...nowhere };
     for (const broken of [unknown, mismatched, noDesignation, adminWithOne]) {
       expect(caseScope(broken)).toEqual({ kind: "none" });

@@ -26,8 +26,8 @@ const TABLE = {
   DEPARTMENT_COMMISSIONER: { officeType: "DEPARTMENT", role: "VIEWER" },
   MINISTRY_SECRETARY: { officeType: "MINISTRY", role: "VIEWER" },
   MINISTRY_ADDITIONAL_SECRETARY: { officeType: "MINISTRY", role: "VIEWER" },
-  MINISTRY_CHIEF_ACCOUNTANT: { officeType: "MINISTRY", role: "HO_OFFICER" },
-  MINISTRY_PROGRAMME_OFFICER: { officeType: "MINISTRY", role: "HO_OFFICER" },
+  MINISTRY_CHIEF_ACCOUNTANT: { officeType: "MINISTRY", role: "MINISTRY_OFFICER" },
+  MINISTRY_PROGRAMME_OFFICER: { officeType: "MINISTRY", role: "MINISTRY_OFFICER" },
 } as const satisfies Record<string, { officeType: OfficeType; role: Role }>;
 
 export type Designation = keyof typeof TABLE;

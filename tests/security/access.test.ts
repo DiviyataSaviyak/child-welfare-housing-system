@@ -135,7 +135,7 @@ type Rule =
   | { anyone: string }; // open to all, with the reason
 
 const DS: Rule = { role: "DS_OFFICER" };
-const HO: Rule = { role: "HO_OFFICER" };
+const MINISTRY: Rule = { role: "MINISTRY_OFFICER" };
 const ADMIN: Rule = { role: "ADMIN" };
 /** The view-only area (PRM-4, PRM-5): it changes nothing, and only reads within the account's own area. */
 const OVERSIGHT: Rule = { role: ["VIEWER", "DISTRICT_OFFICER"] };
@@ -186,22 +186,26 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/ds/notifications/actions.ts": { openNotificationAction: DS, markAllReadAction: DS },
   "src/app/ds/export/route.ts": { GET: DS },
   "src/app/ds/notifications/unread/route.ts": { GET: DS },
-  "src/app/ho/cases/actions.ts": {
-    saveCaseAction: HO,
-    uploadDocumentAction: HO,
-    checkNicAction: HO,
-    removeDocumentAction: HO,
-    deleteDraftAction: HO,
+  "src/app/ministry/cases/actions.ts": {
+    saveCaseAction: MINISTRY,
+    uploadDocumentAction: MINISTRY,
+    checkNicAction: MINISTRY,
+    removeDocumentAction: MINISTRY,
+    deleteDraftAction: MINISTRY,
   },
-  "src/app/ho/cases/[id]/actions.ts": { stopAction: HO, reopenAction: HO, undoInstallmentAction: HO },
-  "src/app/ho/check/actions.ts": {
-    decideAction: HO,
-    recordLetterAction: HO,
-    uploadLetterScanAction: HO,
-    correctReleaseAction: HO,
+  "src/app/ministry/cases/[id]/actions.ts": {
+    stopAction: MINISTRY,
+    reopenAction: MINISTRY,
+    undoInstallmentAction: MINISTRY,
   },
-  "src/app/ho/cases/export/route.ts": { GET: HO },
-  "src/app/ho/waiting/route.ts": { GET: HO },
+  "src/app/ministry/check/actions.ts": {
+    decideAction: MINISTRY,
+    recordLetterAction: MINISTRY,
+    uploadLetterScanAction: MINISTRY,
+    correctReleaseAction: MINISTRY,
+  },
+  "src/app/ministry/cases/export/route.ts": { GET: MINISTRY },
+  "src/app/ministry/waiting/route.ts": { GET: MINISTRY },
   "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
   "src/app/files/[id]/route.ts": { GET: { signedIn: "file" } },
   "src/app/files/[id]/thumb/route.ts": { GET: { signedIn: "file" } },

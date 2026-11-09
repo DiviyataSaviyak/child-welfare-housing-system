@@ -92,7 +92,7 @@ beforeAll(async () => {
       name: "විෂය ප්‍රධාන කාර්යාල",
       email: "scope-head-office@no-email.invalid",
       username: "scope-head-office",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });

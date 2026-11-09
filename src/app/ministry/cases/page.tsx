@@ -18,7 +18,7 @@ export default async function HoCasesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
   const params = await searchParams;
   const read = (key: string) => (typeof params[key] === "string" ? params[key] : "");
@@ -35,7 +35,7 @@ export default async function HoCasesPage({
   const pageHref = (p: number) => {
     const query = filterQuery(values);
     if (p > 1) query.set("page", String(p));
-    return withQuery("/ho/cases", query);
+    return withQuery("/ministry/cases", query);
   };
 
   return (
@@ -48,13 +48,13 @@ export default async function HoCasesPage({
         <div className="flex items-center gap-3">
           {list.total > 0 && (
             <ExportLink
-              href={withQuery("/ho/cases/export", filterQuery(values))}
+              href={withQuery("/ministry/cases/export", filterQuery(values))}
               label={t("export.button")}
               hint={t("export.hint")}
             />
           )}
           <Link
-            href="/ho/cases/new"
+            href="/ministry/cases/new"
             className="flex h-13 items-center rounded-lg bg-primary px-6 text-[17px] font-semibold text-primary-foreground"
           >
             + {t("list.add")}
@@ -71,14 +71,14 @@ export default async function HoCasesPage({
         <CaseFilters
           // "Clear" changes the address without leaving the page; a new form shows the new choices.
           key={FILTERS.map((key) => values[key]).join("|")}
-          action="/ho/cases"
+          action="/ministry/cases"
           values={values}
           districts={districts}
           statuses={STATUSES}
         />
         <CaseTable
           rows={list.rows}
-          href={(row) => (isBeingEntered(row.status) ? `/ho/cases/${row.id}/edit` : `/ho/cases/${row.id}`)}
+          href={(row) => (isBeingEntered(row.status) ? `/ministry/cases/${row.id}/edit` : `/ministry/cases/${row.id}`)}
         />
         <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={pageHref} />
       </section>

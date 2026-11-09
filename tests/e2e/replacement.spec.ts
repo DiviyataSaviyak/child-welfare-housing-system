@@ -7,7 +7,7 @@ const REJECT = "ප්‍රතික්ෂේප කරන්න";
 const REJECT_REASON = "ප්‍රතික්ෂේප කිරීමට හේතුව *";
 const ASK_NAME = "වෙනත් නමක් ඉදිරිපත් කරන ලෙස ප්‍රා.ලේ. කාර්යාලයෙන් ඉල්ලන්න";
 const REJECT_ASK = "ප්‍රතික්ෂේප කර වෙනත් නමක් ඉල්ලන්න";
-const ANSWER_NEEDED = "මෙම ප්‍රතිලාභියා ප්‍රධාන කාර්යාලය ඉල්ලූ නම වෙනුවටදැයි තෝරන්න.";
+const ANSWER_NEEDED = "මෙම ප්‍රතිලාභියා අමාත්‍යංශය ඉල්ලූ නම වෙනුවටදැයි තෝරන්න.";
 
 test("AC-30: Head Office rejects and asks for another name; the DS office enters it in that case's place", async ({
   page: ds,
@@ -21,12 +21,12 @@ test("AC-30: Head Office rejects and asks for another name; the DS office enters
 
   // Head Office rejects it from its page, ticking the box (CHK-3).
   const ho = await openAs(browser, "ho0001");
-  await ho.goto(`/ho/cases/${oldId}`);
+  await ho.goto(`/ministry/cases/${oldId}`);
   await ho.getByRole("button", { name: REJECT }).click();
   await ho.getByLabel(REJECT_REASON).fill("පවුලට දැනටමත් නිවසක් ඇත.");
   await ho.getByRole("checkbox", { name: new RegExp(`^${ASK_NAME}`) }).check();
   await ho.getByRole("button", { name: REJECT_ASK }).click();
-  await expect(ho).toHaveURL(new RegExp(`/ho/cases/${oldId}\\?notice=rejectedAskName$`));
+  await expect(ho).toHaveURL(new RegExp(`/ministry/cases/${oldId}\\?notice=rejectedAskName$`));
   await expect(ho.getByRole("status")).toContainText("ඒ වෙනුවට වෙනත් නමක් ඉදිරිපත් කරන ලෙස");
   await expect(ho.getByRole("region", { name: "මෙය වෙනුවට වෙනත් නමක් ඉල්ලා ඇත" })).toContainText(
     "ප්‍රා.ලේ. කාර්යාලය තවම නමක් ඇතුළත් කර නැත.",
@@ -61,16 +61,16 @@ test("AC-30: Head Office rejects and asks for another name; the DS office enters
   await expect(ds.getByRole("link", { name: new RegExp(`^${oldName}: වෙනත් නමක් ඉල්ලා ඇත`) })).toBeHidden();
 
   // Head Office sees the link on the check view and on the old case's page.
-  await ho.goto(`/ho/check?case=${newId}`);
+  await ho.goto(`/ministry/check?case=${newId}`);
   await expect(ho.getByRole("heading", { level: 2, name: newName })).toBeVisible();
   await expect(ho.locator('a[aria-current="true"]')).toContainText(`${old.number} වෙනුවට`);
   await expect(
     ho.getByRole("region", { name: `${old.number} (${oldName}) වෙනුවට ඇතුළත් කළ ප්‍රතිලාභියෙකි` }),
   ).toBeVisible();
-  await ho.goto(`/ho/cases/${oldId}`);
+  await ho.goto(`/ministry/cases/${oldId}`);
   const asked = ho.getByRole("region", { name: "මෙය වෙනුවට වෙනත් නමක් ඉල්ලා ඇත" });
   await expect(asked).toContainText(`ඒ වෙනුවට ${newNumber} (${newName}) ඇතුළත් කර ඇත.`);
   await asked.getByRole("link", { name: `${newNumber} විවෘත කරන්න` }).click();
-  await expect(ho).toHaveURL(new RegExp(`/ho/cases/${newId}$`));
+  await expect(ho).toHaveURL(new RegExp(`/ministry/cases/${newId}$`));
   await ho.context().close();
 });

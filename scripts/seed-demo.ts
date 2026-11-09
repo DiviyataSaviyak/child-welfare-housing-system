@@ -222,7 +222,7 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
   }
   const headOffice = (
     await db.user.findMany({
-      where: { role: "HO_OFFICER", banned: false },
+      where: { role: "MINISTRY_OFFICER", banned: false },
       orderBy: { createdAt: "asc" },
       select: { id: true },
     })

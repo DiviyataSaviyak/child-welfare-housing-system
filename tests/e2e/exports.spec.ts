@@ -46,19 +46,20 @@ test("the DS officer and Head Office take their lists to Excel, with the screen'
 
   // Head Office's list, with its filters.
   const ho = await openAs(browser, "ho0001");
-  await ho.goto(`/ho/cases?q=${nic}&status=SUBMITTED`);
+  await ho.goto(`/ministry/cases?q=${nic}&status=SUBMITTED`);
   await expect(ho.getByText("ගැළපෙන ප්‍රතිලාභීන් 1")).toBeVisible();
   const all = await exportList(ho);
   expect(all.fileName).toMatch(FILE_NAME);
   expect(all.rows).toEqual([row]);
 
   // Each list's file belongs to its own role (PRM-1).
-  expect((await page.request.get("/ho/cases/export")).status()).toBe(404);
+  expect((await page.request.get("/ministry/cases/export")).status()).toBe(404);
   expect((await ho.request.get("/ds/export")).status()).toBe(404);
   await ho.context().close();
 });
 
 test("an admin can't export any list (PRM-2, AC-2)", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  for (const path of ["/ho/cases/export", "/ds/export"]) expect((await page.request.get(path)).status()).toBe(404);
+  for (const path of ["/ministry/cases/export", "/ds/export"])
+    expect((await page.request.get(path)).status()).toBe(404);
 });

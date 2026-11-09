@@ -24,12 +24,12 @@ function target(form: FormData): { caseId: string; version: number; reason: stri
 
 /** Back to the case page with a notice. The menu's counts and the lists change too. */
 function done(caseId: string, notice: string): never {
-  revalidatePath("/ho", "layout");
-  redirect(`/ho/cases/${caseId}?notice=${notice}`);
+  revalidatePath("/ministry", "layout");
+  redirect(`/ministry/cases/${caseId}?notice=${notice}`);
 }
 
 export async function stopAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const chosen = target(form);
   if (!chosen) return { error: "notFound", errors: {} };
   const askAnotherName = read(form, "anotherName") === "1";
@@ -39,7 +39,7 @@ export async function stopAction(_previous: ProgressState, form: FormData): Prom
 }
 
 export async function reopenAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const chosen = target(form);
   if (!chosen) return { error: "notFound", errors: {} };
   const result = await reopenCase(db, actor, chosen);
@@ -48,7 +48,7 @@ export async function reopenAction(_previous: ProgressState, form: FormData): Pr
 }
 
 export async function undoInstallmentAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
-  const actor = await requireRole("HO_OFFICER");
+  const actor = await requireRole("MINISTRY_OFFICER");
   const chosen = target(form);
   const number = Number(read(form, "number"));
   if (!chosen || !Number.isInteger(number)) return { error: "notFound", errors: {} };

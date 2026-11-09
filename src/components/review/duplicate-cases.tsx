@@ -25,7 +25,7 @@ export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) 
         <ul className="flex flex-col gap-1">
           {matches.map((match) => (
             <li key={match.id}>
-              <Link href={`/ho/cases/${match.id}`} className="font-semibold underline underline-offset-2">
+              <Link href={`/ministry/cases/${match.id}`} className="font-semibold underline underline-offset-2">
                 {match.caseNumber === null
                   ? t("review.duplicates.draft", { name: name(match), office: match.officeName })
                   : t("review.duplicates.item", {

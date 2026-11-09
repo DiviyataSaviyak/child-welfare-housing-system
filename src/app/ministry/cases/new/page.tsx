@@ -10,7 +10,7 @@ import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAct
 
 /** Head Office enters a case for any DS office, choosing the district, then the office (CASE-3). */
 export default async function HoNewCasePage() {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
   const [t, districts, requests] = await Promise.all([
     getTranslations("cases"),
@@ -20,7 +20,7 @@ export default async function HoNewCasePage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader backHref="/ho/cases" backLabel={t("back.ho")} title={t("form.newTitle")} />
+      <PageHeader backHref="/ministry/cases" backLabel={t("back.ministry")} title={t("form.newTitle")} />
       <CaseForm
         // The id is chosen now, so sending this form twice can only ever make one case (ERR-8).
         caseId={randomUUID()}

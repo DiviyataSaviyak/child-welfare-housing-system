@@ -201,7 +201,7 @@ export async function undoInstallmentPayment(
 ): Promise<InstallmentResult> {
   const found = await load(db, actor, input.caseId);
   if (!found) return refused("notFound");
-  if (actor.role !== "HO_OFFICER") return refused("roleNotAllowed");
+  if (actor.role !== "MINISTRY_OFFICER") return refused("roleNotAllowed");
   if (found.status !== "IN_PROGRESS") return refused("caseNotRunning");
   const target = lastPaid(found.installments);
   if (!target) return refused("nothingToUndo");

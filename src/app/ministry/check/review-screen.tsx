@@ -45,7 +45,7 @@ const queueHref = (path: string, query: URLSearchParams) => (query.size > 0 ? `$
  * letter for its verified cases.
  */
 export async function ReviewScreen({ queue, searchParams }: { queue: Queue; searchParams: ReviewSearchParams }) {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const params = await searchParams;
   return queue === "check" ? (
     <CheckTab viewer={viewer} params={params} />
@@ -82,7 +82,7 @@ async function ReviewFrame({
         {QUEUES.map((key) => (
           <Link
             key={key}
-            href={queueHref(`/ho/${key}`, placeQuery(tabPlace))}
+            href={queueHref(`/ministry/${key}`, placeQuery(tabPlace))}
             aria-current={key === queue ? "page" : undefined}
             className={`flex h-12.5 items-center rounded-lg border-2 px-5.5 text-[17px] font-bold ${
               key === queue ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card"
@@ -137,13 +137,13 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
     : [];
 
   const now = new Date();
-  const placeHref = (at: QueuePlace) => queueHref("/ho/check", placeQuery(at));
+  const placeHref = (at: QueuePlace) => queueHref("/ministry/check", placeQuery(at));
   const href = (changes: { case?: string; page?: number }) => {
     const query = placeQuery(place);
     const nextPage = changes.page ?? page;
     if (nextPage > 1) query.set("page", String(nextPage));
     if (changes.case) query.set("case", changes.case);
-    return queueHref("/ho/check", query);
+    return queueHref("/ministry/check", query);
   };
 
   const district = places.districts.find((d) => d.id === place.districtId);
@@ -204,7 +204,7 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
           <CircleCheck aria-hidden="true" className="size-6.5 shrink-0" />
           <span className="flex-1">{hint.text}</span>
           <Link
-            href={`/ho/release?districtId=${hint.id}`}
+            href={`/ministry/release?districtId=${hint.id}`}
             className="flex h-11.5 shrink-0 items-center rounded-lg bg-primary px-4.5 font-bold text-primary-foreground"
           >
             {t("letters.hintGo")}
@@ -285,12 +285,12 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
                   })}
                 </p>
               </div>
-              <Link href={`/ho/cases/${details.id}`} className="shrink-0 font-semibold text-primary underline">
+              <Link href={`/ministry/cases/${details.id}`} className="shrink-0 font-semibold text-primary underline">
                 {t("openCase")}
               </Link>
             </div>
 
-            <ReplacementNotes details={details} audience="ho" />
+            <ReplacementNotes details={details} audience="ministry" />
             <DuplicateCases matches={duplicates} />
 
             <dl className="grid grid-cols-[250px_minmax(0,1fr)] gap-x-4 gap-y-2.5">
@@ -386,7 +386,7 @@ async function LetterTab({ viewer, params }: { viewer: Viewer; params: Params })
                   return (
                     <li key={d.id}>
                       <Link
-                        href={`/ho/release?districtId=${d.id}`}
+                        href={`/ministry/release?districtId=${d.id}`}
                         aria-current={selected ? "true" : undefined}
                         className={`flex flex-col gap-0.5 rounded-xl border-2 px-4 py-3.5 ${
                           selected ? "border-primary bg-accent" : "border-border bg-card hover:border-primary/60"

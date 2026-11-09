@@ -3,7 +3,7 @@
 import { FileText } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useActionState, useRef, useState, useTransition } from "react";
-import type { LetterState } from "@/app/ho/check/actions";
+import type { LetterState } from "@/app/ministry/check/actions";
 import { FormError } from "@/components/forms/form-field";
 import { DOCUMENT_ACCEPT, documentProblem, SNIFF_BYTES } from "@/lib/file-types";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";

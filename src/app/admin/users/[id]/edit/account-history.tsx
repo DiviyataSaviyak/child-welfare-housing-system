@@ -43,7 +43,11 @@ export async function AccountHistory({ entries, placeNames }: { entries: History
   const office = named(placeNames.offices);
   const district = named(placeNames.districts);
   const province = named(placeNames.provinces);
-  const role = (value: unknown) => (isRole(value) ? t(`roles.${value}`) : none);
+  // Rows from before change 0006 name the Ministry's role HO_OFFICER (UI-10).
+  const role = (value: unknown) => {
+    const code = value === "HO_OFFICER" ? "MINISTRY_OFFICER" : value;
+    return isRole(code) ? t(`roles.${code}`) : none;
+  };
   // Rows from before change 0005 hold free text: a known code shows its label, anything else as written.
   const designation = (value: unknown) =>
     isDesignation(value) ? t(`designations.${value}`) : typeof value === "string" && value ? value : none;

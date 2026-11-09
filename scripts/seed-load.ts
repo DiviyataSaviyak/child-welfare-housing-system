@@ -805,7 +805,7 @@ export async function addLoadData(db: PrismaClient, options: LoadOptions = {}): 
           id: LOAD_USER_ID,
           name: "බර පරීක්ෂණ දත්ත",
           email: placeholderEmail(LOAD_USER_ID),
-          role: "HO_OFFICER",
+          role: "MINISTRY_OFFICER",
           designation: "MINISTRY_PROGRAMME_OFFICER",
           banned: true,
           banReason: "load-test data",

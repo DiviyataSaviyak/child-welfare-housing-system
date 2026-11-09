@@ -9,7 +9,7 @@ import { caseName } from "./page-header";
  * Whose case page shows the case: the DS office, Head Office, or the view-only area (PRM-5), which reads
  * it as Head Office does and links to its own pages.
  */
-export type Audience = "ds" | "ho" | "oversight";
+export type Audience = "ds" | "ministry" | "oversight";
 
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 

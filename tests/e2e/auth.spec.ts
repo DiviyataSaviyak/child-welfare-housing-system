@@ -11,7 +11,7 @@ test("a signed-out visitor is sent to sign in, then back to the page they asked 
 
 for (const [username, home] of [
   ["ds0101", /\/ds$/],
-  ["ho0001", /\/ho$/],
+  ["ho0001", /\/ministry$/],
   ["ad0001", /\/admin\/users$/],
 ] as const) {
   test(`${username} lands on their own home page`, async ({ page }) => {
@@ -21,7 +21,7 @@ for (const [username, home] of [
 
 test("a DS officer gets 'not found' on Head Office and admin pages (PRM-1, ERR-2)", async ({ page }) => {
   await signInAs(page, "ds0101", /\/ds$/);
-  for (const path of ["/ho", "/ho/check", "/admin/users"]) {
+  for (const path of ["/ministry", "/ministry/check", "/admin/users"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(TEXT.notFound);
   }
@@ -29,7 +29,7 @@ test("a DS officer gets 'not found' on Head Office and admin pages (PRM-1, ERR-2
 
 test("an admin gets 'not found' on DS and Head Office pages (PRM-2)", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  for (const path of ["/ds", "/ho"]) {
+  for (const path of ["/ds", "/ministry"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(TEXT.notFound);
   }
@@ -97,12 +97,12 @@ test("a temporary password must be replaced before anything else (AUTH-3)", asyn
 });
 
 test("signing out ends the session", async ({ page }) => {
-  await signInAs(page, "ho0001", /\/ho$/);
+  await signInAs(page, "ho0001", /\/ministry$/);
   await page.getByRole("button", { name: TEXT.signOutButton }).click();
   await expect(page).toHaveURL(/\/login$/);
 
-  await page.goto("/ho");
-  await expect(page).toHaveURL(/\/login\?next=%2Fho$/);
+  await page.goto("/ministry");
+  await expect(page).toHaveURL(/\/login\?next=%2Fministry$/);
 });
 
 test("pages carry a Content Security Policy with a fresh nonce each time (SEC-5)", async ({ page }) => {

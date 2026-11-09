@@ -85,7 +85,7 @@ export async function uploadLetterScan(
   actor: Actor,
   file: { name: string; bytes: Uint8Array },
 ): Promise<{ ok: true; value: UploadedFile } | { ok: false; error: UploadError }> {
-  if (actor.role !== "HO_OFFICER") return { ok: false, error: "notAllowed" };
+  if (actor.role !== "MINISTRY_OFFICER") return { ok: false, error: "notAllowed" };
   const problem = documentProblem(file.bytes.length, file.bytes.subarray(0, SNIFF_BYTES));
   if (problem) return { ok: false, error: problem };
 

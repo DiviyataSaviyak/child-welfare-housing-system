@@ -129,13 +129,13 @@ beforeAll(async () => {
       id: "review-test-ho",
       name: "ප්‍ර. පරීක්ෂණ",
       email: "review-test-ho@no-email.invalid",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
   ho = {
     userId: "review-test-ho",
-    role: "HO_OFFICER",
+    role: "MINISTRY_OFFICER",
     designation: "MINISTRY_PROGRAMME_OFFICER",
     districtId: null,
     provinceId: null,
@@ -545,7 +545,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     // Someone else's upload can't be attached.
     const other: Actor = {
       userId: "review-test-ho-2",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
       districtId: null,
       provinceId: null,
@@ -556,7 +556,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
         id: other.userId,
         name: "ප්‍ර. දෙවන",
         email: "review-test-ho-2@no-email.invalid",
-        role: "HO_OFFICER",
+        role: "MINISTRY_OFFICER",
         designation: "MINISTRY_PROGRAMME_OFFICER",
       },
     });

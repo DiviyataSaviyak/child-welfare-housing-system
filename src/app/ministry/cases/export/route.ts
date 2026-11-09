@@ -9,7 +9,7 @@ import { readFilters } from "@/components/cases/list-filters";
 
 /** EXP-1: Head Office's case list as an Excel file, with the filters the list page shows (FND-1). */
 export async function GET(request: NextRequest) {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const { filter } = readFilters((key) => request.nextUrl.searchParams.get(key) ?? "");
   const [t, locale] = await Promise.all([getTranslations("cases"), getLocale()]);
   const file = await exportCaseList(db, viewer, "ho_cases", filter, t, locale);

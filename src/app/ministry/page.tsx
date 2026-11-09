@@ -13,7 +13,7 @@ export default async function HoDashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
   const [t, params, districts, waiting] = await Promise.all([
     getTranslations("dashboard"),
@@ -24,7 +24,7 @@ export default async function HoDashboardPage({
 
   return (
     <DashboardScreen
-      path="/ho"
+      path="/ministry"
       viewer={viewer}
       params={params}
       districts={districts}
@@ -37,7 +37,7 @@ export default async function HoDashboardPage({
           {(["check", "release"] as const).map((queue) => (
             <Link
               key={queue}
-              href={`/ho/${queue}`}
+              href={`/ministry/${queue}`}
               className="flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0 hover:text-primary"
             >
               <span className="font-semibold underline-offset-3 hover:underline">{t(`waiting.${queue}`)} →</span>

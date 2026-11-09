@@ -14,7 +14,7 @@ const AFTER_CHECK: readonly CaseStatus[] = ["VERIFIED", "IN_PROGRESS"];
 const EDITABLE: Record<Role, readonly CaseStatus[]> = {
   DS_OFFICER: ENTRY,
   DISTRICT_OFFICER: [],
-  HO_OFFICER: [...ENTRY, ...AFTER_CHECK],
+  MINISTRY_OFFICER: [...ENTRY, ...AFTER_CHECK],
   VIEWER: [],
   ADMIN: [],
 };
@@ -45,12 +45,12 @@ export function mustStayComplete(status: CaseStatus): boolean {
 
 /** Who may start a case or save a case form at all; every other account only looks (PRM-5). */
 export function canEnterCases(role: Role): boolean {
-  return role === "DS_OFFICER" || role === "HO_OFFICER";
+  return role === "DS_OFFICER" || role === "MINISTRY_OFFICER";
 }
 
 /** A draft can be deleted (CASE-8), by its office or by Head Office, who may also start drafts. */
 export function canDeleteDraft(role: Role, status: CaseStatus): boolean {
-  return (role === "DS_OFFICER" || role === "HO_OFFICER") && status === "DRAFT";
+  return (role === "DS_OFFICER" || role === "MINISTRY_OFFICER") && status === "DRAFT";
 }
 
 /**
@@ -58,5 +58,5 @@ export function canDeleteDraft(role: Role, status: CaseStatus): boolean {
  * puts the office's code into the case number.
  */
 export function canChangeOffice(role: Role, status: CaseStatus | null): boolean {
-  return role === "HO_OFFICER" && (status === null || status === "DRAFT");
+  return role === "MINISTRY_OFFICER" && (status === null || status === "DRAFT");
 }

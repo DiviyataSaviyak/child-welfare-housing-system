@@ -53,7 +53,7 @@ export default async function HoCasePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ notice?: string | string[] }>;
 }) {
-  const viewer = await requireRole("HO_OFFICER");
+  const viewer = await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
   const { id } = await params;
   const details = await getCase(db, viewer, id, locale);
@@ -65,7 +65,7 @@ export default async function HoCasePage({
     getTranslations("progress"),
     caseHistory(db, viewer, details.id, locale),
     details.release ? getStageProgress(db, details.id, details.kind, locale) : Promise.resolve(null),
-    caseSubtitle(details, "ho"),
+    caseSubtitle(details, "ministry"),
   ]);
   const notice = (await searchParams).notice;
   const justSubmitted = notice === "submitted" && details.caseNumber !== null;
@@ -164,8 +164,8 @@ export default async function HoCasePage({
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        backHref="/ho/cases"
-        backLabel={t("back.ho")}
+        backHref="/ministry/cases"
+        backLabel={t("back.ministry")}
         title={name}
         subtitle={subtitle}
         aside={
@@ -192,9 +192,9 @@ export default async function HoCasePage({
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <ReviewNotice notice={notice} details={details} />
-      <CaseNotes details={details} audience="ho" />
+      <CaseNotes details={details} audience="ministry" />
       <StoppedBanner details={details} reopen={reopen} />
-      <ReplacementNotes details={details} audience="ho" />
+      <ReplacementNotes details={details} audience="ministry" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={
@@ -222,7 +222,7 @@ export default async function HoCasePage({
                 </h2>
                 <p>{tr("letters.caseText", { district: details.districtName })}</p>
                 <Link
-                  href={`/ho/release?districtId=${details.districtId}`}
+                  href={`/ministry/release?districtId=${details.districtId}`}
                   className="flex h-12 items-center self-start rounded-lg bg-primary px-5.5 text-[17px] font-bold text-primary-foreground"
                 >
                   {tr("letters.caseGo")}
@@ -231,7 +231,7 @@ export default async function HoCasePage({
             )}
             {details.release && (
               <MoneySection
-                audience="ho"
+                audience="ministry"
                 release={details.release}
                 installments={details.installments}
                 actions={undoTarget ? undo : undefined}
@@ -261,7 +261,7 @@ export default async function HoCasePage({
             {progress && <StageSection progress={progress} />}
             <CaseDetailsSection
               details={details}
-              editHref={canEditDetails(viewer.role, details.status) ? `/ho/cases/${details.id}/edit` : null}
+              editHref={canEditDetails(viewer.role, details.status) ? `/ministry/cases/${details.id}/edit` : null}
             />
           </>
         }

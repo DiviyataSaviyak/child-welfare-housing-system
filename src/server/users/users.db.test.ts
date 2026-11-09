@@ -39,7 +39,7 @@ const nameless = (
 
 const headOfficeOfficer: AccountInput = {
   ...officer(null),
-  role: "HO_OFFICER",
+  role: "MINISTRY_OFFICER",
   designation: "MINISTRY_PROGRAMME_OFFICER",
 };
 
@@ -130,7 +130,9 @@ describe("creating an account (ADM-2)", () => {
     const admins = () => db.user.count({ where: { role: "ADMIN", banned: false } });
     const [officersBefore, adminsBefore] = [await officers(), await admins()];
     for (let i = 0; i < 3; i += 1) {
-      expect((await createAccount(db, ADMIN, nameless("MINISTRY_PROGRAMME_OFFICER", "HO_OFFICER"))).ok).toBe(true);
+      expect((await createAccount(db, ADMIN, nameless("MINISTRY_PROGRAMME_OFFICER", "MINISTRY_OFFICER"))).ok).toBe(
+        true,
+      );
       expect((await createAccount(db, ADMIN, nameless(null, "ADMIN"))).ok).toBe(true);
     }
     expect(await officers()).toBe(officersBefore + 3);

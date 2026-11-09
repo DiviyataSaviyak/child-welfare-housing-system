@@ -23,14 +23,14 @@ describe("case rules (application spec, Roles and permissions; Case statuses and
       expect(isBeingEntered(status), status).toBe(entry);
       expect(canEditDetails("ADMIN", status), status).toBe(false);
     }
-    expect(canEditDetails("HO_OFFICER", "SUBMITTED")).toBe(false);
+    expect(canEditDetails("MINISTRY_OFFICER", "SUBMITTED")).toBe(false);
   });
 
   it("lets only Head Office change a verified case while it runs, and keeps it complete (CASE-9)", () => {
     const afterCheck = ["VERIFIED", "IN_PROGRESS"];
     for (const status of STATUSES) {
       const entry = status === "DRAFT" || status === "RETURNED";
-      expect(canEditDetails("HO_OFFICER", status), status).toBe(entry || afterCheck.includes(status));
+      expect(canEditDetails("MINISTRY_OFFICER", status), status).toBe(entry || afterCheck.includes(status));
       expect(mustStayComplete(status), status).toBe(afterCheck.includes(status));
     }
   });
@@ -41,9 +41,9 @@ describe("case rules (application spec, Roles and permissions; Case statuses and
   });
 
   it("lets only Head Office choose the office, before the case has a number (CASE-3)", () => {
-    expect(canChangeOffice("HO_OFFICER", null)).toBe(true);
-    expect(canChangeOffice("HO_OFFICER", "DRAFT")).toBe(true);
-    expect(canChangeOffice("HO_OFFICER", "RETURNED")).toBe(false);
+    expect(canChangeOffice("MINISTRY_OFFICER", null)).toBe(true);
+    expect(canChangeOffice("MINISTRY_OFFICER", "DRAFT")).toBe(true);
+    expect(canChangeOffice("MINISTRY_OFFICER", "RETURNED")).toBe(false);
     expect(canChangeOffice("DS_OFFICER", null)).toBe(false);
   });
 });
@@ -53,19 +53,19 @@ describe("case rules (application spec, Roles and permissions; Case statuses and
  * must be refused (STS-1).
  */
 const ALLOWED: [Move, CaseStatus, CaseStatus, Mover[]][] = [
-  ["submit", "DRAFT", "SUBMITTED", ["DS_OFFICER", "HO_OFFICER"]],
-  ["submit", "RETURNED", "SUBMITTED", ["DS_OFFICER", "HO_OFFICER"]],
-  ["verify", "SUBMITTED", "VERIFIED", ["HO_OFFICER"]],
-  ["sendBack", "SUBMITTED", "RETURNED", ["HO_OFFICER"]],
-  ["reject", "SUBMITTED", "REJECTED", ["HO_OFFICER"]],
-  ["release", "VERIFIED", "IN_PROGRESS", ["HO_OFFICER"]],
+  ["submit", "DRAFT", "SUBMITTED", ["DS_OFFICER", "MINISTRY_OFFICER"]],
+  ["submit", "RETURNED", "SUBMITTED", ["DS_OFFICER", "MINISTRY_OFFICER"]],
+  ["verify", "SUBMITTED", "VERIFIED", ["MINISTRY_OFFICER"]],
+  ["sendBack", "SUBMITTED", "RETURNED", ["MINISTRY_OFFICER"]],
+  ["reject", "SUBMITTED", "REJECTED", ["MINISTRY_OFFICER"]],
+  ["release", "VERIFIED", "IN_PROGRESS", ["MINISTRY_OFFICER"]],
   ["complete", "IN_PROGRESS", "COMPLETED", ["SYSTEM"]],
-  ["stop", "VERIFIED", "STOPPED", ["HO_OFFICER"]],
-  ["stop", "IN_PROGRESS", "STOPPED", ["HO_OFFICER"]],
-  ["reopen", "STOPPED", "VERIFIED", ["HO_OFFICER"]],
-  ["reopen", "STOPPED", "IN_PROGRESS", ["HO_OFFICER"]],
+  ["stop", "VERIFIED", "STOPPED", ["MINISTRY_OFFICER"]],
+  ["stop", "IN_PROGRESS", "STOPPED", ["MINISTRY_OFFICER"]],
+  ["reopen", "STOPPED", "VERIFIED", ["MINISTRY_OFFICER"]],
+  ["reopen", "STOPPED", "IN_PROGRESS", ["MINISTRY_OFFICER"]],
 ];
-const MOVERS: Mover[] = ["DS_OFFICER", "HO_OFFICER", "ADMIN", "SYSTEM"];
+const MOVERS: Mover[] = ["DS_OFFICER", "MINISTRY_OFFICER", "ADMIN", "SYSTEM"];
 
 describe("status changes (application spec, Case statuses and transitions)", () => {
   it("allows exactly the moves in the table, to the right status and by the right people (STS-1)", () => {
@@ -84,8 +84,8 @@ describe("status changes (application spec, Case statuses and transitions)", () 
 
   it("says whether the role or the status is the problem", () => {
     expect(moveRefusal("DS_OFFICER", "verify", "SUBMITTED")).toBe("roleNotAllowed");
-    expect(moveRefusal("HO_OFFICER", "verify", "VERIFIED")).toBe("notAllowedNow");
-    expect(moveRefusal("HO_OFFICER", "complete", "IN_PROGRESS")).toBe("roleNotAllowed");
+    expect(moveRefusal("MINISTRY_OFFICER", "verify", "VERIFIED")).toBe("notAllowedNow");
+    expect(moveRefusal("MINISTRY_OFFICER", "complete", "IN_PROGRESS")).toBe("roleNotAllowed");
   });
 
   it("needs a reason to send back, reject, stop or reopen (CHK-3, CLS-2, CLS-3)", () => {

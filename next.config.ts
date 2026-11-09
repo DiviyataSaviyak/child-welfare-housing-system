@@ -20,6 +20,11 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "16mb" },
     proxyClientMaxBodySize: "16mb",
   },
+  // UI-10 (change 0006): Head Office's pages moved from /ho to /ministry; old links and bookmarks still
+  // arrive. Temporary (307), so browsers don't keep it for good while the change moves pages around.
+  async redirects() {
+    return [{ source: "/ho/:path*", destination: "/ministry/:path*", permanent: false }];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: staticSecurityHeaders({ production: process.env.APP_ENV === "production" }) },

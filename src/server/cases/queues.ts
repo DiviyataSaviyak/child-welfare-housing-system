@@ -41,7 +41,7 @@ export async function listQueue(
   place: QueuePlace = {},
 ): Promise<{ rows: QueueRow[]; total: number }> {
   const scope = officeFilter(viewer);
-  if (viewer.role !== "HO_OFFICER" || !scope) return { rows: [], total: 0 };
+  if (viewer.role !== "MINISTRY_OFFICER" || !scope) return { rows: [], total: 0 };
   const where = {
     AND: [
       scope,
@@ -93,7 +93,7 @@ export async function listQueue(
 /** How many cases wait in a queue at each DS office, by its id, for choosing a place (CHK-4). */
 export async function queueByOffice(db: PrismaClient, viewer: Viewer, queue: Queue): Promise<Map<number, number>> {
   const scope = officeFilter(viewer);
-  if (viewer.role !== "HO_OFFICER" || !scope) return new Map();
+  if (viewer.role !== "MINISTRY_OFFICER" || !scope) return new Map();
   const groups = await db.case.groupBy({
     by: ["dsOfficeId"],
     where: { ...scope, status: STATUS[queue] },
@@ -105,7 +105,7 @@ export async function queueByOffice(db: PrismaClient, viewer: Viewer, queue: Que
 /** How many cases wait in each queue, for the tabs and the menu (NTF-1). */
 export async function queueCounts(db: PrismaClient, viewer: Viewer): Promise<Record<Queue, number>> {
   const scope = officeFilter(viewer);
-  if (viewer.role !== "HO_OFFICER" || !scope) return { check: 0, release: 0 };
+  if (viewer.role !== "MINISTRY_OFFICER" || !scope) return { check: 0, release: 0 };
   const [check, release] = await Promise.all([
     db.case.count({ where: { ...scope, status: STATUS.check } }),
     db.case.count({ where: { ...scope, status: STATUS.release } }),

@@ -62,7 +62,7 @@ test("AC-8 (first half): a submitted case gets its number and shows as sent on t
 
   const { number } = await submit(page, "ds");
   expect(number).toMatch(new RegExp(`^HMG-${YEAR}-\\d{3,}$`));
-  await expect(page.getByRole("heading", { name: "ප්‍රධාන කාර්යාලයට යවන ලදී" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "අමාත්‍යංශයට යවන ලදී" })).toBeVisible();
   const documentLink = page.getByRole("link", { name: "ලේඛනය.pdf" });
   const file = await page.request.get((await documentLink.getAttribute("href")) ?? "");
   expect(file.status()).toBe(200);
@@ -175,7 +175,7 @@ test("Head Office enters a case for a DS it chooses, and finds it in the case li
   page,
 }) => {
   test.slow();
-  await signInAs(page, "ho0001", /\/ho$/);
+  await signInAs(page, "ho0001", /\/ministry$/);
   await page.getByRole("link", { name: "ප්‍රතිලාභීන්", exact: true }).click();
   await page.getByRole("link", { name: /නව ප්‍රතිලාභියෙකු ඇතුළත් කරන්න/ }).click();
   const nic = randomNic();
@@ -187,10 +187,10 @@ test("Head Office enters a case for a DS it chooses, and finds it in the case li
 
   await page.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "කොළඹ" });
   await page.getByLabel("ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: "කඩුවෙල" });
-  const { number } = await submit(page, "ho");
+  const { number } = await submit(page, "ministry");
   expect(number).toMatch(new RegExp(`^KDW-${YEAR}-\\d{3,}$`));
 
-  await page.goto(`/ho/cases?q=${nic}`);
+  await page.goto(`/ministry/cases?q=${nic}`);
   const row = page.getByRole("row", { name: new RegExp(number) });
   await expect(row).toContainText("කඩුවෙල");
   await expect(row).toContainText(SUBMITTED);
@@ -198,6 +198,6 @@ test("Head Office enters a case for a DS it chooses, and finds it in the case li
   // Clearing the filters empties the search box too, not only the list's search.
   await expect(page.getByRole("searchbox")).toHaveValue(nic);
   await page.getByRole("link", { name: "පෙරහන් ඉවත් කරන්න" }).click();
-  await expect(page).toHaveURL(/\/ho\/cases$/);
+  await expect(page).toHaveURL(/\/ministry\/cases$/);
   await expect(page.getByRole("searchbox")).toHaveValue("");
 });

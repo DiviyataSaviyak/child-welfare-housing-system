@@ -97,13 +97,13 @@ beforeAll(async () => {
       id: "cases-test-ho",
       name: "ප්‍ර. පරීක්ෂණ",
       email: "cases-test-ho@no-email.invalid",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
   ho = {
     userId: "cases-test-ho",
-    role: "HO_OFFICER",
+    role: "MINISTRY_OFFICER",
     designation: "MINISTRY_PROGRAMME_OFFICER",
     districtId: null,
     provinceId: null,
@@ -214,12 +214,12 @@ describe("who may change a case", () => {
       ...newCase("200100000040"),
       id: draft.id,
       version: draft.version,
-      values: values("200100000040", { remark: "ප්‍රධාන කාර්යාලය" }),
+      values: values("200100000040", { remark: "අමාත්‍යංශය" }),
     });
 
     const stale = await saveCase(db, dsA, { ...newCase("200100000040"), id: draft.id, version: draft.version });
     expect(stale).toEqual({ ok: false, error: "conflict" });
-    expect((await db.case.findUniqueOrThrow({ where: { id: draft.id } })).remark).toBe("ප්‍රධාන කාර්යාලය");
+    expect((await db.case.findUniqueOrThrow({ where: { id: draft.id } })).remark).toBe("අමාත්‍යංශය");
   });
 
   it("lets nobody change a case while Head Office checks it (STS-3)", async () => {

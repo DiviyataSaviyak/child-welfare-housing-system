@@ -9,20 +9,20 @@ import { db } from "@/server/db";
  * reads the count again from /ho/waiting after every move, so it agrees with the page beside it.
  */
 export default async function HoLayout({ children }: { children: React.ReactNode }) {
-  const context = await requireRole("HO_OFFICER");
+  const context = await requireRole("MINISTRY_OFFICER");
   const waiting = await waitingNow(db, context);
   return (
     <AppShell
-      area="ho"
+      area="ministry"
       userName={context.label}
       nav={[
-        { href: "/ho", labelKey: "hoDashboard", exact: true },
-        { href: "/ho/cases", labelKey: "hoCases" },
+        { href: "/ministry", labelKey: "ministryDashboard", exact: true },
+        { href: "/ministry/cases", labelKey: "ministryCases" },
         {
-          href: "/ho/check",
-          labelKey: "hoCheck",
-          alsoActive: ["/ho/release"],
-          count: { ...waiting, source: "/ho/waiting" },
+          href: "/ministry/check",
+          labelKey: "ministryCheck",
+          alsoActive: ["/ministry/release"],
+          count: { ...waiting, source: "/ministry/waiting" },
         },
       ]}
     >

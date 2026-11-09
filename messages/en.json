@@ -15,21 +15,21 @@
   "areas": {
     "ds": "Divisional Secretariat",
     "dsOffice": "{office} Divisional Secretariat",
-    "ho": "Head Office",
+    "ministry": "Ministry",
     "district": "{district} District Secretariat",
     "province": "{province} Provincial Council",
     "oversight": "View only",
-    "admin": "Head Office · Administrator"
+    "admin": "Ministry · Administrator"
   },
   "nav": {
     "label": "Main menu",
     "dsHome": "My beneficiaries",
     "dsNewCase": "Add a new beneficiary",
-    "hoDashboard": "Summary",
+    "ministryDashboard": "Summary",
     "adminUsers": "Users",
     "adminLists": "Lists",
-    "hoCases": "Beneficiaries",
-    "hoCheck": "Checking and releasing allocations",
+    "ministryCases": "Beneficiaries",
+    "ministryCheck": "Checking and releasing allocations",
     "oversightDashboard": "Summary",
     "oversightCases": "Beneficiaries",
     "waiting": "Beneficiaries waiting: {count}"
@@ -65,7 +65,7 @@
     "submitting": "Signing in...",
     "forgot": "Forgot your password?",
     "passwordReset": "Your new password is set. Sign in with it.",
-    "help": "If you have no account or have forgotten your username, contact the administrator at Head Office.",
+    "help": "If you have no account or have forgotten your username, contact the administrator at the Ministry.",
     "errors": {
       "required": "Enter both your username and your password.",
       "invalid": "The username or password is wrong.",
@@ -99,7 +99,7 @@
     "username": "Username",
     "submit": "Send the code",
     "submitting": "Sending...",
-    "noUsername": "If you have forgotten your username, or your account has no email address or yours has changed, contact the administrator at Head Office.",
+    "noUsername": "If you have forgotten your username, or your account has no email address or yours has changed, contact the administrator at the Ministry.",
     "backToSignIn": "Back to sign in",
     "startAgain": "Start again",
     "email": {
@@ -120,7 +120,7 @@
       "submit": "Continue",
       "submitting": "Checking...",
       "sendAgain": "Send a new code",
-      "noEmail": "If no email arrives within a few minutes, look in the spam folder too. If it isn't there, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at Head Office."
+      "noEmail": "If no email arrives within a few minutes, look in the spam folder too. If it isn't there, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at the Ministry."
     },
     "password": {
       "intro": "The code is right. Now set your new password.",
@@ -133,8 +133,8 @@
     "errors": {
       "required": "Enter your username.",
       "tooMany": "Too many requests from this computer. Try again in 15 minutes.",
-      "emailFailed": "The email couldn't be sent. Try again in a little while, or contact the administrator at Head Office.",
-      "emailOff": "Resetting a password by email isn't switched on yet. For a new password, contact the administrator at Head Office."
+      "emailFailed": "The email couldn't be sent. Try again in a little while, or contact the administrator at the Ministry.",
+      "emailOff": "Resetting a password by email isn't switched on yet. For a new password, contact the administrator at the Ministry."
     },
     "codeErrors": {
       "required": "Enter the code from the email.",
@@ -162,7 +162,7 @@
   },
   "error": {
     "title": "Something went wrong",
-    "body": "Please try again. If the problem continues, contact Head Office with the reference code below.",
+    "body": "Please try again. If the problem continues, contact the Ministry with the reference code below.",
     "reference": "Reference code",
     "retry": "Try again"
   },
@@ -186,7 +186,7 @@
     "roles": {
       "DS_OFFICER": "Divisional Secretariat Officer",
       "DISTRICT_OFFICER": "District Child Rights Promotion Officer",
-      "HO_OFFICER": "Head Office officer",
+      "MINISTRY_OFFICER": "Ministry Officer",
       "VIEWER": "View only",
       "ADMIN": "Administrator"
     },
@@ -219,7 +219,7 @@
     "roleHints": {
       "DS_OFFICER": "Adds beneficiaries, pays installments, updates progress",
       "DISTRICT_OFFICER": "Views the district's beneficiaries",
-      "HO_OFFICER": "All beneficiaries, checking and money",
+      "MINISTRY_OFFICER": "All beneficiaries, checking and money",
       "VIEWER": "View only",
       "ADMIN": "Accounts and lists only"
     },
@@ -450,7 +450,7 @@
     "none": "—",
     "back": {
       "ds": "Back to my beneficiaries",
-      "ho": "Back to the beneficiary list",
+      "ministry": "Back to the beneficiary list",
       "oversight": "Back to the beneficiary list",
       "case": "Back to the beneficiary's page"
     },
@@ -476,21 +476,21 @@
       "empty": "No matching beneficiaries.",
       "emptyStart": "No beneficiaries yet. Press “Add a new beneficiary” to start.",
       "progress": {
-        "DRAFT": "Complete it and send it to Head Office",
-        "SUBMITTED": "Days with Head Office: {days}",
-        "submittedToday": "Sent to Head Office today",
+        "DRAFT": "Complete it and send it to the Ministry",
+        "SUBMITTED": "Days with the Ministry: {days}",
+        "submittedToday": "Sent to the Ministry today",
         "RETURNED": "Correct it and send it again",
         "VERIFIED": "Rs. 2,000,000 still to come",
         "COMPLETED": "Building completed",
         "IN_PROGRESS": "Rs. 2,000,000 received",
-        "STOPPED": "Stopped by Head Office",
+        "STOPPED": "Stopped by the Ministry",
         "stale": "Days without an update: {days}"
       },
       "todo": {
         "title": "Your to-do list",
         "returned": "{name}: sent back",
         "returnedAction": "Correct it and send it again",
-        "noReason": "Head Office gave no reason.",
+        "noReason": "The Ministry gave no reason.",
         "draft": "{name}: not sent yet",
         "draftText": "Last saved {date}",
         "draftAction": "Complete it and send it",
@@ -502,14 +502,14 @@
         "staleText": "Days without an update: {days}.",
         "open": "Open",
         "replace": "{name}: another name asked for",
-        "replaceRejected": "Head Office rejected {number}: “{reason}” Enter another beneficiary in its place and send it.",
-        "replaceStopped": "Head Office stopped {number}: “{reason}” Enter another beneficiary in its place and send it.",
+        "replaceRejected": "The Ministry rejected {number}: “{reason}” Enter another beneficiary in its place and send it.",
+        "replaceStopped": "The Ministry stopped {number}: “{reason}” Enter another beneficiary in its place and send it.",
         "replaceAction": "Enter someone in its place"
       },
       "paid": "{paid} / {total}",
       "money": {
         "title": "Money",
-        "received": "Received from Head Office",
+        "received": "Received from the Ministry",
         "paidOut": "Paid to beneficiaries",
         "balance": "Balance with you"
       }
@@ -581,10 +581,10 @@
       "removeText": "“{name}” will be removed from this beneficiary's documents.",
       "removeConfirm": "Yes, remove it",
       "saveDraft": "Save to complete later",
-      "submit": "Send to Head Office",
+      "submit": "Send to the Ministry",
       "saving": "Saving...",
       "cancel": "No",
-      "help": "If you have a problem, contact Head Office.",
+      "help": "If you have a problem, contact the Ministry.",
       "checklist": {
         "title": "Parts to fill in",
         "category": "Category",
@@ -597,7 +597,7 @@
         "attached": "Attached"
       },
       "returned": {
-        "title": "Head Office has sent this back",
+        "title": "The Ministry has sent this back",
         "text": "Correct the point below and send it again."
       },
       "duplicate": {
@@ -606,12 +606,12 @@
         "numberOffice": "{number} at the {office} DS office",
         "numberNameOffice": "{number} ({name}, {office} DS)",
         "draft": "A beneficiary not sent yet ({name})",
-        "advice": "Check whether it is the same person. This doesn't stop saving or sending; Head Office will see it when checking."
+        "advice": "Check whether it is the same person. This doesn't stop saving or sending; the Ministry will see it when checking."
       },
       "confirm": {
-        "title": "Send to Head Office?",
+        "title": "Send to the Ministry?",
         "text": "Please look over the details again.",
-        "after": "Once sent, this can't be changed until Head Office has checked it.",
+        "after": "Once sent, this can't be changed until the Ministry has checked it.",
         "back": "No, go back",
         "send": "Yes, send it",
         "category": "Category",
@@ -657,13 +657,13 @@
         "notAllowedNow": "This can't be done in the beneficiary's current status. Reload the page.",
         "roleNotAllowed": "You can't do this.",
         "kindLocked": "Physical progress is already recorded for this beneficiary, so the kind of assistance can't be changed.",
-        "replacementRequired": "Choose whether this beneficiary is in place of the case Head Office named.",
+        "replacementRequired": "Choose whether this beneficiary is in place of the case the Ministry named.",
         "replacementUnavailable": "A name can no longer be entered in place of the chosen case. Reload the page and choose again."
       },
       "saveChanges": "Save the changes",
       "changeIntro": "This beneficiary has been verified. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
       "replaces": {
-        "title": "Head Office has asked for another name *",
+        "title": "The Ministry has asked for another name *",
         "text": "Is the beneficiary you are entering now the one sent in its place? This question shows only while there is such a request.",
         "yes": "Yes, in place of {number}",
         "rejectedOn": "{name} · rejected on {date}",
@@ -681,16 +681,16 @@
       "changed": "Changes saved."
     },
     "submitted": {
-      "title": "Sent to Head Office",
+      "title": "Sent to the Ministry",
       "number": "Registration number:",
-      "text": "Once Head Office has checked it, you'll be told on the “My beneficiaries” page.",
+      "text": "Once the Ministry has checked it, you'll be told on the “My beneficiaries” page.",
       "textHo": "It is now on the “To check” list.",
       "addAnother": "Add another person"
     },
     "deleteDraft": {
       "button": "Delete the draft",
       "title": "Delete this draft?",
-      "text": "It hasn't been sent to Head Office yet. Once deleted, its details and attached documents can't be recovered.",
+      "text": "It hasn't been sent to the Ministry yet. Once deleted, its details and attached documents can't be recovered.",
       "confirm": "Yes, delete it",
       "cancel": "No",
       "working": "Deleting..."
@@ -701,7 +701,7 @@
       "noDocuments": "No documents attached.",
       "edit": "Edit the details",
       "fix": "Correct and send again",
-      "waiting": "Head Office is checking this. The details can't be changed until they decide.",
+      "waiting": "The Ministry is checking this. The details can't be changed until they decide.",
       "fields": {
         "number": "Registration number",
         "category": "Category",
@@ -720,11 +720,11 @@
         "submittedAt": "Last sent on",
         "verifiedAt": "Verified on"
       },
-      "verifiedDs": "Head Office has verified this. You'll be told once the Rs. 2,000,000 is released.",
-      "rejectedTitle": "Head Office has rejected this",
+      "verifiedDs": "The Ministry has verified this. You'll be told once the Rs. 2,000,000 is released.",
+      "rejectedTitle": "The Ministry has rejected this",
       "replacesTitle": "Entered in place of {number} ({name})",
-      "replacesRejected": "Head Office rejected it on {date} and asked for another name.",
-      "replacesStopped": "Head Office stopped it on {date} and asked for another name.",
+      "replacesRejected": "The Ministry rejected it on {date} and asked for another name.",
+      "replacesStopped": "The Ministry stopped it on {date} and asked for another name.",
       "replacesReason": "Reason: {reason}",
       "openOther": "Open {number}",
       "askedTitle": "Another name was asked for in this one's place",
@@ -732,7 +732,7 @@
       "askedEnter": "Enter someone in its place",
       "askedDone": "{number} ({name}) has been entered in its place."
     },
-    "officeClosed": "Your Divisional Secretariat has been deactivated, so new beneficiaries can't be added. Contact Head Office.",
+    "officeClosed": "Your Divisional Secretariat has been deactivated, so new beneficiaries can't be added. Contact the Ministry.",
     "installment": {
       "name": {
         "1": "First installment",
@@ -757,7 +757,7 @@
       "count": "{count, plural, =0 {No installments} one {# installment} other {# installments}}",
       "letterName": "Allocation letter {number}",
       "letterHo": "({date}) · to the {district} District Secretary · beneficiaries: {count}, {total} in all · valid until {until}",
-      "letterDs": "({date}) · from Head Office through the {district} District Secretary · valid until {until}",
+      "letterDs": "({date}) · from the Ministry through the {district} District Secretary · valid until {until}",
       "letterScan": "Copy of the letter",
       "opensInNewTab": "(opens in a new tab)",
       "installment": "Installment",
@@ -963,7 +963,7 @@
     "bell": "Notifications",
     "bellUnread": "Notifications, {count} unread",
     "title": "Notifications",
-    "intro": "Head Office's decisions about your beneficiaries.",
+    "intro": "The Ministry's decisions about your beneficiaries.",
     "empty": "No notifications yet.",
     "unread": "New",
     "markAll": "Mark all as read",
@@ -1115,7 +1115,7 @@
     "roles": {
       "DS_OFFICER": "DS",
       "DISTRICT_OFFICER": "District Secretariat",
-      "HO_OFFICER": "Head Office",
+      "MINISTRY_OFFICER": "Ministry",
       "VIEWER": "View only",
       "ADMIN": "Administrator"
     },
@@ -1123,9 +1123,9 @@
       "case_created": "Beneficiary entered",
       "case_updated": "Details changed",
       "document_removed": "A document was removed",
-      "case_submitted": "Sent to Head Office",
-      "case_submittedNumber": "Sent to Head Office. Registration number {number}",
-      "case_verified": "Verified by Head Office",
+      "case_submitted": "Sent to the Ministry",
+      "case_submittedNumber": "Sent to the Ministry. Registration number {number}",
+      "case_verified": "Verified by the Ministry",
       "case_sent_back": "Sent back for correction",
       "case_rejected": "Rejected",
       "case_released": "Rs. 2,000,000 released (reference number {reference})",

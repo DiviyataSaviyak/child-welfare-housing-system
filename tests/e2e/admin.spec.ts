@@ -183,7 +183,7 @@ test("AC-37: an account with no name, mobile or email signs in and sets its own 
     await expect(officer.getByRole("link", { name: /නව ප්‍රතිලාභියෙකු/ })).toHaveCount(0);
 
     // Another role's area answers "not found".
-    await officer.goto("/ho");
+    await officer.goto("/ministry");
     await expect(officer.getByRole("heading", { name: "මෙම පිටුව සොයාගත නොහැක" })).toBeVisible();
   });
 });
@@ -442,7 +442,7 @@ test("the admin adds and reorders renovation stages (LST-4)", async ({ page }) =
 });
 
 test("Head Office officers get 'not found' on the admin pages (PRM-2)", async ({ page }) => {
-  await signInAs(page, "ho0001", /\/ho$/);
+  await signInAs(page, "ho0001", /\/ministry$/);
   for (const path of ["/admin/users", "/admin/users/new", "/admin/lists"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(TEXT.notFound);

@@ -17,7 +17,7 @@ const LOAD = 5_000;
 
 /** The audit log has no foreign key to the account, so a made-up actor is enough. */
 const ho = {
-  role: "HO_OFFICER",
+  role: "MINISTRY_OFFICER",
   designation: "MINISTRY_PROGRAMME_OFFICER",
   districtId: null,
   provinceId: null,

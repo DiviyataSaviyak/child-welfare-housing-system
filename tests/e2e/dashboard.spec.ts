@@ -9,7 +9,7 @@ const ALL_DISTRICTS = "සියලු දිස්ත්‍රික්ක ප�
 // The figures themselves are checked against the database in src/server/dashboard/dashboard.db.test.ts
 // (AC-17): other tests add cases at the same time, so the numbers on screen keep changing here.
 test("Head Office's dashboard: totals, a district's DS offices, filters and the queues (DSH-1)", async ({ page }) => {
-  await signInAs(page, "ho0001", /\/ho$/);
+  await signInAs(page, "ho0001", /\/ministry$/);
 
   for (const label of ["මුළු ප්‍රතිලාභීන්", "වැඩ සිදුවෙමින්", "නිම කළ", "නිදහස් කළ මුදල (රු.)"])
     await expect(page.getByRole("term").filter({ hasText: label })).toBeVisible();
@@ -19,7 +19,7 @@ test("Head Office's dashboard: totals, a district's DS offices, filters and the 
 
   // Choosing a district shows its DS offices.
   await districts.getByRole("link", { name: "කොළඹ", exact: true }).click();
-  await expect(page).toHaveURL(/\/ho\?districtId=\d+$/);
+  await expect(page).toHaveURL(/\/ministry\?districtId=\d+$/);
   const offices = page.getByRole("table", { name: COLOMBO_OFFICES });
   await expect(offices.getByRole("rowheader", { name: "හෝමාගම", exact: true })).toBeVisible();
   await expect(page.getByLabel("දිස්ත්‍රික්කය", { exact: true })).toHaveValue(/^\d+$/);
@@ -28,21 +28,21 @@ test("Head Office's dashboard: totals, a district's DS offices, filters and the 
   await page.getByLabel("කාණ්ඩය").selectOption({ label: "නිවාසගත" });
   await page.getByLabel("ආධාරය").selectOption({ label: "නව නිවසක්" });
   await page.getByRole("button", { name: "පෙන්වන්න" }).click();
-  await expect(page).toHaveURL(/\/ho\?districtId=\d+&category=CARE_LEAVER&kind=NEW_HOUSE$/);
+  await expect(page).toHaveURL(/\/ministry\?districtId=\d+&category=CARE_LEAVER&kind=NEW_HOUSE$/);
   await expect(page.getByText(/^කොළඹ දිස්ත්‍රික්කය · නිවාසගත · නව නිවසක් · \d{4}\.\d{2}\.\d{2} දක්වා$/)).toBeVisible();
   await expect(offices).toBeVisible();
 
   await page.getByRole("link", { name: ALL_DISTRICTS }).click();
-  await expect(page).toHaveURL(/\/ho\?category=CARE_LEAVER&kind=NEW_HOUSE$/);
+  await expect(page).toHaveURL(/\/ministry\?category=CARE_LEAVER&kind=NEW_HOUSE$/);
   await expect(page.getByRole("table", { name: BY_DISTRICT })).toBeVisible();
   await page.getByRole("link", { name: "පෙරහන් ඉවත් කරන්න" }).click();
-  await expect(page).toHaveURL(/\/ho$/);
+  await expect(page).toHaveURL(/\/ministry$/);
 
   // The waiting counts lead to Head Office's two queues.
   const waiting = page.getByRole("region", { name: "ඔබේ ක්‍රියාව අවශ්‍යයි" });
   await waiting.getByRole("link", { name: /^ප්‍රතිපාදන මුදා හැරීමට/ }).click();
-  await expect(page).toHaveURL(/\/ho\/release$/);
+  await expect(page).toHaveURL(/\/ministry\/release$/);
   await page.goBack();
   await waiting.getByRole("link", { name: /^පරීක්ෂා කිරීමට/ }).click();
-  await expect(page).toHaveURL(/\/ho\/check$/);
+  await expect(page).toHaveURL(/\/ministry\/check$/);
 });

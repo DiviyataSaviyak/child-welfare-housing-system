@@ -2,7 +2,7 @@ import { type Browser, expect, type Page } from "@playwright/test";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the case tests look for (messages/si.json). */
-export const SEND = "ප්‍රධාන කාර්යාලයට යවන්න";
+export const SEND = "අමාත්‍යංශයට යවන්න";
 export const CONFIRM = "ඔව්, යවන්න";
 export const SUBMITTED = "පරීක්ෂාවට යවා ඇත";
 export const YEAR = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo", year: "numeric" }).format(new Date());
@@ -34,9 +34,9 @@ export async function fillCase(page: Page, input: CaseInput) {
 }
 
 /** Sends the filled form to Head Office through the confirmation, and returns the new case's page. */
-export async function submit(page: Page, area: "ds" | "ho"): Promise<{ url: string; number: string }> {
+export async function submit(page: Page, area: "ds" | "ministry"): Promise<{ url: string; number: string }> {
   await page.getByRole("button", { name: SEND }).click();
-  await expect(page.getByRole("heading", { name: "ප්‍රධාන කාර්යාලයට යවන්නද?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "අමාත්‍යංශයට යවන්නද?" })).toBeVisible();
   await page.getByRole("button", { name: CONFIRM }).click();
   await expect(page).toHaveURL(new RegExp(`/${area}/cases/[0-9a-f-]{36}\\?notice=submitted$`));
   return { url: page.url().split("?")[0] ?? "", number: await page.getByTestId("case-number").innerText() };
@@ -54,7 +54,7 @@ export async function asUser(browser: Browser, username: string, run: (page: Pag
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "si-LK" });
   try {
     const page = await context.newPage();
-    await signInAs(page, username, username.startsWith("ho") ? /\/ho$/ : /\/ds$/);
+    await signInAs(page, username, username.startsWith("ho") ? /\/ministry$/ : /\/ds$/);
     await run(page);
   } finally {
     await context.close();
@@ -65,7 +65,7 @@ export async function asUser(browser: Browser, username: string, run: (page: Pag
 export async function openAs(browser: Browser, username: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "si-LK" });
   const page = await context.newPage();
-  await signInAs(page, username, username.startsWith("ho") ? /\/ho$/ : /\/ds$/);
+  await signInAs(page, username, username.startsWith("ho") ? /\/ministry$/ : /\/ds$/);
   return page;
 }
 
@@ -83,7 +83,7 @@ export async function recordLetterFor(ho: Page, names: string[], letterNumber: s
   for (const name of names) await letter.getByRole("checkbox", { name: new RegExp(name) }).check();
   await letter.getByLabel("මගේ අංකය *").fill(letterNumber);
   await letter.getByRole("button", { name: /^ලිපිය සටහන් කරන්න · / }).click();
-  await expect(ho).toHaveURL(/\/ho\/release\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
+  await expect(ho).toHaveURL(/\/ministry\/release\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
   await expect(ho.getByRole("status")).toContainText(`ලිපිය ${letterNumber} සටහන් කළා`);
 }
 
@@ -96,10 +96,10 @@ export async function releasedCase(ds: Page, ho: Page, label: string) {
   const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
   const { url, number } = await newSubmittedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
-  await ho.goto(`/ho/cases/${caseId}`);
+  await ho.goto(`/ministry/cases/${caseId}`);
   await ho.getByRole("button", { name: "අනුමත කරන්න", exact: true }).click();
   await ho.getByRole("dialog").getByRole("button", { name: "ඔව්, අනුමත කරන්න" }).click();
-  await expect(ho).toHaveURL(new RegExp(`/ho/cases/${caseId}\\?notice=verified$`));
+  await expect(ho).toHaveURL(new RegExp(`/ministry/cases/${caseId}\\?notice=verified$`));
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();
   await recordLetterFor(ho, [name], `MWCA/E2E/${label}`);
   return { caseId, url, name, number };

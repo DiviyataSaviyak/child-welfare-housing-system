@@ -174,7 +174,7 @@ model User {
   /// Generated sign-in name such as ds0101 (ADM-2).
   username               String?         @unique
   displayUsername        String?         @map("display_username")
-  /// DS_OFFICER, DISTRICT_OFFICER, HO_OFFICER, VIEWER or ADMIN; a database check allows nothing else.
+  /// DS_OFFICER, DISTRICT_OFFICER, MINISTRY_OFFICER, VIEWER or ADMIN; a database check allows nothing else.
   /// The designation decides it (src/server/auth/designations.ts).
   role                   String?
   /// true means the account is disabled (ADM-6).

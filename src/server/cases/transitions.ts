@@ -35,7 +35,7 @@ export const MOVES: Record<Move, MoveRule> = {
   submit: {
     from: ["DRAFT", "RETURNED"],
     to: ["SUBMITTED"],
-    who: ["DS_OFFICER", "HO_OFFICER"],
+    who: ["DS_OFFICER", "MINISTRY_OFFICER"],
     needsReason: false,
     decision: "SUBMIT",
     notify: null,
@@ -44,7 +44,7 @@ export const MOVES: Record<Move, MoveRule> = {
   verify: {
     from: ["SUBMITTED"],
     to: ["VERIFIED"],
-    who: ["HO_OFFICER"],
+    who: ["MINISTRY_OFFICER"],
     needsReason: false,
     decision: "VERIFY",
     notify: "VERIFIED",
@@ -53,7 +53,7 @@ export const MOVES: Record<Move, MoveRule> = {
   sendBack: {
     from: ["SUBMITTED"],
     to: ["RETURNED"],
-    who: ["HO_OFFICER"],
+    who: ["MINISTRY_OFFICER"],
     needsReason: true,
     decision: "SEND_BACK",
     notify: "SENT_BACK",
@@ -62,7 +62,7 @@ export const MOVES: Record<Move, MoveRule> = {
   reject: {
     from: ["SUBMITTED"],
     to: ["REJECTED"],
-    who: ["HO_OFFICER"],
+    who: ["MINISTRY_OFFICER"],
     needsReason: true,
     decision: "REJECT",
     notify: "REJECTED",
@@ -71,7 +71,7 @@ export const MOVES: Record<Move, MoveRule> = {
   release: {
     from: ["VERIFIED"],
     to: ["IN_PROGRESS"],
-    who: ["HO_OFFICER"],
+    who: ["MINISTRY_OFFICER"],
     needsReason: false,
     decision: null,
     notify: "RELEASED",
@@ -89,7 +89,7 @@ export const MOVES: Record<Move, MoveRule> = {
   stop: {
     from: ["VERIFIED", "IN_PROGRESS"],
     to: ["STOPPED"],
-    who: ["HO_OFFICER"],
+    who: ["MINISTRY_OFFICER"],
     needsReason: true,
     decision: "STOP",
     notify: "STOPPED",
@@ -99,7 +99,7 @@ export const MOVES: Record<Move, MoveRule> = {
     // Back to the status the case had before it was stopped (CLS-3); the caller says which.
     from: ["STOPPED"],
     to: ["VERIFIED", "IN_PROGRESS"],
-    who: ["HO_OFFICER"],
+    who: ["MINISTRY_OFFICER"],
     needsReason: true,
     decision: "REOPEN",
     notify: "REOPENED",

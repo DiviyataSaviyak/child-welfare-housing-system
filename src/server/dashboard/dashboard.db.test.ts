@@ -13,7 +13,7 @@ import { dashboard, type DashboardFilter, type Figures, noFigures, STALE_SHOWN, 
 
 const db = createTestClient();
 const ho: Viewer = {
-  role: "HO_OFFICER",
+  role: "MINISTRY_OFFICER",
   designation: "MINISTRY_PROGRAMME_OFFICER",
   districtId: null,
   provinceId: null,

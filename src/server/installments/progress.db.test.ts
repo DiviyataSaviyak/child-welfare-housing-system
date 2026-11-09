@@ -183,13 +183,13 @@ beforeAll(async () => {
       id: "progress-test-ho",
       name: "ප්‍ර. පරීක්ෂණ",
       email: "progress-test-ho@no-email.invalid",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
   ho = {
     userId: "progress-test-ho",
-    role: "HO_OFFICER",
+    role: "MINISTRY_OFFICER",
     designation: "MINISTRY_PROGRAMME_OFFICER",
     districtId: null,
     provinceId: null,
@@ -644,7 +644,7 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
     ]);
     expect(history?.[0]).toMatchObject({ actor: null });
     expect(history?.[1]).toMatchObject({ actor: { name: "ප්‍රා. පරීක්ෂණ", role: "DS_OFFICER" }, after: { number: 4 } });
-    expect(history?.find((e) => e.action === "case_released")).toMatchObject({ actor: { role: "HO_OFFICER" } });
+    expect(history?.find((e) => e.action === "case_released")).toMatchObject({ actor: { role: "MINISTRY_OFFICER" } });
     expect(history?.every((e) => e.at instanceof Date)).toBe(true);
 
     expect(await caseHistory(db, dsB, c.id, "si")).toBeNull();

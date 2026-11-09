@@ -37,7 +37,7 @@ beforeAll(async () => {
       id: HEAD_OFFICE,
       name: "ප්‍ර. පරීක්ෂණ",
       email: `${HEAD_OFFICE}@no-email.invalid`,
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
@@ -77,7 +77,7 @@ describe("demo data", { timeout: 120_000 }, () => {
     );
 
     const viewer = {
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
       districtId: null,
       provinceId: null,
@@ -85,7 +85,9 @@ describe("demo data", { timeout: 120_000 }, () => {
     } as const;
     // Other test files add Head Office officers too, and each case takes one of them at random.
     const headOffice = new Set(
-      (await db.user.findMany({ where: { role: "HO_OFFICER", banned: false }, select: { id: true } })).map((u) => u.id),
+      (await db.user.findMany({ where: { role: "MINISTRY_OFFICER", banned: false }, select: { id: true } })).map(
+        (u) => u.id,
+      ),
     );
     expect(headOffice).toContain(HEAD_OFFICE);
     for (const c of cases) {
@@ -120,7 +122,7 @@ describe("demo data", { timeout: 120_000 }, () => {
         expect(dateToDay(letter.letterDate) <= today).toBe(true);
         const released = history.find((e) => e.action === "case_released")!;
         expect(released.after).toMatchObject({ letterId: letter.id, letterNumber: letter.letterNumber });
-        expect(released.actor).toMatchObject({ role: "HO_OFFICER" });
+        expect(released.actor).toMatchObject({ role: "MINISTRY_OFFICER" });
       }
 
       // INS-2: each installment started, and was paid only after it started.

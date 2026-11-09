@@ -22,7 +22,7 @@ export type WaitingDistrict = {
  */
 export async function districtsWaiting(db: PrismaClient, viewer: Viewer, locale: Locale): Promise<WaitingDistrict[]> {
   const scope = officeFilter(viewer);
-  if (viewer.role !== "HO_OFFICER" || !scope) return [];
+  if (viewer.role !== "MINISTRY_OFFICER" || !scope) return [];
   const groups = await db.case.groupBy({
     by: ["dsOfficeId"],
     where: { ...scope, status: "VERIFIED" },
@@ -78,7 +78,7 @@ export async function casesForLetter(
   locale: Locale,
 ): Promise<LetterCase[]> {
   const scope = officeFilter(viewer);
-  if (viewer.role !== "HO_OFFICER" || !scope) return [];
+  if (viewer.role !== "MINISTRY_OFFICER" || !scope) return [];
   const found = await db.case.findMany({
     where: { AND: [scope, { dsOffice: { districtId } }], status: "VERIFIED" },
     orderBy: [
@@ -151,7 +151,7 @@ export async function recentLetters(
   locale: Locale,
   take = 10,
 ): Promise<LetterSummary[]> {
-  if (viewer.role !== "HO_OFFICER" || !officeFilter(viewer)) return [];
+  if (viewer.role !== "MINISTRY_OFFICER" || !officeFilter(viewer)) return [];
   const found = await db.releaseLetter.findMany({
     orderBy: [{ at: "desc" }, { id: "asc" }],
     take,
@@ -167,7 +167,7 @@ export async function getLetter(
   id: string,
   locale: Locale,
 ): Promise<LetterSummary | null> {
-  if (viewer.role !== "HO_OFFICER" || !officeFilter(viewer)) return null;
+  if (viewer.role !== "MINISTRY_OFFICER" || !officeFilter(viewer)) return null;
   const found = await db.releaseLetter.findUnique({ where: { id }, select: LETTER_SELECT });
   return found && summary(locale)(found);
 }
