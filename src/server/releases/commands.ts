@@ -13,7 +13,7 @@ import { writeAudit } from "../audit";
 import type { Actor } from "../cases/commands";
 import { Refusal } from "../cases/refusal";
 import { applyMove, type MoveError, moveRefusal } from "../cases/transitions";
-import { canSeeOffice } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE } from "../permissions";
 
 export type ReleaseCommandError =
   | "notFound"
@@ -67,12 +67,12 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
         dsOfficeId: true,
         version: true,
         verifiedAt: true,
-        dsOffice: { select: { districtId: true } },
+        dsOffice: OFFICE_PLACE,
       },
     }),
   ]);
   const elsewhere = (c: (typeof found)[number]) =>
-    !canSeeOffice(actor, c.dsOfficeId) || c.dsOffice.districtId !== input.districtId;
+    !canSeeOffice(actor, c.dsOffice) || c.dsOffice.districtId !== input.districtId;
   if (!district || found.length !== ids.length || found.some(elsewhere)) return refused("notFound");
   for (const c of found) {
     const refusal = moveRefusal(actor.role, "release", c.status);
@@ -189,6 +189,7 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
     select: {
       id: true,
       dsOfficeId: true,
+      dsOffice: OFFICE_PLACE,
       version: true,
       release: {
         select: {
@@ -217,7 +218,7 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
       },
     },
   });
-  if (!found || !canSeeOffice(actor, found.dsOfficeId)) return refused("notFound");
+  if (!found || !canSeeOffice(actor, found.dsOffice)) return refused("notFound");
   if (actor.role !== "HO_OFFICER") return refused("roleNotAllowed");
   const current = found.release?.letter;
   if (!current) return refused("noRelease");

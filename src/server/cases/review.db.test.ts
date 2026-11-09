@@ -20,7 +20,14 @@ const db = createTestClient();
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
-const admin: Actor = { userId: "review-test-admin", role: "ADMIN", dsOfficeId: null };
+const admin: Actor = {
+  userId: "review-test-admin",
+  role: "ADMIN",
+  designation: null,
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 
 /** A complete, made-up case (SEC-11). Each test gives its own NIC so tests don't match each other. */
 const values = (nic: string, overrides: Partial<CaseValues> = {}): CaseValues => ({
@@ -110,7 +117,7 @@ async function officer(id: string): Promise<Actor> {
       dsOfficeId,
     },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 beforeAll(async () => {
@@ -126,7 +133,14 @@ beforeAll(async () => {
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
-  ho = { userId: "review-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "review-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "review-test-admin@no-email.invalid", role: "ADMIN" },
   });
@@ -529,7 +543,14 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     const scan = await uploadLetterScan(db, ho, pdf);
     if (!scan.ok) throw new Error(scan.error);
     // Someone else's upload can't be attached.
-    const other: Actor = { userId: "review-test-ho-2", role: "HO_OFFICER", dsOfficeId: null };
+    const other: Actor = {
+      userId: "review-test-ho-2",
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+      districtId: null,
+      provinceId: null,
+      dsOfficeId: null,
+    };
     await db.user.create({
       data: {
         id: other.userId,

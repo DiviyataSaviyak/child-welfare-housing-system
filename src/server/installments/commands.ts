@@ -15,7 +15,7 @@ import { claimCase } from "../cases/claim";
 import type { Actor } from "../cases/commands";
 import { completeIfDone } from "../cases/complete";
 import { Refusal } from "../cases/refusal";
-import { canSeeOffice } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE } from "../permissions";
 import { lastPaid, previousPaidOn, type StepRefusal, stepRefusal } from "./rules";
 
 export type InstallmentError =
@@ -53,6 +53,7 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       id: true,
       status: true,
       dsOfficeId: true,
+      dsOffice: OFFICE_PLACE,
       version: true,
       kind: true,
       release: { select: { releasedOn: true } },
@@ -62,7 +63,7 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       },
     },
   });
-  if (!found || !canSeeOffice(actor, found.dsOfficeId)) return null;
+  if (!found || !canSeeOffice(actor, found.dsOffice)) return null;
   return {
     ...found,
     releasedOn: found.release && dateToDay(found.release.releasedOn),

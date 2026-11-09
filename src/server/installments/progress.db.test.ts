@@ -29,7 +29,14 @@ const db = createTestClient();
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
-const admin: Actor = { userId: "progress-test-admin", role: "ADMIN", dsOfficeId: null };
+const admin: Actor = {
+  userId: "progress-test-admin",
+  role: "ADMIN",
+  designation: null,
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 
 const today = () => colomboDay(new Date());
 const daysAgo = (days: number) => addDays(today(), -days);
@@ -152,7 +159,7 @@ async function officer(id: string): Promise<Actor> {
       dsOfficeId,
     },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 /** A made-up phone photo with a GPS position in its metadata (AC-16). */
@@ -179,7 +186,14 @@ beforeAll(async () => {
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
-  ho = { userId: "progress-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "progress-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "progress-test-admin@no-email.invalid", role: "ADMIN" },
   });

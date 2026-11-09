@@ -43,6 +43,11 @@ export function mustStayComplete(status: CaseStatus): boolean {
   return AFTER_CHECK.includes(status);
 }
 
+/** Who may start a case or save a case form at all; every other account only looks (PRM-5). */
+export function canEnterCases(role: Role): boolean {
+  return role === "DS_OFFICER" || role === "HO_OFFICER";
+}
+
 /** A draft can be deleted (CASE-8), by its office or by Head Office, who may also start drafts. */
 export function canDeleteDraft(role: Role, status: CaseStatus): boolean {
   return (role === "DS_OFFICER" || role === "HO_OFFICER") && status === "DRAFT";

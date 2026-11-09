@@ -16,7 +16,11 @@ export type Context = {
   sessionId: string;
   name: string;
   role: Role;
+  /** A code from src/server/auth/designations.ts; null for an admin. */
+  designation: string | null;
   dsOfficeId: number | null;
+  districtId: number | null;
+  provinceId: number | null;
   /** In the screen's language (UI-9). */
   dsOfficeName: string | null;
   mustChangePassword: boolean;
@@ -43,7 +47,10 @@ export const getContext = cache(async (): Promise<Context | null> => {
           name: true,
           role: true,
           banned: true,
+          designation: true,
           dsOfficeId: true,
+          districtId: true,
+          provinceId: true,
           mustChangePassword: true,
           dsOffice: { select: NAMES },
         },
@@ -72,7 +79,10 @@ export const getContext = cache(async (): Promise<Context | null> => {
     sessionId: row.id,
     name: row.user.name,
     role: row.user.role,
+    designation: row.user.designation,
     dsOfficeId: row.user.dsOfficeId,
+    districtId: row.user.districtId,
+    provinceId: row.user.provinceId,
     dsOfficeName: row.user.dsOffice ? localName(row.user.dsOffice, await getLocale()) : null,
     mustChangePassword: row.user.mustChangePassword,
   };

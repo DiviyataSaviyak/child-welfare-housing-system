@@ -2,7 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
 import { isRole, type Role } from "../auth/roles";
-import { canSeeOffice, type Viewer } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE, type Viewer } from "../permissions";
 
 export type HistoryEntry = {
   id: string;
@@ -73,8 +73,8 @@ export async function caseHistory(
   caseId: string,
   locale: Locale,
 ): Promise<HistoryEntry[] | null> {
-  const found = await db.case.findUnique({ where: { id: caseId }, select: { dsOfficeId: true } });
-  if (!found || !canSeeOffice(viewer, found.dsOfficeId)) return null;
+  const found = await db.case.findUnique({ where: { id: caseId }, select: { dsOffice: OFFICE_PLACE } });
+  if (!found || !canSeeOffice(viewer, found.dsOffice)) return null;
 
   const rows = await db.auditLog.findMany({
     where: { caseId },

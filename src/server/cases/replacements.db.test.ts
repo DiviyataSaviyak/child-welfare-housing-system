@@ -84,7 +84,7 @@ async function officer(id: string): Promise<Actor> {
       dsOfficeId,
     },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 beforeAll(async () => {
@@ -100,7 +100,14 @@ beforeAll(async () => {
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
-  ho = { userId: "replace-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "replace-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
 });
 
 afterAll(async () => {

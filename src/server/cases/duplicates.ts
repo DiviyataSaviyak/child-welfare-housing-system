@@ -38,7 +38,8 @@ export async function findNicMatches(
 ): Promise<NicMatch[]> {
   const scope = caseScope(viewer);
   const key = nicKey(input.nic);
-  if (scope.kind === "none" || !key) return [];
+  // The warning is for the case form, which only an office's officers and Head Office open.
+  if ((scope.kind !== "office" && scope.kind !== "all") || !key) return [];
 
   const ownOffice = scope.kind === "office" ? scope.dsOfficeId : input.dsOfficeId;
   const rows = await db.case.findMany({

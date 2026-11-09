@@ -76,7 +76,13 @@ describe("demo data", { timeout: 120_000 }, () => {
       new Set(["DRAFT", "SUBMITTED", "RETURNED", "VERIFIED", "IN_PROGRESS", "COMPLETED", "REJECTED", "STOPPED"]),
     );
 
-    const viewer = { role: "HO_OFFICER", dsOfficeId: null } as const;
+    const viewer = {
+      role: "HO_OFFICER",
+      designation: "MINISTRY_PROGRAMME_OFFICER",
+      districtId: null,
+      provinceId: null,
+      dsOfficeId: null,
+    } as const;
     // Other test files add Head Office officers too, and each case takes one of them at random.
     const headOffice = new Set(
       (await db.user.findMany({ where: { role: "HO_OFFICER", banned: false }, select: { id: true } })).map((u) => u.id),

@@ -5,7 +5,7 @@ import { addDays, colomboDay, colomboStartOf, dateToDay, dayToDate, daysBetween 
 import { localName, NAMES } from "@/lib/names";
 import { nicKey, normaliseNic } from "@/lib/nic";
 import { latestDay } from "@/lib/validation/release";
-import { canSeeOffice, officeFilter, type Viewer } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE, officeFilter, type Viewer } from "../permissions";
 import { openRequests, REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
 
 export type CaseDetails = {
@@ -131,12 +131,20 @@ export async function getCase(
       completedAt: true,
       statusBeforeStop: true,
       anotherNameRequested: true,
-      replaces: { select: REQUEST_SELECT },
+      replaces: { select: { ...REQUEST_SELECT, dsOffice: OFFICE_PLACE } },
       replacedBy: {
-        select: { id: true, caseNumber: true, name: true, childName: true, status: true, dsOfficeId: true },
+        select: { id: true, caseNumber: true, name: true, childName: true, status: true, dsOffice: OFFICE_PLACE },
       },
       updatedAt: true,
-      dsOffice: { select: { ...NAMES, active: true, district: { select: { id: true, ...NAMES } } } },
+      dsOffice: {
+        select: {
+          id: true,
+          districtId: true,
+          ...NAMES,
+          active: true,
+          district: { select: { id: true, provinceId: true, ...NAMES } },
+        },
+      },
       files: {
         where: { kind: "DOCUMENT", removedAt: null },
         orderBy: { uploadedAt: "asc" },
@@ -182,7 +190,7 @@ export async function getCase(
       },
     },
   });
-  if (!found || !canSeeOffice(viewer, found.dsOfficeId)) return null;
+  if (!found || !canSeeOffice(viewer, found.dsOffice)) return null;
   const { dsOffice, files, decisions, release, installments, statusBeforeStop, replaces, replacedBy, ...fields } =
     found;
   const latest = decisions[0];
@@ -204,9 +212,9 @@ export async function getCase(
           }
         : null,
     // Both cases are always of one office (CASE-11); the check keeps it that way for the viewer.
-    replaces: replaces && canSeeOffice(viewer, replaces.dsOfficeId) ? toRequest(replaces) : null,
+    replaces: replaces && canSeeOffice(viewer, replaces.dsOffice) ? toRequest(replaces) : null,
     replacedBy:
-      replacedBy && canSeeOffice(viewer, replacedBy.dsOfficeId)
+      replacedBy && canSeeOffice(viewer, replacedBy.dsOffice)
         ? {
             id: replacedBy.id,
             caseNumber: replacedBy.caseNumber,

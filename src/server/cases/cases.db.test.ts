@@ -23,7 +23,14 @@ const PDF = new TextEncoder().encode("%PDF-1.7\n% a made-up document\n");
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
-const admin: Actor = { userId: "cases-test-admin", role: "ADMIN", dsOfficeId: null };
+const admin: Actor = {
+  userId: "cases-test-admin",
+  role: "ADMIN",
+  designation: null,
+  districtId: null,
+  provinceId: null,
+  dsOfficeId: null,
+};
 let codeA: string;
 let inactiveOfficeId: number;
 
@@ -78,7 +85,7 @@ async function officer(id: string): Promise<Actor> {
       dsOfficeId,
     },
   });
-  return { userId: id, role: "DS_OFFICER", dsOfficeId };
+  return { userId: id, role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId };
 }
 
 beforeAll(async () => {
@@ -94,7 +101,14 @@ beforeAll(async () => {
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
-  ho = { userId: "cases-test-ho", role: "HO_OFFICER", dsOfficeId: null };
+  ho = {
+    userId: "cases-test-ho",
+    role: "HO_OFFICER",
+    designation: "MINISTRY_PROGRAMME_OFFICER",
+    districtId: null,
+    provinceId: null,
+    dsOfficeId: null,
+  };
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "cases-test-admin@no-email.invalid", role: "ADMIN" },
   });

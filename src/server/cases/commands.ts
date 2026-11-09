@@ -7,11 +7,18 @@ import { CASE_FIELDS, type CaseValues, missingRequired } from "@/lib/validation/
 import { writeAudit } from "../audit";
 import { deleteStoredFile } from "../files/storage";
 import { logError } from "../log";
-import { canSeeOffice, caseScope, type Viewer } from "../permissions";
+import { canSeeOffice, caseScope, OFFICE_PLACE, type Viewer } from "../permissions";
 import { nextCaseNumber } from "./numbers";
 import { isUniqueViolation, Refusal } from "./refusal";
 import { CLOSED, replacementRefusal } from "./replacements";
-import { canChangeOffice, canDeleteDraft, canEditDetails, editableStatuses, mustStayComplete } from "./rules";
+import {
+  canChangeOffice,
+  canDeleteDraft,
+  canEditDetails,
+  canEnterCases,
+  editableStatuses,
+  mustStayComplete,
+} from "./rules";
 import { applyMove, moveRefusal } from "./transitions";
 
 /** The signed-in user making a change. */
@@ -71,6 +78,7 @@ export type SavedCase = { id: string; caseNumber: string | null; status: CaseSta
 const CASE_SELECT = {
   id: true,
   dsOfficeId: true,
+  dsOffice: OFFICE_PLACE,
   status: true,
   caseNumber: true,
   version: true,
@@ -96,13 +104,14 @@ type StoredCase = Prisma.CaseGetPayload<{ select: typeof CASE_SELECT }>;
  */
 export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseInput): Promise<Result<SavedCase>> {
   const scope = caseScope(actor);
-  if (scope.kind === "none") return { ok: false, error: "notFound" };
+  // Only an office's officers and Head Office enter cases; any other account changes nothing (PRM-5).
+  if (scope.kind === "none" || !canEnterCases(actor.role)) return { ok: false, error: "notFound" };
   if (input.submit && Object.keys(missingRequired(input.values)).length > 0) return { ok: false, error: "incomplete" };
 
   // A first submit in a new year can meet another one at the counter; one try again is enough.
   for (let attempt = 1; ; attempt += 1) {
     const current = await db.case.findUnique({ where: { id: input.id }, select: CASE_SELECT });
-    if (current && !canSeeOffice(actor, current.dsOfficeId)) return { ok: false, error: "notFound" };
+    if (current && !canSeeOffice(actor, current.dsOffice)) return { ok: false, error: "notFound" };
     if (!current && input.version !== null) return { ok: false, error: "notFound" };
     // ERR-8: the same new-case form arrived twice. The first one saved the case; this one changes nothing.
     if (current && input.version === null) {
@@ -292,8 +301,11 @@ async function attachDocuments(
 
 /** Finds a case the actor may see, or nothing (PRM-1). */
 async function findVisible(db: PrismaClient, actor: Actor, id: string) {
-  const found = await db.case.findUnique({ where: { id }, select: { id: true, dsOfficeId: true, status: true } });
-  return found && canSeeOffice(actor, found.dsOfficeId) ? found : null;
+  const found = await db.case.findUnique({
+    where: { id },
+    select: { id: true, dsOfficeId: true, dsOffice: OFFICE_PLACE, status: true },
+  });
+  return found && canSeeOffice(actor, found.dsOffice) ? found : null;
 }
 
 /**

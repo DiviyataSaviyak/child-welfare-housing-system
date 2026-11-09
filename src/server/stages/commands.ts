@@ -8,7 +8,7 @@ import { claimCase } from "../cases/claim";
 import type { Actor } from "../cases/commands";
 import { completeIfDone } from "../cases/complete";
 import { Refusal } from "../cases/refusal";
-import { canSeeOffice } from "../permissions";
+import { canSeeOffice, OFFICE_PLACE } from "../permissions";
 import { getStageProgress } from "./queries";
 
 export type StageError =
@@ -51,12 +51,13 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
       id: true,
       status: true,
       dsOfficeId: true,
+      dsOffice: OFFICE_PLACE,
       version: true,
       kind: true,
       release: { select: { releasedOn: true } },
     },
   });
-  if (!found || !canSeeOffice(actor, found.dsOfficeId)) return refused("notFound");
+  if (!found || !canSeeOffice(actor, found.dsOffice)) return refused("notFound");
   if (actor.role !== "DS_OFFICER") return refused("roleNotAllowed");
   if (found.status !== "IN_PROGRESS" || !found.release) return refused("caseNotRunning");
 

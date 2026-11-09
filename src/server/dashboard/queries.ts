@@ -70,11 +70,11 @@ export async function dashboard(
   if (!scope) return { totals: noFigures(), byOffice: new Map(), stale: { total: 0, cases: [] } };
 
   const where: Prisma.CaseWhereInput = {
-    ...scope,
+    // AND, not a spread: a chosen district must narrow the viewer's area, never replace it.
+    AND: [scope, filter.districtId ? { dsOffice: { districtId: filter.districtId } } : {}],
     status: { not: "DRAFT" },
     ...(filter.category && { category: filter.category }),
     ...(filter.kind && { kind: filter.kind }),
-    ...(filter.districtId && { dsOffice: { districtId: filter.districtId } }),
   };
   const staleWhere: Prisma.CaseWhereInput = { ...where, status: "IN_PROGRESS", updatedAt: { lt: staleBefore(now) } };
 
