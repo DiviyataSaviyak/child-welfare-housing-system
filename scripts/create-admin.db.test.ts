@@ -19,7 +19,16 @@ describe("the first admin account (task 9.2)", () => {
     const { username, temporaryPassword } = result.credentials;
     expect(username).toMatch(/^ad\d{4}$/);
     const user = await db.user.findUniqueOrThrow({ where: { username } });
-    expect(user).toMatchObject({ role: "ADMIN", dsOfficeId: null, banned: false, mustChangePassword: true });
+    // An admin has no designation and no place: --designation is still accepted, and ignored (ADM-8).
+    expect(user).toMatchObject({
+      role: "ADMIN",
+      designation: null,
+      dsOfficeId: null,
+      districtId: null,
+      provinceId: null,
+      banned: false,
+      mustChangePassword: true,
+    });
 
     const account = await db.account.findFirstOrThrow({ where: { userId: user.id, providerId: "credential" } });
     expect(await verifyPassword({ hash: account.password ?? "", password: temporaryPassword })).toBe(true);

@@ -21,9 +21,13 @@ export const SAMPLE_TEMPORARY_PASSWORD = "Temp-Pass-2026";
 
 type SampleUser = {
   username: string;
+  /** Empty for an account with no name (ADM-10). */
   name: string;
   designation: Designation | null;
+  /** The account's one place, by the DS office's code or the district's or province's English name. */
   officeCode?: string;
+  district?: string;
+  province?: string;
   temporary?: boolean;
 };
 
@@ -37,6 +41,16 @@ export const SAMPLE_USERS: SampleUser[] = [
   { username: "ds0199", name: "ටී. ඒකනායක", designation: "DS_CRPO", officeCode: "KSB" },
   { username: "ho0001", name: "එස්. ජයසිංහ", designation: "MINISTRY_PROGRAMME_OFFICER" },
   { username: "ad0001", name: "ආර්. සිල්වා", designation: null },
+  // The accounts that only view (PRM-4, PRM-5), one for each kind of area, where the demo data has cases
+  // (scripts/seed-demo.ts). They start at 0101 so they don't meet the accounts an admin adds from 0001.
+  // The DS accountant has no name, as the form allows (ADM-10). None is in Matale, whose nameless
+  // accounts the end-to-end clean-up deletes.
+  { username: "ds0104", name: "", designation: "DS_ACCOUNTANT", officeCode: "KDW" },
+  { username: "dt0101", name: "කේ. බණ්ඩාර", designation: "DISTRICT_SECRETARY", district: "Colombo" },
+  { username: "dt0102", name: "එම්. රත්නායක", designation: "DISTRICT_CRPO", district: "Kandy" },
+  { username: "pv0101", name: "ජී. දිසානායක", designation: "PROVINCE_COMMISSIONER", province: "Western" },
+  { username: "pd0101", name: "යූ. කුමාරි", designation: "DEPARTMENT_COMMISSIONER" },
+  { username: "ho0101", name: "පී. අබේසේකර", designation: "MINISTRY_SECRETARY" },
 ];
 
 export function sampleUsersAllowed(): boolean {
@@ -47,9 +61,14 @@ export async function putSampleUsers(prisma: PrismaClient, { reset }: { reset: b
   if (!sampleUsersAllowed())
     throw new Error(`Sample accounts are not allowed when APP_ENV is "${process.env.APP_ENV}".`);
 
-  const offices = new Map(
-    (await prisma.dsOffice.findMany({ select: { id: true, code: true } })).map((o) => [o.code, o.id]),
-  );
+  const byName = (rows: { id: number; nameEn: string }[]) => new Map(rows.map((row) => [row.nameEn, row.id]));
+  const [offices, districts, provinces] = await Promise.all([
+    prisma.dsOffice
+      .findMany({ select: { id: true, code: true } })
+      .then((rows) => new Map(rows.map((o) => [o.code, o.id]))),
+    prisma.district.findMany({ select: { id: true, nameEn: true } }).then(byName),
+    prisma.province.findMany({ select: { id: true, nameEn: true } }).then(byName),
+  ]);
   const now = new Date();
   let written = 0;
 
@@ -58,7 +77,10 @@ export async function putSampleUsers(prisma: PrismaClient, { reset }: { reset: b
     if (!reset && (await prisma.user.findUnique({ where: { id }, select: { id: true } }))) continue;
 
     const dsOfficeId = sample.officeCode ? offices.get(sample.officeCode) : null;
-    if (dsOfficeId === undefined) throw new Error(`DS office ${sample.officeCode} is missing: run the seed first.`);
+    const districtId = sample.district ? districts.get(sample.district) : null;
+    const provinceId = sample.province ? provinces.get(sample.province) : null;
+    if (dsOfficeId === undefined || districtId === undefined || provinceId === undefined)
+      throw new Error(`The place of ${sample.username} is missing: run the seed first.`);
 
     const fields = {
       name: sample.name,
@@ -69,6 +91,8 @@ export async function putSampleUsers(prisma: PrismaClient, { reset }: { reset: b
       designation: sample.designation,
       banned: false,
       dsOfficeId,
+      districtId,
+      provinceId,
       mustChangePassword: Boolean(sample.temporary),
       temporaryPasswordSetAt: sample.temporary ? now : null,
       failedSignIns: 0,
