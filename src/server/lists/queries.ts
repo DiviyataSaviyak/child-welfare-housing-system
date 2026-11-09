@@ -23,7 +23,7 @@ export type OfficeRow = Names & {
   id: number;
   code: string;
   active: boolean;
-  /** The names of the office's active DS officers (ADM-3); empty if it still needs one. */
+  /** The names of the office's active Child Rights Promotion Officers (ADM-3); empty if it still needs one. */
   officers: string[];
 };
 
@@ -45,7 +45,7 @@ export async function officesOfDistrict(
           ...NAMES,
           code: true,
           active: true,
-          users: { where: { role: "DS_OFFICER", banned: false }, orderBy: { name: "asc" }, select: { name: true } },
+          users: { where: { designation: "DS_CRPO", banned: false }, orderBy: { name: "asc" }, select: { name: true } },
         },
       },
     },

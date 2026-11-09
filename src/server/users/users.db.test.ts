@@ -16,6 +16,25 @@ const officer = (dsOfficeId: number | null): AccountInput => ({
   contactEmail: null,
   role: "DS_OFFICER",
   dsOfficeId,
+  districtId: null,
+  provinceId: null,
+});
+
+/** An account of another office type, with only what the form requires: no name, mobile or email (ADM-2). */
+const nameless = (
+  designation: AccountInput["designation"],
+  role: AccountInput["role"],
+  place: Partial<Pick<AccountInput, "dsOfficeId" | "districtId" | "provinceId">> = {},
+): AccountInput => ({
+  name: "",
+  mobile: null,
+  contactEmail: null,
+  designation,
+  role,
+  dsOfficeId: null,
+  districtId: null,
+  provinceId: null,
+  ...place,
 });
 
 const headOfficeOfficer: AccountInput = {
@@ -64,6 +83,69 @@ describe("creating an account (ADM-2)", () => {
     const first = await newOfficer();
     const second = await newOfficer();
     expect(Number(second.credentials.username.slice(2))).toBe(Number(first.credentials.username.slice(2)) + 1);
+  });
+
+  it("makes a District Secretariat account with no name, mobile or email (AC-37)", async () => {
+    const district = await db.district.findFirstOrThrow({ orderBy: { id: "asc" } });
+    const created = await createAccount(
+      db,
+      ADMIN,
+      nameless("DISTRICT_CHIEF_ACCOUNTANT", "VIEWER", { districtId: district.id }),
+    );
+    if (!created.ok) throw new Error(created.error);
+    expect(created.value.username).toMatch(/^dt\d{4}$/);
+    expect(await db.user.findUniqueOrThrow({ where: { username: created.value.username } })).toMatchObject({
+      name: "",
+      mobile: null,
+      contactEmail: null,
+      role: "VIEWER",
+      designation: "DISTRICT_CHIEF_ACCOUNTANT",
+      dsOfficeId: null,
+      districtId: district.id,
+      provinceId: null,
+      mustChangePassword: true,
+    });
+  });
+
+  it("gives each office type its own prefix and place", async () => {
+    const province = await db.province.findFirstOrThrow({ orderBy: { id: "asc" } });
+    const commissioner = await createAccount(
+      db,
+      ADMIN,
+      nameless("PROVINCE_COMMISSIONER", "VIEWER", { provinceId: province.id }),
+    );
+    const department = await createAccount(db, ADMIN, nameless("DEPARTMENT_COMMISSIONER", "VIEWER"));
+    const secretary = await createAccount(db, ADMIN, nameless("MINISTRY_SECRETARY", "VIEWER"));
+    const usernames = [commissioner, department, secretary].map((m) => (m.ok ? m.value.username : ""));
+    expect(usernames.map((u) => u.slice(0, 2))).toEqual(["pv", "pd", "ho"]);
+    expect(await db.user.findUniqueOrThrow({ where: { username: usernames[0] } })).toMatchObject({
+      provinceId: province.id,
+      districtId: null,
+      dsOfficeId: null,
+    });
+  });
+
+  it("puts no cap on how many hold a designation (AC-39)", async () => {
+    const officers = () => db.user.count({ where: { designation: "MINISTRY_PROGRAMME_OFFICER", banned: false } });
+    const admins = () => db.user.count({ where: { role: "ADMIN", banned: false } });
+    const [officersBefore, adminsBefore] = [await officers(), await admins()];
+    for (let i = 0; i < 3; i += 1) {
+      expect((await createAccount(db, ADMIN, nameless("MINISTRY_PROGRAMME_OFFICER", "HO_OFFICER"))).ok).toBe(true);
+      expect((await createAccount(db, ADMIN, nameless(null, "ADMIN"))).ok).toBe(true);
+    }
+    expect(await officers()).toBe(officersBefore + 3);
+    expect(await admins()).toBe(adminsBefore + 3);
+  });
+
+  it("refuses a district or province that doesn't exist", async () => {
+    const district = await createAccount(db, ADMIN, nameless("DISTRICT_SECRETARY", "VIEWER", { districtId: 999_999 }));
+    expect(district).toEqual({ ok: false, error: "officeUnavailable" });
+    const province = await createAccount(
+      db,
+      ADMIN,
+      nameless("PROVINCE_COMMISSIONER", "VIEWER", { provinceId: 999_999 }),
+    );
+    expect(province).toEqual({ ok: false, error: "officeUnavailable" });
   });
 
   it("refuses an inactive office (LST-3)", async () => {
@@ -123,6 +205,31 @@ describe("changing an account (ADM-4)", () => {
       actorName: "පරිපාලක",
       before: { dsOfficeId: from },
       after: { dsOfficeId: to },
+    });
+  });
+
+  it("changes the office type, designation and place, and records both sides (ADM-4)", async () => {
+    const { user, dsOfficeId } = await newOfficer();
+    const office = await db.dsOffice.findUniqueOrThrow({ where: { id: dsOfficeId } });
+    const input: AccountInput = {
+      ...officer(null),
+      designation: "DISTRICT_SECRETARY",
+      role: "VIEWER",
+      districtId: office.districtId,
+    };
+
+    const result = await updateAccount(db, ADMIN, user.id, input);
+    expect(result).toEqual({ ok: true, value: { changed: ["designation", "role", "dsOfficeId", "districtId"] } });
+    expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+      role: "VIEWER",
+      designation: "DISTRICT_SECRETARY",
+      dsOfficeId: null,
+      districtId: office.districtId,
+    });
+    const [latest] = await accountHistory(db, user.id);
+    expect(latest).toMatchObject({
+      before: { designation: "DS_CRPO", role: "DS_OFFICER", dsOfficeId, districtId: null },
+      after: { designation: "DISTRICT_SECRETARY", role: "VIEWER", dsOfficeId: null, districtId: office.districtId },
     });
   });
 
@@ -226,7 +333,7 @@ describe("disabling an account (ADM-6)", () => {
 
   it("won't let an admin disable themselves, or the last active admin", async () => {
     expect(await setAccountDisabled(db, ADMIN, ADMIN, true)).toEqual({ ok: false, error: "self" });
-    const otherAdmin = await createAccount(db, ADMIN, { ...officer(null), role: "ADMIN", designation: null });
+    const otherAdmin = await createAccount(db, ADMIN, nameless(null, "ADMIN"));
     if (!otherAdmin.ok) throw new Error(otherAdmin.error);
     const other = await db.user.findUniqueOrThrow({ where: { username: otherAdmin.value.username } });
 
@@ -243,13 +350,41 @@ describe("disabling an account (ADM-6)", () => {
 });
 
 describe("the account list (ADM-1)", () => {
-  it("finds accounts by office name and filters by role", async () => {
+  it("finds accounts by office name and filters by office type", async () => {
     const { user, dsOfficeId } = await newOfficer();
     const office = await db.dsOffice.findUniqueOrThrow({ where: { id: dsOfficeId } });
 
-    const found = await listAccounts(db, { q: office.nameSi, role: "DS_OFFICER" }, "si");
+    const found = await listAccounts(db, { q: office.nameSi, officeType: "DS" }, "si");
     expect(found.map((row) => row.id)).toContain(user.id);
-    expect(found.every((row) => row.role === "DS_OFFICER")).toBe(true);
-    expect(await listAccounts(db, { role: "HO_OFFICER", q: office.nameSi }, "si")).toEqual([]);
+    expect(found.every((row) => row.officeType === "DS")).toBe(true);
+    expect(found.find((row) => row.id === user.id)).toMatchObject({
+      designation: "DS_CRPO",
+      place: { kind: "dsOffice", office: office.nameSi },
+    });
+    expect(await listAccounts(db, { officeType: "MINISTRY", q: office.nameSi }, "si")).toEqual([]);
+  });
+
+  it("finds a District or Provincial account by its place, in any language", async () => {
+    const district = await db.district.findFirstOrThrow({ orderBy: { id: "desc" } });
+    const province = await db.province.findFirstOrThrow({ orderBy: { id: "desc" } });
+    const made = await Promise.all([
+      createAccount(db, ADMIN, nameless("DISTRICT_CRPO", "DISTRICT_OFFICER", { districtId: district.id })),
+      createAccount(db, ADMIN, nameless("PROVINCE_PROBATION_OFFICER", "VIEWER", { provinceId: province.id })),
+    ]);
+    const [districtUser, provinceUser] = made.map((m) => (m.ok ? m.value.username : ""));
+
+    const byDistrict = await listAccounts(db, { q: district.nameEn.toLowerCase(), officeType: "DISTRICT" }, "ta");
+    expect(byDistrict.find((row) => row.username === districtUser)).toMatchObject({
+      officeType: "DISTRICT",
+      role: "DISTRICT_OFFICER",
+      place: { kind: "district", district: district.nameTa },
+    });
+    const byProvince = await listAccounts(db, { q: province.nameSi, officeType: "PROVINCE" }, "en");
+    expect(byProvince.find((row) => row.username === provinceUser)).toMatchObject({
+      place: { kind: "province", province: province.nameEn },
+    });
+    const admins = await listAccounts(db, { officeType: "ADMINISTRATOR" }, "si");
+    expect(admins.length).toBeGreaterThan(0);
+    expect(admins.every((row) => row.role === "ADMIN" && row.designation === null && row.place === null)).toBe(true);
   });
 });

@@ -35,11 +35,13 @@ export async function createAdmin(
 
   const parsed = accountSchema.safeParse({
     name: details.name,
-    designation: details.designation ?? "",
+    officeType: "ADMINISTRATOR",
+    designation: "",
     mobile: details.mobile,
     contactEmail: details.email ?? "",
-    role: "ADMIN",
     dsOfficeId: "",
+    districtId: "",
+    provinceId: "",
   });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { type AccountErrors, parseAccountForm } from "@/lib/validation/user";
+import type { Designation } from "@/server/auth/designations";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import {
   type AccountCommandError,
   type Credentials,
   createAccount,
+  PLACE_FIELDS,
   resetPassword,
   setAccountDisabled,
   updateAccount,
@@ -18,7 +20,7 @@ export type AccountFormState = {
   errors: AccountErrors;
   error: AccountCommandError | null;
   /** Set once, after a successful create: shown to the admin a single time (AUTH-6). */
-  created: (Credentials & { name: string }) | null;
+  created: (Credentials & { name: string; designation: Designation | null }) | null;
 };
 
 const read = (form: FormData) => (field: string) => {
@@ -35,7 +37,11 @@ export async function createAccountAction(_previous: AccountFormState, form: For
   if (!result.ok) return { errors: {}, error: result.error, created: null };
 
   revalidatePath("/admin/users");
-  return { errors: {}, error: null, created: { ...result.value, name: parsed.value.name } };
+  return {
+    errors: {},
+    error: null,
+    created: { ...result.value, name: parsed.value.name, designation: parsed.value.designation },
+  };
 }
 
 export async function updateAccountAction(
@@ -51,7 +57,8 @@ export async function updateAccountAction(
   if (!result.ok) return { errors: {}, error: result.error, created: null };
 
   revalidatePath("/admin/users");
-  redirect(`/admin/users?notice=${result.value.changed.includes("dsOfficeId") ? "transferred" : "saved"}`);
+  const moved = PLACE_FIELDS.some((field) => result.value.changed.includes(field));
+  redirect(`/admin/users?notice=${moved ? "transferred" : "saved"}`);
 }
 
 export type ResetState = { error: AccountCommandError | null; credentials: Credentials | null };

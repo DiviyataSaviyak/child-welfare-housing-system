@@ -1,23 +1,39 @@
 import { z } from "zod";
 import { isValidPhone, normalisePhone } from "@/lib/phone";
-import type { Designation } from "@/server/auth/designations";
+import {
+  type Designation,
+  designationsOf,
+  isDesignation,
+  OFFICE_TYPES,
+  type OfficeType,
+  placeOf,
+  roleOf,
+} from "@/server/auth/designations";
+import type { Role } from "@/server/auth/roles";
 
 /**
- * The account form (ADM-2, ADM-4), checked the same way in the browser and in the Server Action.
+ * The account form (ADM-2, ADM-4, ADM-8), checked the same way in the browser and in the Server Action.
  * Error messages are keys under "users.form.errors" in messages/si.json.
  */
-/**
- * The roles the form offers until it asks for an office type and a designation (change 0005), each
- * with the designation it gives. The database refuses free text and any other pair.
- */
-export const FORM_ROLES = ["DS_OFFICER", "HO_OFFICER", "ADMIN"] as const;
-const FORM_DESIGNATION: Record<(typeof FORM_ROLES)[number], Designation | null> = {
-  DS_OFFICER: "DS_CRPO",
-  HO_OFFICER: "MINISTRY_PROGRAMME_OFFICER",
-  ADMIN: null,
-};
 
-export type AccountErrorKey = "required" | "tooShort" | "tooLong" | "mobile" | "email" | "role" | "office";
+export type AccountErrorKey =
+  | "required"
+  | "tooShort"
+  | "tooLong"
+  | "mobile"
+  | "email"
+  | "officeType"
+  | "designation"
+  | "office"
+  | "district"
+  | "province";
+
+const contactEmail = z
+  .string()
+  .trim()
+  .max(254, { error: "tooLong" })
+  .refine((value) => value === "" || z.email().safeParse(value).success, { error: "email" })
+  .transform((value) => value || null);
 
 /** The details an officer may change on their own profile page too. */
 const personFields = {
@@ -26,40 +42,107 @@ const personFields = {
     .string()
     .transform(normalisePhone)
     .pipe(z.string().min(1, { error: "required" }).refine(isValidPhone, { error: "mobile" })),
-  contactEmail: z
+  contactEmail,
+};
+
+/** ADM-2: on the account form the name, mobile and email may all be left empty. An empty name is stored as "". */
+const optionalPersonFields = {
+  name: z
     .string()
     .trim()
-    .max(254, { error: "tooLong" })
-    .refine((value) => value === "" || z.email().safeParse(value).success, { error: "email" })
+    .refine((value) => value === "" || value.length >= 2, { error: "tooShort" })
+    .refine((value) => value.length <= 100, { error: "tooLong" }),
+  mobile: z
+    .string()
+    .transform(normalisePhone)
+    .refine((value) => value === "" || isValidPhone(value), { error: "mobile" })
     .transform((value) => value || null),
+  contactEmail,
 };
+
+const id = z
+  .string()
+  .transform((value) => (value === "" ? null : Number(value)))
+  .refine((value) => value === null || (Number.isInteger(value) && value > 0));
+
+const PLACE_ERROR = { dsOffice: "office", district: "district", province: "province" } as const;
+const PLACE_FIELD = { dsOffice: "dsOfficeId", district: "districtId", province: "provinceId" } as const;
+
+export type AccountInput = {
+  name: string;
+  mobile: string | null;
+  contactEmail: string | null;
+  /** Null for an administrator. */
+  designation: Designation | null;
+  /** Always the designation's role (ADM-8); the form never sends one. */
+  role: Role;
+  /** Exactly the one place the office type belongs to; the others are null. */
+  dsOfficeId: number | null;
+  districtId: number | null;
+  provinceId: number | null;
+};
+
+const designationOf = (officeType: OfficeType, value: string): Designation | null =>
+  isDesignation(value) && designationsOf(officeType).includes(value) ? value : null;
 
 export const accountSchema = z
   .object({
-    ...personFields,
-    role: z.enum(FORM_ROLES, { error: "role" }),
-    dsOfficeId: z
-      .string()
-      .transform((value) => (value === "" ? null : Number(value)))
-      .refine((value) => value === null || (Number.isInteger(value) && value > 0), { error: "office" }),
+    ...optionalPersonFields,
+    officeType: z.enum(OFFICE_TYPES, { error: "officeType" }),
+    designation: z.string(),
+    dsOfficeId: id,
+    districtId: id,
+    provinceId: id,
   })
   .superRefine((value, context) => {
-    if (value.role === "DS_OFFICER" && value.dsOfficeId === null) {
-      context.addIssue({ code: "custom", path: ["dsOfficeId"], message: "office" });
+    // ADM-8: a designation of another office type is refused; an administrator has none.
+    if (value.officeType !== "ADMINISTRATOR" && designationOf(value.officeType, value.designation) === null) {
+      context.addIssue({ code: "custom", path: ["designation"], message: "designation" });
+    }
+    const place = placeOf(value.officeType);
+    if (place && value[PLACE_FIELD[place]] === null) {
+      context.addIssue({ code: "custom", path: [PLACE_FIELD[place]], message: PLACE_ERROR[place] });
     }
   })
-  // Only DS officers belong to an office (application spec, Roles and permissions).
-  .transform((value) => ({
-    ...value,
-    designation: FORM_DESIGNATION[value.role],
-    dsOfficeId: value.role === "DS_OFFICER" ? value.dsOfficeId : null,
-  }));
+  .transform((value): AccountInput => {
+    const designation =
+      value.officeType === "ADMINISTRATOR" ? null : designationOf(value.officeType, value.designation);
+    // Only the office type's own place is kept; a DS account's district only narrows the list of offices.
+    const place = placeOf(value.officeType);
+    const kept = (field: (typeof PLACE_FIELD)[keyof typeof PLACE_FIELD]) =>
+      place && PLACE_FIELD[place] === field ? value[field] : null;
+    return {
+      name: value.name,
+      mobile: value.mobile,
+      contactEmail: value.contactEmail,
+      designation,
+      role: roleOf(designation),
+      dsOfficeId: kept("dsOfficeId"),
+      districtId: kept("districtId"),
+      provinceId: kept("provinceId"),
+    };
+  });
 
-export type AccountInput = z.output<typeof accountSchema>;
-export type AccountField = keyof z.input<typeof accountSchema>;
+export type AccountField =
+  keyof typeof optionalPersonFields | "officeType" | "designation" | "dsOfficeId" | "districtId" | "provinceId";
 export type AccountErrors = Partial<Record<AccountField, AccountErrorKey>>;
 
-const FIELDS: AccountField[] = ["name", "mobile", "contactEmail", "role", "dsOfficeId"];
+const FIELDS: AccountField[] = [
+  "name",
+  "mobile",
+  "contactEmail",
+  "officeType",
+  "designation",
+  "dsOfficeId",
+  "districtId",
+  "provinceId",
+];
+
+const PLACE_ERRORS: Partial<Record<AccountField, AccountErrorKey>> = {
+  dsOfficeId: "office",
+  districtId: "district",
+  provinceId: "province",
+};
 
 /** Reads the account form. Missing fields count as empty. */
 export function parseAccountForm(
@@ -72,7 +155,8 @@ export function parseAccountForm(
   const errors: AccountErrors = {};
   for (const issue of result.error.issues) {
     const field = issue.path[0] as AccountField;
-    errors[field] ??= issue.message as AccountErrorKey;
+    // A place that isn't a number at all gets the same message as one left empty.
+    errors[field] ??= PLACE_ERRORS[field] ?? (issue.message as AccountErrorKey);
   }
   return { ok: false, errors };
 }

@@ -26,6 +26,8 @@ async function newAccount(contactEmail: string | null = "officer401@example.com"
     contactEmail,
     role: "HO_OFFICER",
     dsOfficeId: null,
+    districtId: null,
+    provinceId: null,
   });
   if (!created.ok) throw new Error(created.error);
   const user = await db.user.findUniqueOrThrow({ where: { username: created.value.username } });

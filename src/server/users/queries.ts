@@ -1,50 +1,96 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
-import { localName, NAMES } from "@/lib/names";
+import { localName, NAMES, type Names } from "@/lib/names";
+import { type Designation, designationsOf, isDesignation, type OfficeType, officeTypeOf } from "../auth/designations";
 import { isRole, type Role } from "../auth/roles";
 
 export type AccountRow = {
   id: string;
+  /** Empty when the account has no name (ADM-2). */
   name: string;
   username: string;
-  designation: string | null;
+  officeType: OfficeType;
+  designation: Designation | null;
   role: Role;
-  officeName: string | null;
-  districtName: string | null;
+  /** Where the account belongs, in the screen's language: a DS office with its district, a district, or a province. */
+  place: AccountPlace | null;
   lastSignInAt: Date | null;
   active: boolean;
 };
 
+export type AccountPlace =
+  | { kind: "dsOffice"; office: string; district: string }
+  | { kind: "district"; district: string }
+  | { kind: "province"; province: string };
+
+const PLACE_SELECT = {
+  dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+  district: { select: NAMES },
+  province: { select: NAMES },
+} as const;
+
+type PlaceRow = {
+  dsOffice: (Names & { district: Names }) | null;
+  district: Names | null;
+  province: Names | null;
+};
+
+function placeOfRow(u: PlaceRow, locale: Locale): AccountPlace | null {
+  if (u.dsOffice)
+    return {
+      kind: "dsOffice",
+      office: localName(u.dsOffice, locale),
+      district: localName(u.dsOffice.district, locale),
+    };
+  if (u.district) return { kind: "district", district: localName(u.district, locale) };
+  if (u.province) return { kind: "province", province: localName(u.province, locale) };
+  return null;
+}
+
+/** Matches a place's name in any of its three languages. */
+const nameMatches = (q: string) => [
+  { nameSi: { contains: q } },
+  { nameTa: { contains: q } },
+  { nameEn: { contains: q, mode: "insensitive" as const } },
+];
+
+/** The accounts of one office type: an administrator is the one with no designation (ADM-8). */
+function officeTypeWhere(officeType: OfficeType): Prisma.UserWhereInput {
+  return officeType === "ADMINISTRATOR" ? { role: "ADMIN" } : { designation: { in: designationsOf(officeType) } };
+}
+
 /**
- * ADM-1: every account, searchable by name, office (in any of its three names) or username, and
- * filterable by role. Office and district names come in the screen's language (UI-9).
+ * ADM-1: every account, searchable by name, office, district or province (in any of their three names)
+ * or username, and filterable by office type. Places come in the screen's language (UI-9).
  */
 export async function listAccounts(
   db: PrismaClient,
-  filter: { q?: string; role?: Role },
+  filter: { q?: string; officeType?: OfficeType },
   locale: Locale,
 ): Promise<AccountRow[]> {
   const q = filter.q?.trim();
   const where: Prisma.UserWhereInput = {
-    ...(filter.role ? { role: filter.role } : {}),
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q, mode: "insensitive" } },
-            { username: { contains: q.toLowerCase() } },
-            { dsOffice: { nameSi: { contains: q } } },
-            { dsOffice: { nameTa: { contains: q } } },
-            { dsOffice: { nameEn: { contains: q, mode: "insensitive" } } },
-            { dsOffice: { district: { nameSi: { contains: q } } } },
-            { dsOffice: { district: { nameTa: { contains: q } } } },
-            { dsOffice: { district: { nameEn: { contains: q, mode: "insensitive" } } } },
-          ],
-        }
-      : {}),
+    AND: [
+      filter.officeType ? officeTypeWhere(filter.officeType) : {},
+      q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { username: { contains: q.toLowerCase() } },
+              ...nameMatches(q).flatMap((match) => [
+                { dsOffice: match },
+                { dsOffice: { district: match } },
+                { district: match },
+                { province: match },
+              ]),
+            ],
+          }
+        : {},
+    ],
   };
   const users = await db.user.findMany({
     where,
-    orderBy: [{ role: "asc" }, { name: "asc" }],
+    orderBy: [{ role: "asc" }, { name: "asc" }, { username: "asc" }],
     select: {
       id: true,
       name: true,
@@ -53,26 +99,26 @@ export async function listAccounts(
       role: true,
       banned: true,
       lastSignInAt: true,
-      dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+      ...PLACE_SELECT,
     },
   });
-  return users.flatMap((u) =>
-    isRole(u.role) && u.username
-      ? [
-          {
-            id: u.id,
-            name: u.name,
-            username: u.username,
-            designation: u.designation,
-            role: u.role,
-            officeName: u.dsOffice ? localName(u.dsOffice, locale) : null,
-            districtName: u.dsOffice ? localName(u.dsOffice.district, locale) : null,
-            lastSignInAt: u.lastSignInAt,
-            active: !u.banned,
-          },
-        ]
-      : [],
-  );
+  return users.flatMap((u) => {
+    if (!isRole(u.role) || !u.username) return [];
+    const designation = isDesignation(u.designation) ? u.designation : null;
+    return [
+      {
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        officeType: officeTypeOf(designation),
+        designation,
+        role: u.role,
+        place: placeOfRow(u, locale),
+        lastSignInAt: u.lastSignInAt,
+        active: !u.banned,
+      },
+    ];
+  });
 }
 
 export async function accountCounts(db: PrismaClient): Promise<{ total: number; active: number; disabled: number }> {
@@ -88,12 +134,15 @@ export type AccountDetails = {
   id: string;
   name: string;
   username: string;
-  designation: string | null;
+  officeType: OfficeType;
+  designation: Designation | null;
   mobile: string | null;
   contactEmail: string | null;
   role: Role;
   dsOfficeId: number | null;
+  /** The account's own district, or its DS office's district. */
   districtId: number | null;
+  provinceId: number | null;
   active: boolean;
 };
 
@@ -110,20 +159,25 @@ export async function getAccount(db: PrismaClient, id: string): Promise<AccountD
       role: true,
       banned: true,
       dsOfficeId: true,
+      districtId: true,
+      provinceId: true,
       dsOffice: { select: { districtId: true } },
     },
   });
   if (!u || !isRole(u.role) || !u.username) return null;
+  const designation = isDesignation(u.designation) ? u.designation : null;
   return {
     id: u.id,
     name: u.name,
     username: u.username,
-    designation: u.designation,
+    officeType: officeTypeOf(designation),
+    designation,
     mobile: u.mobile,
     contactEmail: u.contactEmail,
     role: u.role,
     dsOfficeId: u.dsOfficeId,
-    districtId: u.dsOffice?.districtId ?? null,
+    districtId: u.districtId ?? u.dsOffice?.districtId ?? null,
+    provinceId: u.provinceId,
     active: !u.banned,
   };
 }
@@ -201,10 +255,29 @@ export async function officeChoices(
   }));
 }
 
-/** Every office's name in the screen's language, active or not, for showing an account's past offices. */
-export async function officeNames(db: PrismaClient, locale: Locale): Promise<Record<number, string>> {
-  const offices = await db.dsOffice.findMany({ select: { id: true, ...NAMES } });
-  return Object.fromEntries(offices.map((o) => [o.id, localName(o, locale)]));
+export type PlaceChoice = { id: number; name: string };
+
+/** The provinces for the account form, in the screen's language. */
+export async function provinceChoices(db: PrismaClient, locale: Locale): Promise<PlaceChoice[]> {
+  const provinces = await db.province.findMany({ orderBy: { id: "asc" }, select: { id: true, ...NAMES } });
+  return provinces.map((p) => ({ id: p.id, name: localName(p, locale) }));
+}
+
+export type PlaceNames = {
+  offices: Record<number, string>;
+  districts: Record<number, string>;
+  provinces: Record<number, string>;
+};
+
+/** Every place's name in the screen's language, active or not, for showing an account's past places. */
+export async function placeNames(db: PrismaClient, locale: Locale): Promise<PlaceNames> {
+  const [offices, districts, provinces] = await Promise.all([
+    db.dsOffice.findMany({ select: { id: true, ...NAMES } }),
+    db.district.findMany({ select: { id: true, ...NAMES } }),
+    db.province.findMany({ select: { id: true, ...NAMES } }),
+  ]);
+  const byId = (rows: (Names & { id: number })[]) => Object.fromEntries(rows.map((r) => [r.id, localName(r, locale)]));
+  return { offices: byId(offices), districts: byId(districts), provinces: byId(provinces) };
 }
 
 export type HistoryEntry = {

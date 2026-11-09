@@ -1,7 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import { formatDate } from "@/lib/dates";
+import { isDesignation } from "@/server/auth/designations";
 import { isRole } from "@/server/auth/roles";
-import type { HistoryEntry } from "@/server/users/queries";
+import type { HistoryEntry, PlaceNames } from "@/server/users/queries";
 
 const KNOWN_ACTIONS = [
   "account_created",
@@ -16,23 +17,36 @@ const KNOWN_ACTIONS = [
 ] as const;
 type KnownAction = (typeof KNOWN_ACTIONS)[number];
 
-const FIELDS = ["name", "designation", "mobile", "contactEmail", "role", "dsOfficeId"] as const;
-type Field = (typeof FIELDS)[number];
+const FIELDS = [
+  "name",
+  "designation",
+  "mobile",
+  "contactEmail",
+  "role",
+  "dsOfficeId",
+  "districtId",
+  "provinceId",
+] as const;
+/** The fields that get a line of their own; the others are listed by name. */
+const OWN_LINE = ["designation", "role", "dsOfficeId", "districtId", "provinceId"] as const;
+type ListedField = Exclude<(typeof FIELDS)[number], (typeof OWN_LINE)[number]>;
 
 const asObject = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
-/** ADM-4: the account's history, newest first, as plain Sinhala sentences (HIS-2). */
-export async function AccountHistory({
-  entries,
-  officeNames,
-}: {
-  entries: HistoryEntry[];
-  officeNames: Record<number, string>;
-}) {
+/** ADM-4: the account's history, newest first, as plain sentences in the screen's language (HIS-2). */
+export async function AccountHistory({ entries, placeNames }: { entries: HistoryEntry[]; placeNames: PlaceNames }) {
   const t = await getTranslations("users");
-  const office = (id: unknown) => (typeof id === "number" ? (officeNames[id] ?? String(id)) : t("history.noOffice"));
-  const role = (value: unknown) => (isRole(value) ? t(`roles.${value}`) : t("history.noOffice"));
+  const none = t("history.noOffice");
+  const named = (names: Record<number, string>) => (id: unknown) =>
+    typeof id === "number" ? (names[id] ?? String(id)) : none;
+  const office = named(placeNames.offices);
+  const district = named(placeNames.districts);
+  const province = named(placeNames.provinces);
+  const role = (value: unknown) => (isRole(value) ? t(`roles.${value}`) : none);
+  // Rows from before change 0005 hold free text: a known code shows its label, anything else as written.
+  const designation = (value: unknown) =>
+    isDesignation(value) ? t(`designations.${value}`) : typeof value === "string" && value ? value : none;
 
   const details = (entry: HistoryEntry): string[] => {
     if (entry.action !== "account_updated") return [];
@@ -40,14 +54,19 @@ export async function AccountHistory({
     const after = asObject(entry.after);
     const changed = FIELDS.filter((field) => field in after);
     const lines: string[] = [];
-    if (changed.includes("dsOfficeId")) {
-      lines.push(t("history.officeMoved", { from: office(before.dsOfficeId), to: office(after.dsOfficeId) }));
-    }
-    if (changed.includes("role"))
-      lines.push(t("history.roleChanged", { from: role(before.role), to: role(after.role) }));
-    const others = changed.filter(
-      (field): field is Exclude<Field, "dsOfficeId" | "role"> => field !== "dsOfficeId" && field !== "role",
-    );
+    const line = (
+      field: (typeof OWN_LINE)[number],
+      key: `history.${"designationChanged" | "roleChanged" | "officeMoved" | "districtMoved" | "provinceMoved"}`,
+      show: (value: unknown) => string,
+    ) => {
+      if (changed.includes(field)) lines.push(t(key, { from: show(before[field]), to: show(after[field]) }));
+    };
+    line("designation", "history.designationChanged", designation);
+    line("role", "history.roleChanged", role);
+    line("dsOfficeId", "history.officeMoved", office);
+    line("districtId", "history.districtMoved", district);
+    line("provinceId", "history.provinceMoved", province);
+    const others = changed.filter((field): field is ListedField => !(OWN_LINE as readonly string[]).includes(field));
     if (others.length > 0) {
       lines.push(
         t("history.changedFields", { fields: others.map((field) => t(`history.fields.${field}`)).join(", ") }),
