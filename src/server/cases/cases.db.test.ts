@@ -138,7 +138,7 @@ describe("saving a draft (CASE-4)", () => {
     const input = newCase("", { values: { ...values(""), category: null, kind: null, address: null } });
     const draft = await saved(dsA, input);
 
-    expect(draft).toMatchObject({ status: "DRAFT", caseNumber: null, version: 1, dsOfficeId: dsA.dsOfficeId });
+    expect(draft).toMatchObject({ status: "DRAFT", applicationNumber: null, version: 1, dsOfficeId: dsA.dsOfficeId });
     const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: draft.id, action: "case_created" } });
     expect(audit.actorId).toBe(dsA.userId);
   });
@@ -168,8 +168,8 @@ describe("submitting (CASE-5)", () => {
     const second = await saved(dsA, newCase("200100000011", { submit: true }));
 
     expect(first.status).toBe("SUBMITTED");
-    expect(first.caseNumber).toMatch(new RegExp(`^${codeA}-${YEAR}-\\d{3,}$`));
-    expect(Number(second.caseNumber?.split("-")[2])).toBe(Number(first.caseNumber?.split("-")[2]) + 1);
+    expect(first.applicationNumber).toMatch(new RegExp(`^${codeA}-${YEAR}-\\d{3,}$`));
+    expect(Number(second.applicationNumber?.split("-")[2])).toBe(Number(first.applicationNumber?.split("-")[2]) + 1);
     expect(first.submittedAt).not.toBeNull();
     expect(await db.decision.count({ where: { caseId: first.id, type: "SUBMIT", byId: dsA.userId } })).toBe(1);
     const actions = await db.auditLog.findMany({ where: { caseId: first.id }, orderBy: { id: "asc" } });
@@ -181,7 +181,7 @@ describe("submitting (CASE-5)", () => {
     const results = await Promise.all(
       drafts.map((d) => saveCase(db, dsB, { ...newCase(d.nic ?? ""), id: d.id, version: d.version, submit: true })),
     );
-    const numbers = results.map((r) => (r.ok ? r.value.caseNumber : r.error));
+    const numbers = results.map((r) => (r.ok ? r.value.applicationNumber : r.error));
     const sequences = numbers.map((n) => Number(n?.split("-")[2])).sort((a, b) => a - b);
 
     expect(new Set(numbers).size).toBe(8);
@@ -203,7 +203,7 @@ describe("submitting (CASE-5)", () => {
       version: returned.version,
       submit: true,
     });
-    expect(again).toMatchObject({ status: "SUBMITTED", caseNumber: first.caseNumber });
+    expect(again).toMatchObject({ status: "SUBMITTED", applicationNumber: first.applicationNumber });
   });
 });
 
@@ -303,18 +303,20 @@ describe("duplicate NIC (CASE-6, AC-7)", () => {
 
     const asA = await findNicMatches(db, dsA, { nic: "880201234v", dsOfficeId: null, exceptCaseId: null }, "si");
     expect(asA).toEqual([
-      { caseNumber: own.caseNumber, name: own.name, officeName: null },
-      { caseNumber: elsewhere.caseNumber, name: null, officeName: expect.any(String) },
+      { applicationNumber: own.applicationNumber, name: own.name, officeName: null },
+      { applicationNumber: elsewhere.applicationNumber, name: null, officeName: expect.any(String) },
     ]);
 
     const asHo = await findNicMatches(db, ho, { nic: "198802001234", dsOfficeId: null, exceptCaseId: own.id }, "si");
-    expect(asHo).toEqual([{ caseNumber: elsewhere.caseNumber, name: elsewhere.name, officeName: expect.any(String) }]);
+    expect(asHo).toEqual([
+      { applicationNumber: elsewhere.applicationNumber, name: elsewhere.name, officeName: expect.any(String) },
+    ]);
   });
 
   it("includes the office's own drafts, and finds nothing for an invalid NIC", async () => {
     const draft = await saved(dsA, newCase("198803001234"));
     expect(await findNicMatches(db, dsA, { nic: "880301234V", dsOfficeId: null, exceptCaseId: null }, "si")).toEqual([
-      { caseNumber: null, name: draft.name, officeName: null },
+      { applicationNumber: null, name: draft.name, officeName: null },
     ]);
     expect(await findNicMatches(db, dsA, { nic: "12345", dsOfficeId: null, exceptCaseId: null }, "si")).toEqual([]);
     expect(await findNicMatches(db, admin, { nic: "880301234V", dsOfficeId: null, exceptCaseId: null }, "si")).toEqual(

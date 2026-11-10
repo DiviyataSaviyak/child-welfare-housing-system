@@ -20,7 +20,7 @@ export type ListFilter = Omit<CaseFilter, "page">;
 export type ListName = "ho_cases" | "ds_cases" | "oversight_cases";
 
 export type ExportRow = {
-  caseNumber: string | null;
+  applicationNumber: string | null;
   category: Category | null;
   kind: Kind | null;
   status: CaseStatus;
@@ -88,7 +88,7 @@ export async function caseListRows(
       where,
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       select: {
-        caseNumber: true,
+        applicationNumber: true,
         category: true,
         kind: true,
         status: true,
@@ -171,7 +171,7 @@ function installmentNote(t: CasesT, item: ExportInstallment | null): string | nu
  */
 export function caseListColumns(t: CasesT): Column<ExportRow>[] {
   return [
-    { header: t("export.columns.number"), width: 16, value: (r) => r.caseNumber },
+    { header: t("export.columns.number"), width: 16, value: (r) => r.applicationNumber },
     { header: t("export.columns.category"), width: 16, value: (r) => r.category && t(`category.${r.category}`) },
     { header: t("export.columns.kind"), width: 14, value: (r) => r.kind && t(`kindShort.${r.kind}`) },
     { header: t("export.columns.status"), width: 18, value: (r) => t(`status.${r.status}`) },

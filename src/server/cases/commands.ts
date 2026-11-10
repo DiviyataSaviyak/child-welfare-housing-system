@@ -8,7 +8,7 @@ import { writeAudit } from "../audit";
 import { deleteStoredFile } from "../files/storage";
 import { logError } from "../log";
 import { canSeeOffice, caseScope, OFFICE_PLACE, type Viewer } from "../permissions";
-import { nextCaseNumber } from "./numbers";
+import { applicationKey, nextCaseNumber } from "./numbers";
 import { isUniqueViolation, Refusal } from "./refusal";
 import { CLOSED, replacementRefusal } from "./replacements";
 import {
@@ -73,14 +73,14 @@ export type SaveCaseInput = {
   replaces?: string | null;
 };
 
-export type SavedCase = { id: string; caseNumber: string | null; status: CaseStatus };
+export type SavedCase = { id: string; applicationNumber: string | null; status: CaseStatus };
 
 const CASE_SELECT = {
   id: true,
   dsOfficeId: true,
   dsOffice: OFFICE_PLACE,
   status: true,
-  caseNumber: true,
+  applicationNumber: true,
   version: true,
   category: true,
   kind: true,
@@ -115,7 +115,10 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
     if (!current && input.version !== null) return { ok: false, error: "notFound" };
     // ERR-8: the same new-case form arrived twice. The first one saved the case; this one changes nothing.
     if (current && input.version === null) {
-      return { ok: true, value: { id: current.id, caseNumber: current.caseNumber, status: current.status } };
+      return {
+        ok: true,
+        value: { id: current.id, applicationNumber: current.applicationNumber, status: current.status },
+      };
     }
 
     const office = scope.kind === "office" ? scope.dsOfficeId : (input.dsOfficeId ?? current?.dsOfficeId ?? null);
@@ -186,6 +189,8 @@ async function writeCase(
     ...input.values,
     nicKey: input.values.nic ? nicKey(input.values.nic) : null,
     dsOfficeId,
+    // CASE-13: built in the DS of residence until change 0006's task 4 asks the form where it is built.
+    buildDsOfficeId: dsOfficeId,
     replacesCaseId,
   };
 
@@ -228,14 +233,15 @@ async function writeCase(
         data: { ...fields, version: { increment: 1 } },
       });
       if (updated.count === 0) throw new Refusal("conflict");
-      return { id: input.id, caseNumber: current.caseNumber, status: current.status };
+      return { id: input.id, applicationNumber: current.applicationNumber, status: current.status };
     }
-    return { id: input.id, caseNumber: null, status: "DRAFT" };
+    return { id: input.id, applicationNumber: null, status: "DRAFT" };
   }
 
-  // CASE-5: the number is given on the first submit only. A new case was created as a draft above, so
-  // its history reads "created", then "submitted"; a saved one changes its fields with the move.
-  const caseNumber = current?.caseNumber ?? (await nextCaseNumber(tx, dsOfficeId, colomboYear(now)));
+  // Version 1's CASE-5: the number is given on the first submit only, and is the case's Application Number
+  // (CASE-12) until change 0006's task 4 asks for it. A new case was created as a draft above, so its
+  // history reads "created", then "submitted"; a saved one changes its fields with the move.
+  const applicationNumber = current?.applicationNumber ?? (await nextCaseNumber(tx, dsOfficeId, colomboYear(now)));
   await applyMove(
     tx,
     current
@@ -247,11 +253,17 @@ async function writeCase(
       actorId: actor.userId,
       at: now,
       checkVersion: true,
-      data: { ...(current ? fields : {}), submittedAt: now, caseNumber },
-      auditAfter: { caseNumber },
+      data: {
+        ...(current ? fields : {}),
+        submittedAt: now,
+        applicationNumber,
+        applicationKey: applicationKey(applicationNumber),
+      },
+      // The history reads the number from `caseNumber`, as in the records written before.
+      auditAfter: { caseNumber: applicationNumber },
     },
   );
-  return { id: input.id, caseNumber, status: "SUBMITTED" };
+  return { id: input.id, applicationNumber, status: "SUBMITTED" };
 }
 
 /**

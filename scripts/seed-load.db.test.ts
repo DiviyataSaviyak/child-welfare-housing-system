@@ -74,10 +74,10 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
 
       // CASE-5: a number from the first submit on, in the office's code and the year of submitting.
       if (c.status === "DRAFT") {
-        expect(c.caseNumber).toBeNull();
+        expect(c.applicationNumber).toBeNull();
         expect(c.decisions).toHaveLength(0);
       } else {
-        expect(c.caseNumber).toMatch(new RegExp(`^${c.dsOffice.code}-${colomboYear(c.submittedAt!)}-\\d{3,}$`));
+        expect(c.applicationNumber).toMatch(new RegExp(`^${c.dsOffice.code}-${colomboYear(c.submittedAt!)}-\\d{3,}$`));
         expect(c.category).not.toBeNull();
         expect(c.kind).not.toBeNull();
         expect(c.nicKey).not.toBeNull();
@@ -153,8 +153,8 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
     expect(stale).toBeLessThan(building.length / 2);
 
     // The counters are past every number the load-test cases took.
-    for (const c of cases.filter((c) => c.caseNumber)) {
-      const [, year, sequence] = c.caseNumber!.split("-");
+    for (const c of cases.filter((c) => c.applicationNumber)) {
+      const [, year, sequence] = c.applicationNumber!.split("-");
       const counter = await db.caseNumberCounter.findUniqueOrThrow({
         where: { dsOfficeId_year: { dsOfficeId: c.dsOfficeId, year: Number(year) } },
       });
@@ -169,7 +169,7 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
   });
 
   it("gives the same cases for the same seed", async () => {
-    const pick = { name: true, nic: true, status: true, caseNumber: true } as const;
+    const pick = { name: true, nic: true, status: true, applicationNumber: true } as const;
     const first = await db.case.findMany({ where: loadCases, select: pick });
     await addLoadData(db, { count: COUNT, seed: 42 });
     const all = await db.case.findMany({ where: loadCases, select: pick });

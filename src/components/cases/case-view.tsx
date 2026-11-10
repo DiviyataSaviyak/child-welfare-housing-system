@@ -18,7 +18,7 @@ export function caseFieldRows(t: CasesT, details: CaseDetails): { label: string;
   const atRisk = details.category === "CHILD_AT_RISK";
   const none = t("none");
   return [
-    { label: t("page.fields.number"), value: details.caseNumber ?? t("noNumber") },
+    { label: t("page.fields.number"), value: details.applicationNumber ?? t("noNumber") },
     { label: t("page.fields.category"), value: details.category ? t(`category.${details.category}`) : none },
     { label: t("page.fields.kind"), value: details.kind ? t(`kind.${details.kind}`) : none },
     ...(atRisk ? [{ label: t("page.fields.childName"), value: details.childName ?? none }] : []),
@@ -89,7 +89,7 @@ export async function ReplacementNotes({ details, audience }: { details: CaseDet
   if (!details.replaces && !details.anotherNameRequested) return null;
   const t = await getTranslations("cases");
   const caseHref = (id: string) => `/${audience}/cases/${id}`;
-  const number = (caseNumber: string | null) => caseNumber ?? t("noNumber");
+  const number = (applicationNumber: string | null) => applicationNumber ?? t("noNumber");
   const { replaces, replacedBy } = details;
 
   return (
@@ -98,7 +98,7 @@ export async function ReplacementNotes({ details, audience }: { details: CaseDet
         <ReplacementBox
           id="replaces-title"
           title={t("page.replacesTitle", {
-            number: number(replaces.caseNumber),
+            number: number(replaces.applicationNumber),
             name: caseName(t, replaces.name, replaces.childName),
           })}
         >
@@ -113,7 +113,7 @@ export async function ReplacementNotes({ details, audience }: { details: CaseDet
             <p className="whitespace-pre-line">{t("page.replacesReason", { reason: replaces.reason })}</p>
           )}
           <Link href={caseHref(replaces.id)} className="self-start font-semibold text-primary underline">
-            {t("page.openOther", { number: number(replaces.caseNumber) })}
+            {t("page.openOther", { number: number(replaces.applicationNumber) })}
           </Link>
         </ReplacementBox>
       )}
@@ -123,12 +123,12 @@ export async function ReplacementNotes({ details, audience }: { details: CaseDet
             <>
               <p>
                 {t("page.askedDone", {
-                  number: number(replacedBy.caseNumber),
+                  number: number(replacedBy.applicationNumber),
                   name: caseName(t, replacedBy.name, replacedBy.childName),
                 })}
               </p>
               <Link href={caseHref(replacedBy.id)} className="self-start font-semibold text-primary underline">
-                {t("page.openOther", { number: number(replacedBy.caseNumber) })}
+                {t("page.openOther", { number: number(replacedBy.applicationNumber) })}
               </Link>
             </>
           ) : (
@@ -218,7 +218,7 @@ export async function CaseDetailsSection({ details, editHref }: { details: CaseD
 export async function caseSubtitle(details: CaseDetails, audience: Audience): Promise<string> {
   const t = await getTranslations("cases");
   return [
-    details.caseNumber ?? t("noNumber"),
+    details.applicationNumber ?? t("noNumber"),
     ...(audience !== "ds" ? [details.officeName] : []),
     ...(details.category ? [t(`category.${details.category}`)] : []),
     ...(details.kind ? [t(`kind.${details.kind}`)] : []),

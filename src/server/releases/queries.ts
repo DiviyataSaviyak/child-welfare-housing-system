@@ -63,7 +63,7 @@ export async function districtsWaiting(db: PrismaClient, viewer: Viewer, locale:
 export type LetterCase = {
   id: string;
   version: number;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   name: string | null;
   childName: string | null;
   officeName: string;
@@ -89,7 +89,7 @@ export async function casesForLetter(
     select: {
       id: true,
       version: true,
-      caseNumber: true,
+      applicationNumber: true,
       name: true,
       childName: true,
       verifiedAt: true,

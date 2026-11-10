@@ -1,6 +1,21 @@
 import type { Prisma } from "@/generated/prisma/client";
 
-/** CASE-5: {DS code}-{year}-{NNN}, for example HMG-2026-011. NNN has at least 3 digits. */
+/** CASE-12: the longest Application Number, as typed from the paper application. */
+export const APPLICATION_NUMBER_MAX = 30;
+
+/**
+ * CASE-12: the Application Number as compared, in capitals without any spaces, so `KDW/147` and
+ * `kdw / 147` are the same number. Unique within the DS office of residence (`case.application_key`).
+ */
+export function applicationKey(applicationNumber: string): string {
+  return applicationNumber.replace(/\s+/g, "").toUpperCase();
+}
+
+/**
+ * Version 1's case number (its CASE-5): {DS code}-{year}-{NNN}, for example HMG-2026-011. NNN has at least
+ * 3 digits. Until change 0006's task 4 asks the DS for the Application Number, a submitted case still gets
+ * one, and it becomes the case's Application Number.
+ */
 export function formatCaseNumber(officeCode: string, year: number, sequence: number): string {
   return `${officeCode}-${year}-${String(sequence).padStart(3, "0")}`;
 }

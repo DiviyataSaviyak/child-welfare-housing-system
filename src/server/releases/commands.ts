@@ -75,7 +75,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
     !canSeeOffice(actor, c.dsOffice) || c.dsOffice.districtId !== input.districtId;
   if (!district || found.length !== ids.length || found.some(elsewhere)) return refused("notFound");
   for (const c of found) {
-    const refusal = moveRefusal(actor.role, "release", c.status);
+    const refusal = moveRefusal(actor.role, "releaseV1", c.status);
     if (refusal) return refused(refusal);
   }
 
@@ -126,7 +126,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
       }
       // In the order of their ids, so two letters for the same cases wait for each other, never deadlock.
       for (const c of found) {
-        await applyMove(tx, c, "release", {
+        await applyMove(tx, c, "releaseV1", {
           by: actor.role,
           actorId: actor.userId,
           at: now,

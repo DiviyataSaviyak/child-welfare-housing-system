@@ -3,6 +3,9 @@ import type { CaseStatus } from "@/generated/prisma/enums";
 
 /** Status colours from the prototype; each pair meets WCAG AA contrast (UI-6). */
 const STYLE: Record<CaseStatus, string> = {
+  AWAITING_ALLOCATION: "bg-[#E4EDF8] text-[#1E4E8C]",
+  ALLOCATED_TO_DISTRICT: "bg-[#FBEBD3] text-[#8A4A06]",
+  ALLOCATION_RECEIVED: "bg-[#E3EFEB] text-[#0E5A4B]",
   DRAFT: "bg-[#ECEAE4] text-[#4F5752]",
   SUBMITTED: "bg-[#E4EDF8] text-[#1E4E8C]",
   RETURNED: "bg-[#FBEBD3] text-[#8A4A06]",

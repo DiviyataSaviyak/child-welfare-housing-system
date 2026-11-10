@@ -31,7 +31,7 @@ import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "../src/li
 import { NAMES, type Names } from "../src/lib/names";
 import { nicKey } from "../src/lib/nic";
 import { placeholderEmail } from "../src/server/auth/accounts";
-import { formatCaseNumber } from "../src/server/cases/numbers";
+import { applicationKey, formatCaseNumber } from "../src/server/cases/numbers";
 import { createPrismaClient } from "../src/server/db";
 import { deleteStoredFile } from "../src/server/files/storage";
 import { generator, GIVEN_NAMES, madeUpNic, madeUpPhone, type Random, ROADS, type Share, SURNAMES } from "./made-up";
@@ -509,6 +509,8 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
       ...fields,
       // The 12-digit form, so old and new numbers match (CASE-6).
       nicKey: nic && nicKey(nic),
+      // Built in the DS of residence (CASE-13), as every case was before change 0006.
+      buildDsOfficeId: office.id,
       status,
       createdById: officer,
       createdAt,
@@ -641,7 +643,10 @@ export async function writePlanned(
           select: { last: true },
         });
         const first = counter.last - cases.length + 1;
-        cases.forEach((c, index) => (c.caseNumber = formatCaseNumber(office.code, year, first + index)));
+        cases.forEach((c, index) => {
+          c.applicationNumber = formatCaseNumber(office.code, year, first + index);
+          c.applicationKey = applicationKey(c.applicationNumber);
+        });
       }
       for (const rows of chunks(planned.map((p) => p.case))) await tx.case.createMany({ data: rows });
       for (const rows of chunks(planned.flatMap((p) => p.decisions))) await tx.decision.createMany({ data: rows });
@@ -657,7 +662,7 @@ export async function writePlanned(
       const audit = planned
         .flatMap((p) =>
           p.history.map((step) => {
-            if (step.action === "case_submitted") step.after.caseNumber = p.case.caseNumber ?? null;
+            if (step.action === "case_submitted") step.after.caseNumber = p.case.applicationNumber ?? null;
             return { ...step, caseId: p.case.id };
           }),
         )
@@ -694,13 +699,13 @@ export async function removeMadeUp(
     async (tx) => {
       // The counters the cases took numbers from, with the lowest number each one gave them.
       const used = new Map<string, { dsOfficeId: number; year: number; prefix: string; lowest: number }>();
-      for (const { dsOfficeId, caseNumber } of await tx.case.findMany({
-        where: { id: { startsWith: idPrefix }, caseNumber: { not: null } },
-        select: { dsOfficeId: true, caseNumber: true },
+      for (const { dsOfficeId, applicationNumber } of await tx.case.findMany({
+        where: { id: { startsWith: idPrefix }, applicationNumber: { not: null } },
+        select: { dsOfficeId: true, applicationNumber: true },
       })) {
-        const prefix = caseNumber!.slice(0, caseNumber!.lastIndexOf("-") + 1);
+        const prefix = applicationNumber!.slice(0, applicationNumber!.lastIndexOf("-") + 1);
         const year = Number(prefix.slice(-5, -1));
-        const sequence = Number(caseNumber!.slice(prefix.length));
+        const sequence = Number(applicationNumber!.slice(prefix.length));
         const key = `${dsOfficeId}:${year}`;
         if (sequence < (used.get(key)?.lowest ?? Infinity))
           used.set(key, { dsOfficeId, year, prefix, lowest: sequence });
@@ -723,11 +728,11 @@ export async function removeMadeUp(
 
       for (const { dsOfficeId, year, prefix, lowest } of used.values()) {
         const left = await tx.case.findMany({
-          where: { dsOfficeId, caseNumber: { startsWith: prefix } },
-          select: { caseNumber: true },
+          where: { dsOfficeId, applicationNumber: { startsWith: prefix } },
+          select: { applicationNumber: true },
         });
         // Numbers below theirs were real ones, so they are never given out again (CASE-5).
-        const last = Math.max(lowest - 1, ...left.map((c) => Number(c.caseNumber!.slice(prefix.length))));
+        const last = Math.max(lowest - 1, ...left.map((c) => Number(c.applicationNumber!.slice(prefix.length))));
         const where = { dsOfficeId_year: { dsOfficeId, year } };
         if (last > 0) await tx.caseNumberCounter.update({ where, data: { last } });
         else await tx.caseNumberCounter.delete({ where });

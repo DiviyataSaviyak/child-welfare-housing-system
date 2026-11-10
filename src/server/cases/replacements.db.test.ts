@@ -130,7 +130,11 @@ describe("asking for another name (CHK-3, CLS-2, HOME-3)", () => {
     const asked = await rejected("201112000003");
     const todo = await todoItems(db, dsA);
     const item = todo.find((i) => i.id === asked.id);
-    expect(item).toMatchObject({ type: "replace", caseNumber: asked.caseNumber, reason: "පවුලට දැනටමත් නිවසක් ඇත." });
+    expect(item).toMatchObject({
+      type: "replace",
+      applicationNumber: asked.applicationNumber,
+      reason: "පවුලට දැනටමත් නිවසක් ඇත.",
+    });
     expect(todo[0]?.type).toBe("replace");
 
     expect((await todoItems(db, dsB)).some((i) => i.id === asked.id)).toBe(false);
@@ -181,16 +185,16 @@ describe("entering a case in another's place (CASE-11, AC-30)", () => {
     const newPage = await getCase(db, dsA, fresh.id, "si");
     expect(newPage?.replaces).toMatchObject({
       id: old.id,
-      caseNumber: old.caseNumber,
+      applicationNumber: old.applicationNumber,
       status: "REJECTED",
       reason: "පවුලට දැනටමත් නිවසක් ඇත.",
     });
     const queue = await listQueue(db, ho, "check", 1, "si", { dsOfficeId: dsA.dsOfficeId ?? undefined });
-    expect(queue.rows.find((row) => row.id === fresh.id)?.replacesNumber).toBe(old.caseNumber);
+    expect(queue.rows.find((row) => row.id === fresh.id)?.replacesNumber).toBe(old.applicationNumber);
 
     const oldPage = await getCase(db, ho, old.id, "si");
     expect(oldPage?.anotherNameRequested).toBe(true);
-    expect(oldPage?.replacedBy).toMatchObject({ id: fresh.id, caseNumber: fresh.caseNumber });
+    expect(oldPage?.replacedBy).toMatchObject({ id: fresh.id, applicationNumber: fresh.applicationNumber });
 
     const created = await db.auditLog.findFirstOrThrow({ where: { caseId: fresh.id, action: "case_created" } });
     expect(created.after).toMatchObject({ replacesCaseId: old.id });

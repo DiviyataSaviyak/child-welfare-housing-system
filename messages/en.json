@@ -415,6 +415,9 @@
   },
   "cases": {
     "status": {
+      "AWAITING_ALLOCATION": "Awaiting fund allocation",
+      "ALLOCATED_TO_DISTRICT": "Released to the district",
+      "ALLOCATION_RECEIVED": "Allocation received",
       "DRAFT": "Not sent yet",
       "SUBMITTED": "Sent for checking",
       "RETURNED": "Sent back",
@@ -974,7 +977,9 @@
       "RELEASED": "Rs. 2,000,000 has been released for {name}",
       "COMPLETED": "{name} has been completed",
       "STOPPED": "{name} has been stopped",
-      "REOPENED": "{name} has been reopened"
+      "REOPENED": "{name} has been reopened",
+      "ALLOCATED": "The allocation for {name} has been released to the district",
+      "DISTRICT_LETTER": "A Ministry allocation letter has come for {name}"
     },
     "detail": "{number} · {date}"
   },

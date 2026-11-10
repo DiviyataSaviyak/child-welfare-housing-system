@@ -8,7 +8,7 @@ export type NotificationRow = {
   createdAt: Date;
   read: boolean;
   caseId: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   name: string | null;
   childName: string | null;
 };
@@ -54,7 +54,7 @@ export async function listNotifications(
       type: true,
       createdAt: true,
       readAt: true,
-      case: { select: { id: true, caseNumber: true, name: true, childName: true } },
+      case: { select: { id: true, applicationNumber: true, name: true, childName: true } },
     },
   });
   return rows.map((row) => ({
@@ -63,7 +63,7 @@ export async function listNotifications(
     createdAt: row.createdAt,
     read: row.readAt !== null,
     caseId: row.case.id,
-    caseNumber: row.case.caseNumber,
+    applicationNumber: row.case.applicationNumber,
     name: row.case.name,
     childName: row.case.childName,
   }));

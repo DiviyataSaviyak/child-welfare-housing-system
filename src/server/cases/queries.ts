@@ -7,11 +7,12 @@ import { nicKey, normaliseNic } from "@/lib/nic";
 import { latestDay } from "@/lib/validation/release";
 import { canSeeOffice, OFFICE_PLACE, officeFilter, type Viewer } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
+import { applicationKey } from "./numbers";
 import { openRequests, REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
 
 export type CaseDetails = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   status: CaseStatus;
   category: Category | null;
   kind: Kind | null;
@@ -56,7 +57,7 @@ export type CaseDetails = {
 /** Another case named on this one's page, with a link to it. */
 export type CaseLink = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   name: string | null;
   childName: string | null;
   status: CaseStatus;
@@ -113,7 +114,7 @@ export async function getCase(
     where: { id },
     select: {
       id: true,
-      caseNumber: true,
+      applicationNumber: true,
       status: true,
       category: true,
       kind: true,
@@ -134,7 +135,14 @@ export async function getCase(
       anotherNameRequested: true,
       replaces: { select: { ...REQUEST_SELECT, dsOffice: OFFICE_PLACE } },
       replacedBy: {
-        select: { id: true, caseNumber: true, name: true, childName: true, status: true, dsOffice: OFFICE_PLACE },
+        select: {
+          id: true,
+          applicationNumber: true,
+          name: true,
+          childName: true,
+          status: true,
+          dsOffice: OFFICE_PLACE,
+        },
       },
       updatedAt: true,
       dsOffice: {
@@ -218,7 +226,7 @@ export async function getCase(
       replacedBy && canSeeOffice(viewer, replacedBy.dsOffice)
         ? {
             id: replacedBy.id,
-            caseNumber: replacedBy.caseNumber,
+            applicationNumber: replacedBy.applicationNumber,
             name: replacedBy.name,
             childName: replacedBy.childName,
             status: replacedBy.status,
@@ -268,7 +276,7 @@ export const PAGE_SIZE = 50;
 
 export type CaseRow = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   status: CaseStatus;
   category: Category | null;
   kind: Kind | null;
@@ -315,7 +323,8 @@ export function caseWhere(viewer: Viewer, filter: CaseFilter): Prisma.CaseWhereI
       OR: [
         { name: { contains: q, mode: "insensitive" } },
         { childName: { contains: q, mode: "insensitive" } },
-        { caseNumber: { contains: compact } },
+        // CASE-12: `kdw / 147` finds KDW/147.
+        { applicationKey: { contains: applicationKey(q) } },
         { nic: { contains: compact } },
         ...(key ? [{ nicKey: key }] : []),
       ],
@@ -343,7 +352,7 @@ export async function listCases(
       take: PAGE_SIZE,
       select: {
         id: true,
-        caseNumber: true,
+        applicationNumber: true,
         status: true,
         category: true,
         kind: true,
@@ -387,7 +396,7 @@ export type TodoItem = TodoCase &
   (
     | {
         type: "replace";
-        caseNumber: string | null;
+        applicationNumber: string | null;
         status: CaseStatus;
         /** Head Office's reason for rejecting or stopping the case it asks to replace (CASE-11). */
         reason: string | null;
@@ -455,7 +464,7 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
       name: c.name,
       childName: c.childName,
       type: "replace" as const,
-      caseNumber: c.caseNumber,
+      applicationNumber: c.applicationNumber,
       status: c.status,
       reason: c.reason,
     })),

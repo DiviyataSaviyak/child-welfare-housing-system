@@ -7,6 +7,8 @@ import type { DuplicateCase } from "@/server/cases/duplicates";
 export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) {
   if (matches.length === 0) return null;
   const t = await getTranslations();
+  // A namespaced translator: the whole file's keys are too many for TypeScript to check a built one.
+  const statusLabel = await getTranslations("cases.status");
   const name = (match: DuplicateCase) =>
     match.childName
       ? t("cases.withChild", { name: match.name ?? t("cases.noName"), child: match.childName })
@@ -26,13 +28,13 @@ export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) 
           {matches.map((match) => (
             <li key={match.id}>
               <Link href={`/ministry/cases/${match.id}`} className="font-semibold underline underline-offset-2">
-                {match.caseNumber === null
+                {match.applicationNumber === null
                   ? t("review.duplicates.draft", { name: name(match), office: match.officeName })
                   : t("review.duplicates.item", {
-                      number: match.caseNumber,
+                      number: match.applicationNumber,
                       name: name(match),
                       office: match.officeName,
-                      status: t(`cases.status.${match.status}`),
+                      status: statusLabel(match.status),
                     })}
               </Link>
             </li>

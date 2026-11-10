@@ -59,7 +59,7 @@ export default async function DsCasePage({
     caseSubtitle(details, "ds"),
   ]);
   const notice = (await searchParams).notice;
-  const justSubmitted = notice === "submitted" && details.caseNumber !== null;
+  const justSubmitted = notice === "submitted" && details.applicationNumber !== null;
   const running = details.status === "IN_PROGRESS" && details.release !== null;
   const today = colomboDay(new Date());
   const next = running ? nextInstallment(details.installments) : null;
@@ -112,7 +112,7 @@ export default async function DsCasePage({
             {t("submitted.title")}
           </h2>
           <p className="text-lg">
-            {t("submitted.number")} <strong data-testid="case-number">{details.caseNumber}</strong>
+            {t("submitted.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
           <p className="text-[#3F4843]">{t("submitted.text")}</p>
           <Link href="/ds/cases/new" className="self-start font-semibold text-primary underline">

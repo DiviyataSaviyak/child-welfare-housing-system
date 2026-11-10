@@ -109,7 +109,7 @@ describe("demo data", { timeout: 120_000 }, () => {
       const actions = history.map((e) => e.action);
       expect(actions.includes("case_submitted")).toBe(c.status !== "DRAFT");
       const submitted = history.find((e) => e.action === "case_submitted");
-      if (submitted) expect(submitted.after.caseNumber).toBe(c.caseNumber);
+      if (submitted) expect(submitted.after.caseNumber).toBe(c.applicationNumber);
       expect(actions.filter((a) => a === "stage_updated")).toHaveLength(c.stageUpdates.length);
       expect(actions.filter((a) => a === "case_completed")).toHaveLength(c.status === "COMPLETED" ? 1 : 0);
       if (c.status === "COMPLETED") expect(history.at(-1)).toMatchObject({ action: "case_completed", actor: null });

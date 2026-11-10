@@ -20,7 +20,7 @@ export async function ReviewNotice({ notice, details }: { notice: unknown; detai
     <FormNotice
       message={t(`notices.${notice}`, {
         name: caseName(tc, details.name, details.childName),
-        number: details.caseNumber ?? tc("noNumber"),
+        number: details.applicationNumber ?? tc("noNumber"),
         office: details.officeName,
         district: details.districtName,
       })}

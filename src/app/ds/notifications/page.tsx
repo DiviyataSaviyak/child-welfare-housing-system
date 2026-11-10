@@ -54,7 +54,10 @@ export default async function DsNotificationsPage() {
                       {t(`type.${item.type}`, { name: caseName(tc, item.name, item.childName) })}
                     </span>
                     <span className="text-[15px] text-muted-foreground">
-                      {t("detail", { number: item.caseNumber ?? tc("noNumber"), date: formatDate(item.createdAt) })}
+                      {t("detail", {
+                        number: item.applicationNumber ?? tc("noNumber"),
+                        date: formatDate(item.createdAt),
+                      })}
                     </span>
                   </span>
                   {!item.read && (

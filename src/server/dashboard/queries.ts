@@ -24,7 +24,7 @@ export type Figures = {
 
 export type StaleCase = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   name: string | null;
   childName: string | null;
   officeName: string;
@@ -96,7 +96,7 @@ export async function dashboard(
       take: STALE_SHOWN,
       select: {
         id: true,
-        caseNumber: true,
+        applicationNumber: true,
         name: true,
         childName: true,
         updatedAt: true,

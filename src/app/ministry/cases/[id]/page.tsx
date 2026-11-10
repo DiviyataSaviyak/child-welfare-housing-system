@@ -68,9 +68,9 @@ export default async function HoCasePage({
     caseSubtitle(details, "ministry"),
   ]);
   const notice = (await searchParams).notice;
-  const justSubmitted = notice === "submitted" && details.caseNumber !== null;
+  const justSubmitted = notice === "submitted" && details.applicationNumber !== null;
   const name = caseName(t, details.name, details.childName);
-  const number = details.caseNumber ?? t("noNumber");
+  const number = details.applicationNumber ?? t("noNumber");
   const now = new Date();
   const duplicates =
     details.status === "SUBMITTED"
@@ -184,7 +184,7 @@ export default async function HoCasePage({
             {t("submitted.title")}
           </h2>
           <p className="text-lg">
-            {t("submitted.number")} <strong data-testid="case-number">{details.caseNumber}</strong>
+            {t("submitted.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
           <p className="text-[#3F4843]">{t("submitted.textHo")}</p>
         </section>

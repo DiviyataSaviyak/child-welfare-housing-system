@@ -209,7 +209,10 @@ describe("checking a case (CHK-3)", () => {
       version: returned.version,
       submit: true,
     });
-    expect(again).toMatchObject({ ok: true, value: { status: "SUBMITTED", caseNumber: first.caseNumber } });
+    expect(again).toMatchObject({
+      ok: true,
+      value: { status: "SUBMITTED", applicationNumber: first.applicationNumber },
+    });
 
     const queue = (await listQueue(db, ho, "check", 1, "si")).rows.map((row) => row.id);
     expect(queue.indexOf(second.id)).toBeGreaterThanOrEqual(0);

@@ -66,7 +66,7 @@ export function replacementOptions(
   return requests.map((request) => ({
     id: request.id,
     dsOfficeId: request.dsOfficeId,
-    number: request.caseNumber ?? t("noNumber"),
+    number: request.applicationNumber ?? t("noNumber"),
     name: caseName(t, request.name, request.childName),
     stopped: request.status === "STOPPED",
     date: request.decidedAt ? formatDate(request.decidedAt) : null,

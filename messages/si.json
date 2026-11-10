@@ -415,6 +415,9 @@
   },
   "cases": {
     "status": {
+      "AWAITING_ALLOCATION": "ප්‍රතිපාදන මුදා හැරීමට ඇත",
+      "ALLOCATED_TO_DISTRICT": "දිස්ත්‍රික්කයට මුදා හැර ඇත",
+      "ALLOCATION_RECEIVED": "ප්‍රතිපාදන ලැබී ඇත",
       "DRAFT": "තවම යවා නැත",
       "SUBMITTED": "පරීක්ෂාවට යවා ඇත",
       "RETURNED": "ආපසු එවා ඇත",
@@ -974,7 +977,9 @@
       "RELEASED": "{name} සඳහා රු. 2,000,000 නිදහස් කර ඇත",
       "COMPLETED": "{name} නිම කර ඇත",
       "STOPPED": "{name} නවතා ඇත",
-      "REOPENED": "{name} නැවත ආරම්භ කර ඇත"
+      "REOPENED": "{name} නැවත ආරම්භ කර ඇත",
+      "ALLOCATED": "{name} සඳහා ප්‍රතිපාදන දිස්ත්‍රික්කයට මුදා හැර ඇත",
+      "DISTRICT_LETTER": "{name} සඳහා අමාත්‍යංශයේ ප්‍රතිපාදන ලිපියක් ලැබී ඇත"
     },
     "detail": "{number} · {date}"
   },

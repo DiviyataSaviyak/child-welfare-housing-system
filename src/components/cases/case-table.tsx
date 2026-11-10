@@ -42,7 +42,7 @@ export async function CaseTable({ rows, href }: { rows: CaseRow[]; href: (row: C
                   {caseName(t, row.name, row.childName)}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  {row.caseNumber ?? t("noNumber")}
+                  {row.applicationNumber ?? t("noNumber")}
                   {row.category && ` · ${t(`category.${row.category}`)}`}
                 </span>
               </Link>

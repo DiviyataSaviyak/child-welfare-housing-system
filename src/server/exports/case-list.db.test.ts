@@ -69,7 +69,9 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       const rows = await caseListRows(db, ho, filter, "si");
       expect(rows?.length, JSON.stringify(filter)).toBe(await countCases(db, ho, filter));
       const first = await listCases(db, ho, { ...filter, page: 1 }, "si");
-      expect(rows!.slice(0, PAGE_SIZE).map((r) => r.caseNumber)).toEqual(first.rows.map((r) => r.caseNumber));
+      expect(rows!.slice(0, PAGE_SIZE).map((r) => r.applicationNumber)).toEqual(
+        first.rows.map((r) => r.applicationNumber),
+      );
     }
   });
 
@@ -78,16 +80,16 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     const cases = await db.case.findMany({
       where: { dsOfficeId: busiestOffice },
       select: {
-        caseNumber: true,
+        applicationNumber: true,
         release: { select: { amount: true } },
         installments: { where: { status: "RELEASED" }, select: { amount: true } },
       },
     });
-    const byNumber = new Map(cases.filter((c) => c.caseNumber).map((c) => [c.caseNumber, c]));
+    const byNumber = new Map(cases.filter((c) => c.applicationNumber).map((c) => [c.applicationNumber, c]));
     const released = rows.filter((r) => r.release);
     expect(released.length).toBeGreaterThan(0);
     for (const row of released) {
-      const found = byNumber.get(row.caseNumber)!;
+      const found = byNumber.get(row.applicationNumber)!;
       expect(row.release!.amount).toBe(found.release!.amount);
       expect(row.release!.paidOut).toBe(found.installments.reduce((sum, i) => sum + i.amount, 0));
     }
@@ -104,16 +106,16 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       select: { id: true },
     });
     const cases = await db.case.findMany({
-      where: { dsOfficeId: busiestOffice, kind: "NEW_HOUSE", caseNumber: { not: null } },
+      where: { dsOfficeId: busiestOffice, kind: "NEW_HOUSE", applicationNumber: { not: null } },
       select: {
-        caseNumber: true,
+        applicationNumber: true,
         installments: { select: { number: true, status: true, expectedOn: true, releasedOn: true } },
         stageUpdates: { where: { stageId: { not: null } }, select: { stageId: true, visitedOn: true } },
       },
     });
-    const byNumber = new Map(cases.map((c) => [c.caseNumber, c]));
-    for (const row of rows.filter((r) => r.caseNumber)) {
-      const found = byNumber.get(row.caseNumber)!;
+    const byNumber = new Map(cases.map((c) => [c.applicationNumber, c]));
+    for (const row of rows.filter((r) => r.applicationNumber)) {
+      const found = byNumber.get(row.applicationNumber)!;
       const installments = [1, 2, 3, 4].map((n) => {
         const item = found.installments.find((i) => i.number === n);
         return item
@@ -124,13 +126,13 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
             }
           : null;
       });
-      expect(row.installments, row.caseNumber!).toEqual(installments);
+      expect(row.installments, row.applicationNumber!).toEqual(installments);
       // Other test files may have added stages to the shared schema, so the columns' stages are worked out.
       const reached = progressStages(stages).map((stage) => {
         const update = stage && found.stageUpdates.find((u) => u.stageId === stage.id);
         return update ? dateToDay(update.visitedOn) : null;
       });
-      expect(row.progress, row.caseNumber!).toEqual(reached);
+      expect(row.progress, row.applicationNumber!).toEqual(reached);
     }
     expect(rows.some((r) => r.installments[0]?.status === "RELEASED")).toBe(true);
     expect(rows.some((r) => r.installments.some((i) => i?.status === "PROCESSING"))).toBe(true);
@@ -153,10 +155,10 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
 
     // A search can't reach past the office, even with another office's number.
     const other = await db.case.findFirstOrThrow({
-      where: { dsOfficeId: { not: busiestOffice }, caseNumber: { not: null } },
-      select: { caseNumber: true },
+      where: { dsOfficeId: { not: busiestOffice }, applicationNumber: { not: null } },
+      select: { applicationNumber: true },
     });
-    expect(await caseListRows(db, ds, { q: other.caseNumber! }, "si")).toEqual([]);
+    expect(await caseListRows(db, ds, { q: other.applicationNumber! }, "si")).toEqual([]);
 
     const admin = {
       role: "ADMIN",

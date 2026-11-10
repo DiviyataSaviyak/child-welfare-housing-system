@@ -14,7 +14,7 @@ export const CLOSED: readonly CaseStatus[] = ["REJECTED", "STOPPED"];
 /** A case waiting for, or given, another name: what the form, the to-do panel and the case pages show. */
 export type ReplacementRequest = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   dsOfficeId: number;
   name: string | null;
   childName: string | null;
@@ -34,7 +34,7 @@ const CLOSING_DECISION = {
 
 export const REQUEST_SELECT = {
   id: true,
-  caseNumber: true,
+  applicationNumber: true,
   dsOfficeId: true,
   name: true,
   childName: true,
@@ -44,10 +44,10 @@ export const REQUEST_SELECT = {
 
 /** Takes only the request's own fields, so a caller may select more (such as the office's place). */
 export function toRequest(found: Prisma.CaseGetPayload<{ select: typeof REQUEST_SELECT }>): ReplacementRequest {
-  const { id, caseNumber, dsOfficeId, name, childName, status, decisions } = found;
+  const { id, applicationNumber, dsOfficeId, name, childName, status, decisions } = found;
   return {
     id,
-    caseNumber,
+    applicationNumber,
     dsOfficeId,
     name,
     childName,

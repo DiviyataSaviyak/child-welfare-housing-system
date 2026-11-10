@@ -269,7 +269,7 @@ export async function DashboardScreen({
                               {caseName(tc, c.name, c.childName)}
                             </span>
                             <span className="text-sm text-muted-foreground">
-                              {c.caseNumber ?? tc("noNumber")} ·{" "}
+                              {c.applicationNumber ?? tc("noNumber")} ·{" "}
                               {t("stale.place", { office: c.officeName, district: c.districtName })}
                             </span>
                           </Link>

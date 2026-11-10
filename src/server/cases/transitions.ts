@@ -15,10 +15,30 @@ import { Refusal } from "./refusal";
 /** Who makes a move: an officer, or the system itself (CLS-1). */
 export type Mover = Role | "SYSTEM";
 
-export type Move = "submit" | "verify" | "sendBack" | "reject" | "release" | "complete" | "stop" | "reopen";
+/**
+ * Change 0006's moves: `save` (a new case), `allocate` (the Ministry's letter), `release` (the District's
+ * release to the DS), and the system's `start` (installment 1 paid), `unstart` (that payment undone) and
+ * `complete`. The others are version 1's, kept only while the code for drafts, the check, stopping and
+ * version 1's letter is still there (change 0006, tasks 4 to 6).
+ */
+export type Move =
+  | "save"
+  | "allocate"
+  | "release"
+  | "start"
+  | "unstart"
+  | "complete"
+  | "submit"
+  | "verify"
+  | "sendBack"
+  | "reject"
+  | "releaseV1"
+  | "stop"
+  | "reopen";
 
 type MoveRule = {
-  from: readonly CaseStatus[];
+  /** The statuses it moves from; null is a case not yet saved. */
+  from: readonly (CaseStatus | null)[];
   /** Where the case goes. Reopening chooses one of two. */
   to: readonly CaseStatus[];
   who: readonly Mover[];
@@ -32,6 +52,67 @@ type MoveRule = {
 
 /** Application spec, Case statuses and transitions, row by row. */
 export const MOVES: Record<Move, MoveRule> = {
+  // A new case is saved straight into AWAITING_ALLOCATION once every rule passes (CASE-5). The case is
+  // created rather than moved, so applyMove never makes this move; saveCase checks it with moveRefusal.
+  save: {
+    from: [null],
+    to: ["AWAITING_ALLOCATION"],
+    who: ["DS_OFFICER", "MINISTRY_OFFICER"],
+    needsReason: false,
+    decision: null,
+    notify: null,
+    audit: "case_created",
+  },
+  // The Ministry's allocation letter to the district where the case is built (REL-3).
+  allocate: {
+    from: ["AWAITING_ALLOCATION"],
+    to: ["ALLOCATED_TO_DISTRICT"],
+    who: ["MINISTRY_OFFICER"],
+    needsReason: false,
+    decision: null,
+    notify: "ALLOCATED",
+    audit: "case_allocated",
+  },
+  // The District's release to the DS where the case is built (REL-7).
+  release: {
+    from: ["ALLOCATED_TO_DISTRICT"],
+    to: ["ALLOCATION_RECEIVED"],
+    who: ["DISTRICT_OFFICER"],
+    needsReason: false,
+    decision: null,
+    notify: "RELEASED",
+    audit: "case_ds_released",
+  },
+  // Installment 1 paid (INS-5), in the payment's transaction.
+  start: {
+    from: ["ALLOCATION_RECEIVED"],
+    to: ["IN_PROGRESS"],
+    who: ["SYSTEM"],
+    needsReason: false,
+    decision: null,
+    notify: null,
+    audit: "case_started",
+  },
+  // The payment of installment 1 undone (INS-6), in the undo's transaction.
+  unstart: {
+    from: ["IN_PROGRESS"],
+    to: ["ALLOCATION_RECEIVED"],
+    who: ["SYSTEM"],
+    needsReason: false,
+    decision: null,
+    notify: null,
+    audit: "case_unstarted",
+  },
+  complete: {
+    from: ["IN_PROGRESS"],
+    to: ["COMPLETED"],
+    who: ["SYSTEM"],
+    needsReason: false,
+    decision: null,
+    notify: "COMPLETED",
+    audit: "case_completed",
+  },
+  // Version 1's moves, until change 0006's tasks 4 to 6 remove the code that makes them.
   submit: {
     from: ["DRAFT", "RETURNED"],
     to: ["SUBMITTED"],
@@ -68,7 +149,7 @@ export const MOVES: Record<Move, MoveRule> = {
     notify: "REJECTED",
     audit: "case_rejected",
   },
-  release: {
+  releaseV1: {
     from: ["VERIFIED"],
     to: ["IN_PROGRESS"],
     who: ["MINISTRY_OFFICER"],
@@ -76,15 +157,6 @@ export const MOVES: Record<Move, MoveRule> = {
     decision: null,
     notify: "RELEASED",
     audit: "case_released",
-  },
-  complete: {
-    from: ["IN_PROGRESS"],
-    to: ["COMPLETED"],
-    who: ["SYSTEM"],
-    needsReason: false,
-    decision: null,
-    notify: "COMPLETED",
-    audit: "case_completed",
   },
   stop: {
     from: ["VERIFIED", "IN_PROGRESS"],
@@ -124,7 +196,7 @@ export type MoveError =
 export function moveRefusal(
   by: Mover,
   move: Move,
-  from: CaseStatus,
+  from: CaseStatus | null,
   to?: CaseStatus,
 ): "roleNotAllowed" | "notAllowedNow" | null {
   const rule = MOVES[move];

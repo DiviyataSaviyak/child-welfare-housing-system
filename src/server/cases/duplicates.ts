@@ -12,7 +12,7 @@ import { caseScope, type Viewer } from "../permissions";
  * - Head Office sees all three (CHK-2).
  * A draft has no case number yet.
  */
-export type NicMatch = { caseNumber: string | null; name: string | null; officeName: string | null };
+export type NicMatch = { applicationNumber: string | null; name: string | null; officeName: string | null };
 
 /**
  * The cases that share a NIC key with a case of `ownOffice`. Drafts count only in that office;
@@ -46,22 +46,22 @@ export async function findNicMatches(
     where: matchWhere(key, ownOffice, input.exceptCaseId),
     orderBy: { createdAt: "asc" },
     take: 20,
-    select: { caseNumber: true, name: true, dsOfficeId: true, dsOffice: { select: NAMES } },
+    select: { applicationNumber: true, name: true, dsOfficeId: true, dsOffice: { select: NAMES } },
   });
 
   return rows.map((row) => {
     const officeName = localName(row.dsOffice, locale);
-    if (scope.kind === "all") return { caseNumber: row.caseNumber, name: row.name, officeName };
+    if (scope.kind === "all") return { applicationNumber: row.applicationNumber, name: row.name, officeName };
     return row.dsOfficeId === scope.dsOfficeId
-      ? { caseNumber: row.caseNumber, name: row.name, officeName: null }
-      : { caseNumber: row.caseNumber, name: null, officeName };
+      ? { applicationNumber: row.applicationNumber, name: row.name, officeName: null }
+      : { applicationNumber: row.applicationNumber, name: null, officeName };
   });
 }
 
 /** A matching case as Head Office's check view shows it: everything, with a link (CHK-2). */
 export type DuplicateCase = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   status: CaseStatus;
   name: string | null;
   childName: string | null;
@@ -83,7 +83,7 @@ export async function duplicatesInFull(
     take: 20,
     select: {
       id: true,
-      caseNumber: true,
+      applicationNumber: true,
       status: true,
       name: true,
       childName: true,

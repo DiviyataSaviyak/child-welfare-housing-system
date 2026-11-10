@@ -761,7 +761,7 @@ describe("the DS home (HOME-1, HOME-3, HOME-4)", () => {
       balance: before!.balance + 1_500_000,
     });
     expect(await officeMoney(db, admin)).toBeNull();
-    const { rows } = await listCases(db, dsA, { q: (await load(c.id)).caseNumber ?? "" }, "si");
+    const { rows } = await listCases(db, dsA, { q: (await load(c.id)).applicationNumber ?? "" }, "si");
     expect(rows).toEqual([expect.objectContaining({ id: c.id, paid: 1, stageName: first!.nameSi })]);
   });
 });

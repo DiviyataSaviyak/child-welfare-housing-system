@@ -10,7 +10,7 @@ export type Queue = "check" | "release";
 
 export type QueueRow = {
   id: string;
-  caseNumber: string | null;
+  applicationNumber: string | null;
   name: string | null;
   childName: string | null;
   officeName: string;
@@ -60,7 +60,7 @@ export async function listQueue(
       take: PAGE_SIZE,
       select: {
         id: true,
-        caseNumber: true,
+        applicationNumber: true,
         name: true,
         childName: true,
         nicKey: true,
@@ -68,7 +68,7 @@ export async function listQueue(
         submittedAt: true,
         verifiedAt: true,
         dsOffice: { select: NAMES },
-        replaces: { select: { caseNumber: true } },
+        replaces: { select: { applicationNumber: true } },
       },
     }),
     db.case.count({ where }),
@@ -78,13 +78,13 @@ export async function listQueue(
   return {
     rows: found.map((row) => ({
       id: row.id,
-      caseNumber: row.caseNumber,
+      applicationNumber: row.applicationNumber,
       name: row.name,
       childName: row.childName,
       officeName: localName(row.dsOffice, locale),
       waitingSince: row[since],
       duplicate: flagged.has(row.id),
-      replacesNumber: row.replaces?.caseNumber ?? null,
+      replacesNumber: row.replaces?.applicationNumber ?? null,
     })),
     total,
   };

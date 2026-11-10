@@ -195,7 +195,7 @@ export default async function DsHomePage({
                           {caseName(t, row.name, row.childName)}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          {row.caseNumber ?? t("noNumber")}
+                          {row.applicationNumber ?? t("noNumber")}
                           {row.category && ` · ${t(`category.${row.category}`)}`}
                         </span>
                       </Link>
@@ -284,7 +284,7 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
           href: "/ds/cases/new",
           title: t("home.todo.replace", { name }),
           text: t(item.status === "STOPPED" ? "home.todo.replaceStopped" : "home.todo.replaceRejected", {
-            number: item.caseNumber ?? t("noNumber"),
+            number: item.applicationNumber ?? t("noNumber"),
             reason: item.reason ?? t("home.todo.noReason"),
           }),
           action: t("home.todo.replaceAction"),

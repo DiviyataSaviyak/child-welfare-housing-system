@@ -11,7 +11,7 @@ const t = createTranslator({ locale: "si", messages, namespace: "cases" });
 
 /** Made-up cases (SEC-11). */
 const released: ExportRow = {
-  caseNumber: "HMG-2026-001",
+  applicationNumber: "HMG-2026-001",
   category: "CHILD_AT_RISK",
   kind: "NEW_HOUSE",
   status: "IN_PROGRESS",
@@ -42,7 +42,7 @@ const released: ExportRow = {
 
 const draft: ExportRow = {
   ...released,
-  caseNumber: null,
+  applicationNumber: null,
   category: "CARE_LEAVER",
   kind: null,
   status: "DRAFT",

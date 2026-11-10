@@ -48,7 +48,7 @@ export default async function EditCasePage({
         title={t("form.editTitle")}
         subtitle={
           <span className="flex items-center gap-3">
-            {details.caseNumber ?? t("noNumber")}
+            {details.applicationNumber ?? t("noNumber")}
             <StatusChip status={details.status} />
           </span>
         }

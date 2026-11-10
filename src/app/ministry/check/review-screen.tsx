@@ -236,7 +236,7 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
                     >
                       <span className="text-[17px] font-bold">{caseName(tc, row.name, row.childName)}</span>
                       <span className="text-[15px] text-muted-foreground">
-                        {t("rowOffice", { number: row.caseNumber ?? tc("noNumber"), office: row.officeName })}
+                        {t("rowOffice", { number: row.applicationNumber ?? tc("noNumber"), office: row.officeName })}
                       </span>
                       {row.waitingSince && (
                         <span className="text-sm text-[#3F4843]">
@@ -279,7 +279,7 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
                 </h2>
                 <p className="text-muted-foreground">
                   {t("subtitle", {
-                    number: details.caseNumber ?? tc("noNumber"),
+                    number: details.applicationNumber ?? tc("noNumber"),
                     office: details.officeName,
                     district: details.districtName,
                   })}
@@ -318,7 +318,7 @@ async function CheckTab({ viewer, params }: { viewer: Viewer; params: Params }) 
               place={place}
               caseLabel={{
                 name: caseName(tc, details.name, details.childName),
-                number: details.caseNumber ?? tc("noNumber"),
+                number: details.applicationNumber ?? tc("noNumber"),
               }}
               action={decideAction}
             />
@@ -356,7 +356,7 @@ async function LetterTab({ viewer, params }: { viewer: Viewer; params: Params })
   for (const c of cases) {
     let group = groups.at(-1);
     if (group?.office !== c.officeName) groups.push((group = { office: c.officeName, cases: [] }));
-    const number = c.caseNumber ?? tc("noNumber");
+    const number = c.applicationNumber ?? tc("noNumber");
     group.cases.push({
       id: c.id,
       version: c.version,
