@@ -3,26 +3,33 @@ import type { Role } from "../auth/roles";
 
 /**
  * Who may change a case's details, and when (application spec, Roles and permissions; Case statuses
- * and transitions). Office scope is checked separately, through the permission layer; these rules
- * only look at the role and the case's status. Status changes themselves are in transitions.ts.
+ * and transitions). Office scope is checked separately, through the permission layer (`canActOn`); these
+ * rules only look at the role and the case's status. Status changes themselves are in transitions.ts.
  */
-const ENTRY: readonly CaseStatus[] = ["DRAFT", "RETURNED"];
 
-/** CASE-9: after the check, only Head Office changes the details, while the case is still running. */
-const AFTER_CHECK: readonly CaseStatus[] = ["VERIFIED", "IN_PROGRESS"];
+/** CASE-8, CASE-9: until the Ministry's allocation, the DS of residence may still correct or delete it. */
+const AWAITING: readonly CaseStatus[] = ["AWAITING_ALLOCATION"];
+
+/** CASE-9: from the allocation until it is completed, only the Ministry changes its details. */
+const RUNNING: readonly CaseStatus[] = [
+  "AWAITING_ALLOCATION",
+  "ALLOCATED_TO_DISTRICT",
+  "ALLOCATION_RECEIVED",
+  "IN_PROGRESS",
+];
 
 const EDITABLE: Record<Role, readonly CaseStatus[]> = {
-  DS_OFFICER: ENTRY,
+  DS_OFFICER: AWAITING,
   DISTRICT_OFFICER: [],
-  MINISTRY_OFFICER: [...ENTRY, ...AFTER_CHECK],
+  MINISTRY_OFFICER: RUNNING,
   VIEWER: [],
   ADMIN: [],
 };
 
 /**
- * A draft or a returned case can be changed by its office or by Head Office (CASE-7). Nobody changes
- * a case while Head Office is checking it (STS-3). After verification only Head Office can, and every
- * changed field is logged (CASE-9). A finished, rejected or stopped case can't be changed.
+ * CASE-9: while a case awaits its allocation, its DS of residence or the Ministry may change any of its
+ * details; after that, only the Ministry, and every changed field is logged. A completed case can't be
+ * changed (STS-2).
  */
 export function canEditDetails(role: Role, status: CaseStatus): boolean {
   return EDITABLE[role].includes(status);
@@ -33,30 +40,29 @@ export function editableStatuses(role: Role): readonly CaseStatus[] {
   return EDITABLE[role];
 }
 
-/** A case still being entered opens in its form; any other opens on its page. */
-export function isBeingEntered(status: CaseStatus): boolean {
-  return ENTRY.includes(status);
-}
-
-/** A case Head Office has verified must keep every required field filled in (CASE-9). */
-export function mustStayComplete(status: CaseStatus): boolean {
-  return AFTER_CHECK.includes(status);
-}
-
 /** Who may start a case or save a case form at all; every other account only looks (PRM-5). */
 export function canEnterCases(role: Role): boolean {
   return role === "DS_OFFICER" || role === "MINISTRY_OFFICER";
 }
 
-/** A draft can be deleted (CASE-8), by its office or by Head Office, who may also start drafts. */
-export function canDeleteDraft(role: Role, status: CaseStatus): boolean {
-  return (role === "DS_OFFICER" || role === "MINISTRY_OFFICER") && status === "DRAFT";
+/** CASE-8: a case awaiting its allocation can be deleted, by its DS of residence or by the Ministry. */
+export function canDeleteCase(role: Role, status: CaseStatus): boolean {
+  return canEnterCases(role) && AWAITING.includes(status);
 }
 
 /**
- * Only Head Office chooses a case's office (CASE-3), and only while it is a draft: the first submit
- * puts the office's code into the case number.
+ * CASE-3: only the Ministry chooses a case's DS office of residence, for a new case or one awaiting its
+ * allocation. The Application Number is unique within that office (CASE-12), and the money follows the
+ * office where it is built, so nothing else depends on it until then.
  */
 export function canChangeOffice(role: Role, status: CaseStatus | null): boolean {
-  return role === "MINISTRY_OFFICER" && (status === null || status === "DRAFT");
+  return role === "MINISTRY_OFFICER" && (status === null || AWAITING.includes(status));
+}
+
+/**
+ * CASE-13: the DS where it is built can change only while the case awaits its allocation, because the
+ * Ministry's letter goes to that DS's district.
+ */
+export function canChangeBuildOffice(status: CaseStatus | null): boolean {
+  return status === null || AWAITING.includes(status);
 }

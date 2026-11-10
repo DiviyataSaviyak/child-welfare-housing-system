@@ -1,35 +1,21 @@
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import { DeleteDraft } from "@/components/cases/delete-draft";
-import { formValues, PageHeader, replacementOptions } from "@/components/cases/page-header";
+import { buildSetting, formValues, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { CaseForm, type OfficeSetting } from "@/components/forms/case-form";
-import { FormNotice } from "@/components/forms/form-field";
 import { getCase } from "@/server/cases/queries";
-import { openRequests } from "@/server/cases/replacements";
-import { canChangeOffice, canDeleteDraft, canEditDetails, isBeingEntered } from "@/server/cases/rules";
+import { canChangeBuildOffice, canChangeOffice, canEditDetails } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
-import {
-  checkNicAction,
-  deleteDraftAction,
-  removeDocumentAction,
-  saveCaseAction,
-  uploadDocumentAction,
-} from "../../actions";
+import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAction } from "../../actions";
 
 /**
- * Head Office changes a draft or a returned case of any office (application spec, Roles and
- * permissions), or corrects a verified case, with every changed field logged (CASE-9).
+ * CASE-9: the Ministry changes a case of any office until it is completed, with every changed field
+ * logged. Its DS office (CASE-3) and where it is built (CASE-13) change only while it awaits its
+ * allocation.
  */
-export default async function HoEditCasePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ notice?: string | string[] }>;
-}) {
+export default async function MinistryEditCasePage({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
   const { id } = await params;
@@ -37,30 +23,22 @@ export default async function HoEditCasePage({
   if (!details) notFound();
   if (!canEditDetails(viewer.role, details.status)) redirect(`/ministry/cases/${id}`);
 
-  const t = await getTranslations("cases");
-  const notice = (await searchParams).notice === "saved";
-  // The office can change only until the first submit puts its code in the case number (CASE-3).
+  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
   const office: OfficeSetting = canChangeOffice(viewer.role, details.status)
-    ? {
-        kind: "choose",
-        districts: await districtsWithOffices(db, locale),
-        districtId: details.districtId,
+    ? { kind: "choose", districts, districtId: details.districtId, dsOfficeId: details.dsOfficeId }
+    : {
+        kind: "fixed",
         dsOfficeId: details.dsOfficeId,
-      }
-    : { kind: "fixed", districtName: details.districtName, officeName: details.officeName };
-  // CASE-11: while the office can still change, the form offers each office's own requests.
-  const requests = isBeingEntered(details.status)
-    ? await openRequests(db, viewer, {
-        forCaseId: details.id,
-        ...(office.kind === "fixed" ? { dsOfficeId: details.dsOfficeId } : {}),
-      })
-    : [];
+        districtName: details.districtName,
+        officeName: details.officeName,
+      };
+  const awaiting = canChangeBuildOffice(details.status);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        backHref={isBeingEntered(details.status) ? "/ministry/cases" : `/ministry/cases/${details.id}`}
-        backLabel={isBeingEntered(details.status) ? t("back.ministry") : t("back.case")}
+        backHref={`/ministry/cases/${details.id}`}
+        backLabel={t("back.case")}
         title={t("form.editTitle")}
         subtitle={
           <span className="flex items-center gap-3">
@@ -69,18 +47,16 @@ export default async function HoEditCasePage({
           </span>
         }
       />
-      {notice && <FormNotice message={t("notices.savedHo")} />}
       <CaseForm
         key={details.version}
         caseId={details.id}
         version={details.version}
         initial={formValues(details)}
         office={office}
+        build={buildSetting(details, awaiting, districts)}
         documents={details.documents}
-        returnReason={details.returnReason}
-        mode={isBeingEntered(details.status) ? "entry" : "change"}
-        replacements={replacementOptions(t, requests)}
-        replacesCaseId={details.replaces?.id ?? null}
+        mode="edit"
+        intro={!awaiting}
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,
@@ -88,7 +64,6 @@ export default async function HoEditCasePage({
           removeDocument: removeDocumentAction,
         }}
       />
-      {canDeleteDraft(viewer.role, details.status) && <DeleteDraft caseId={details.id} action={deleteDraftAction} />}
     </div>
   );
 }

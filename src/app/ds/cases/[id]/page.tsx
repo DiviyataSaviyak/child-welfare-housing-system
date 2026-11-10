@@ -15,17 +15,19 @@ import { FormNotice } from "@/components/forms/form-field";
 import { CompletedBanner, StoppedBanner } from "@/components/progress/case-banners";
 import { CaseHistory } from "@/components/progress/case-history";
 import { InstallmentAction } from "@/components/progress/installment-action";
+import { ReasonAction } from "@/components/progress/reason-action";
 import { StageSection } from "@/components/progress/stage-section";
 import { StageUpdate } from "@/components/progress/stage-update";
 import { colomboDay } from "@/lib/dates";
 import { paidLimits, stageLimits, startLimits } from "@/lib/validation/progress";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
-import { canEditDetails } from "@/server/cases/rules";
+import { canDeleteCase, canEditDetails } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { caseHistory } from "@/server/history/queries";
 import { nextInstallment, previousPaidOn } from "@/server/installments/rules";
 import { getStageProgress } from "@/server/stages/queries";
+import { deleteCaseAction } from "../actions";
 import { payInstallmentAction, stageUpdateAction, startInstallmentAction, uploadPhotoAction } from "./actions";
 
 /** What a progress action leaves on the page, by its key under "progress.notices". */
@@ -59,11 +61,32 @@ export default async function DsCasePage({
     caseSubtitle(details, "ds"),
   ]);
   const notice = (await searchParams).notice;
-  const justSubmitted = notice === "submitted" && details.applicationNumber !== null;
+  const justCreated = notice === "created";
   // CASE-13: only the DS where it is built pays the installments and records the stages.
   const running = details.status === "IN_PROGRESS" && details.release !== null && details.actsOn.progress;
   const today = colomboDay(new Date());
   const next = running ? nextInstallment(details.installments) : null;
+  // CASE-8, CASE-9: while it awaits its allocation, the DS of residence corrects or deletes it.
+  const canEdit = details.actsOn.edit && canEditDetails(viewer.role, details.status);
+  const remove = details.actsOn.edit && canDeleteCase(viewer.role, details.status) && (
+    <ReasonAction
+      key={`delete-${details.version}`}
+      id="delete"
+      look="danger"
+      hidden={{ caseId: details.id, version: String(details.version) }}
+      action={deleteCaseAction}
+      texts={{
+        button: t("deleteCase.button"),
+        title: t("deleteCase.title"),
+        text: t("deleteCase.text", { number: details.applicationNumber ?? t("noNumber") }),
+        reason: t("deleteCase.reason"),
+        reasonHelp: t("deleteCase.reasonHelp"),
+        confirm: t("deleteCase.confirm"),
+        cancel: t("deleteCase.cancel"),
+        working: t("deleteCase.working"),
+      }}
+    />
+  );
 
   /** The next installment's button (INS-2); a later one says which it waits for. */
   const installmentStep = (item: InstallmentDetails) => {
@@ -102,25 +125,31 @@ export default async function DsCasePage({
         backLabel={t("back.ds")}
         title={caseName(t, details.name, details.childName)}
         subtitle={subtitle}
-        aside={<StatusChip status={details.status} />}
+        aside={
+          <div className="flex items-center gap-3.5">
+            <StatusChip status={details.status} />
+            {remove}
+          </div>
+        }
       />
-      {justSubmitted && (
+      {justCreated && (
         <section
-          aria-labelledby="submitted-title"
+          aria-labelledby="created-title"
           className="flex max-w-4xl flex-col gap-2 rounded-xl border-2 border-primary bg-accent px-6 py-5"
         >
-          <h2 id="submitted-title" className="text-[22px] font-bold text-primary">
-            {t("submitted.title")}
+          <h2 id="created-title" className="text-[22px] font-bold text-primary">
+            {t("created.title")}
           </h2>
           <p className="text-lg">
-            {t("submitted.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
+            {t("created.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
-          <p className="text-[#3F4843]">{t("submitted.text")}</p>
+          <p className="text-[#3F4843]">{t("created.text")}</p>
           <Link href="/ds/cases/new" className="self-start font-semibold text-primary underline">
-            {t("submitted.addAnother")}
+            {t("created.addAnother")}
           </Link>
         </section>
       )}
+      {notice === "changed" && <FormNotice message={t("notices.changed")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <CaseNotes details={details} audience="ds" />
       <StoppedBanner details={details} />
@@ -162,14 +191,7 @@ export default async function DsCasePage({
                 }
               />
             )}
-            <CaseDetailsSection
-              details={details}
-              editHref={
-                details.actsOn.edit && canEditDetails(viewer.role, details.status)
-                  ? `/ds/cases/${details.id}/edit`
-                  : null
-              }
-            />
+            <CaseDetailsSection details={details} editHref={canEdit ? `/ds/cases/${details.id}/edit` : null} />
           </>
         }
       />

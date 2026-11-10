@@ -2,41 +2,48 @@ import { describe, expect, it } from "vitest";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { CaseStatus as STATUS_VALUES } from "@/generated/prisma/enums";
 import { applicationKey, formatCaseNumber } from "./numbers";
-import { canChangeOffice, canDeleteDraft, canEditDetails, isBeingEntered, mustStayComplete } from "./rules";
+import { canChangeBuildOffice, canChangeOffice, canDeleteCase, canEditDetails } from "./rules";
 import { type Move, moveRefusal, MOVES, type Mover, movesFrom } from "./transitions";
 
 const STATUSES = Object.values(STATUS_VALUES) as CaseStatus[];
 
 describe("case rules (application spec, Roles and permissions; Case statuses and transitions)", () => {
-  it("lets the office change only drafts and returned cases, and nobody a case being checked (CASE-7, STS-3)", () => {
-    for (const status of STATUSES) {
-      const entry = status === "DRAFT" || status === "RETURNED";
-      expect(canEditDetails("DS_OFFICER", status), status).toBe(entry);
-      expect(isBeingEntered(status), status).toBe(entry);
-      expect(canEditDetails("ADMIN", status), status).toBe(false);
-    }
-    expect(canEditDetails("MINISTRY_OFFICER", "SUBMITTED")).toBe(false);
-  });
+  const RUNNING = ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED", "IN_PROGRESS"];
 
-  it("lets only Head Office change a verified case while it runs, and keeps it complete (CASE-9)", () => {
-    const afterCheck = ["VERIFIED", "IN_PROGRESS"];
+  it("lets the DS change a case only while it awaits its allocation (CASE-9)", () => {
     for (const status of STATUSES) {
-      const entry = status === "DRAFT" || status === "RETURNED";
-      expect(canEditDetails("MINISTRY_OFFICER", status), status).toBe(entry || afterCheck.includes(status));
-      expect(mustStayComplete(status), status).toBe(afterCheck.includes(status));
+      expect(canEditDetails("DS_OFFICER", status), status).toBe(status === "AWAITING_ALLOCATION");
+      for (const role of ["DISTRICT_OFFICER", "VIEWER", "ADMIN"] as const) {
+        expect(canEditDetails(role, status), `${role} ${status}`).toBe(false);
+      }
     }
   });
 
-  it("deletes drafts only (CASE-8)", () => {
-    for (const status of STATUSES) expect(canDeleteDraft("DS_OFFICER", status), status).toBe(status === "DRAFT");
-    expect(canDeleteDraft("ADMIN", "DRAFT")).toBe(false);
+  it("lets the Ministry change a case until it is completed (CASE-9, STS-2)", () => {
+    for (const status of STATUSES) {
+      expect(canEditDetails("MINISTRY_OFFICER", status), status).toBe(RUNNING.includes(status));
+    }
   });
 
-  it("lets only Head Office choose the office, before the case has a number (CASE-3)", () => {
+  it("deletes a case only while it awaits its allocation, by the DS or the Ministry (CASE-8)", () => {
+    for (const status of STATUSES) {
+      expect(canDeleteCase("DS_OFFICER", status), status).toBe(status === "AWAITING_ALLOCATION");
+      expect(canDeleteCase("MINISTRY_OFFICER", status), status).toBe(status === "AWAITING_ALLOCATION");
+      expect(canDeleteCase("VIEWER", status), status).toBe(false);
+    }
+    expect(canDeleteCase("ADMIN", "AWAITING_ALLOCATION")).toBe(false);
+  });
+
+  it("lets only the Ministry choose the office, until the allocation (CASE-3)", () => {
     expect(canChangeOffice("MINISTRY_OFFICER", null)).toBe(true);
-    expect(canChangeOffice("MINISTRY_OFFICER", "DRAFT")).toBe(true);
-    expect(canChangeOffice("MINISTRY_OFFICER", "RETURNED")).toBe(false);
+    expect(canChangeOffice("MINISTRY_OFFICER", "AWAITING_ALLOCATION")).toBe(true);
+    expect(canChangeOffice("MINISTRY_OFFICER", "ALLOCATED_TO_DISTRICT")).toBe(false);
     expect(canChangeOffice("DS_OFFICER", null)).toBe(false);
+  });
+
+  it("changes where it is built only until the allocation (CASE-13)", () => {
+    for (const status of STATUSES) expect(canChangeBuildOffice(status), status).toBe(status === "AWAITING_ALLOCATION");
+    expect(canChangeBuildOffice(null)).toBe(true);
   });
 });
 
@@ -52,9 +59,7 @@ const ALLOWED: [Move, CaseStatus | null, CaseStatus, Mover[]][] = [
   ["start", "ALLOCATION_RECEIVED", "IN_PROGRESS", ["SYSTEM"]],
   ["unstart", "IN_PROGRESS", "ALLOCATION_RECEIVED", ["SYSTEM"]],
   ["complete", "IN_PROGRESS", "COMPLETED", ["SYSTEM"]],
-  // Version 1's, until change 0006's tasks 4 to 6 remove them.
-  ["submit", "DRAFT", "SUBMITTED", ["DS_OFFICER", "MINISTRY_OFFICER"]],
-  ["submit", "RETURNED", "SUBMITTED", ["DS_OFFICER", "MINISTRY_OFFICER"]],
+  // Version 1's, until change 0006's tasks 5 and 6 remove them.
   ["verify", "SUBMITTED", "VERIFIED", ["MINISTRY_OFFICER"]],
   ["sendBack", "SUBMITTED", "RETURNED", ["MINISTRY_OFFICER"]],
   ["reject", "SUBMITTED", "REJECTED", ["MINISTRY_OFFICER"]],

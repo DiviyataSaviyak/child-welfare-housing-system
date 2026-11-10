@@ -1,22 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { getLocale, getTranslations } from "next-intl/server";
-import { formValues, PageHeader, replacementOptions } from "@/components/cases/page-header";
+import { buildSetting, formValues, PageHeader } from "@/components/cases/page-header";
 import { CaseForm } from "@/components/forms/case-form";
-import { openRequests } from "@/server/cases/replacements";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAction } from "../actions";
 
-/** Head Office enters a case for any DS office, choosing the district, then the office (CASE-3). */
-export default async function HoNewCasePage() {
-  const viewer = await requireRole("MINISTRY_OFFICER");
+/**
+ * The Ministry enters a case for any DS office, choosing the district, then the office (CASE-3), and
+ * where it is built (CASE-13).
+ */
+export default async function MinistryNewCasePage() {
+  await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
-  const [t, districts, requests] = await Promise.all([
-    getTranslations("cases"),
-    districtsWithOffices(db, locale),
-    openRequests(db, viewer),
-  ]);
+  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -27,9 +25,9 @@ export default async function HoNewCasePage() {
         version={null}
         initial={formValues(null)}
         office={{ kind: "choose", districts, districtId: null, dsOfficeId: null }}
+        build={buildSetting(null, true, districts)}
         documents={[]}
-        returnReason={null}
-        replacements={replacementOptions(t, requests)}
+        mode="new"
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,

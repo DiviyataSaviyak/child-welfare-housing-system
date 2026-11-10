@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { CONFIRM, fillCase, newSubmittedCase, openAs, randomNic, recordLetterFor, SEND, submit } from "./case-helpers";
+import { CONFIRM, fillCase, newSavedCase, openAs, randomNic, recordLetterFor, SAVE, saveNew } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the tests look for (messages/si.json). */
@@ -34,7 +34,7 @@ test("AC-8, AC-9, AC-10: DS submits, Head Office sends back, DS corrects, Head O
   const ho = await openAs(browser, "ho0001");
   const name = `${TEST_CASE_NAME} නිදහස් ${Date.now()}`;
   await signInAs(ds, "ds0101", /\/ds$/);
-  const { url, number } = await newSubmittedCase(ds, { name, nic: randomNic() });
+  const { url, number } = await newSavedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
 
   // AC-8: the case waits in the check queue, and the menu counts it.
@@ -62,7 +62,7 @@ test("AC-8, AC-9, AC-10: DS submits, Head Office sends back, DS corrects, Head O
   await todo.getByText(`${name}: ආපසු එවා ඇත`).click();
   await expect(ds.getByText("ලිපිනයේ ගම සඳහන් කරන්න.")).toBeVisible();
   await ds.getByLabel("ලිපිනය", { exact: true }).fill("නො. 1, පරීක්ෂණ පාර, පරීක්ෂණ ගම");
-  await ds.getByRole("button", { name: SEND }).click();
+  await ds.getByRole("button", { name: SAVE }).click();
   await ds.getByRole("button", { name: CONFIRM }).click();
   await expect(ds.getByTestId("case-number")).toHaveText(number);
 
@@ -127,7 +127,7 @@ test("Head Office narrows the queues to a district and a DS office, and stays th
   test.slow();
   await signInAs(ds, "ds0101", /\/ds$/);
   const name = `${TEST_CASE_NAME} ප්‍රදේශය ${Date.now()}`;
-  const { url, number } = await newSubmittedCase(ds, { name, nic: randomNic() });
+  const { url, number } = await newSavedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
 
   const ho = await openAs(browser, "ho0001");
@@ -178,7 +178,7 @@ test("rejecting needs a reason the DS office then reads (CHK-3)", async ({ page:
   test.slow();
   await signInAs(ds, "ds0101", /\/ds$/);
   const name = `${TEST_CASE_NAME} ප්‍රතික්ෂේප ${Date.now()}`;
-  const { url } = await newSubmittedCase(ds, { name, nic: randomNic() });
+  const { url } = await newSavedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
 
   // Decided from the case's own page this time.
@@ -213,14 +213,14 @@ test("Head Office corrects a verified case and its release, and both are saved (
   await fillCase(ho, { name, nic: randomNic() });
   await ho.getByLabel("දිස්ත්‍රික්කය *").selectOption({ label: "කොළඹ" });
   await ho.getByLabel("ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: "හෝමාගම" });
-  const { url } = await submit(ho, "ministry");
+  const { url } = await saveNew(ho, "ministry");
   await ho.getByRole("button", { name: VERIFY, exact: true }).click();
   await ho.getByRole("dialog").getByRole("button", { name: "ඔව්, අනුමත කරන්න" }).click();
   await expect(ho).toHaveURL(`${url}?notice=verified`);
 
   // CASE-9: one save button, and the change is kept.
   await ho.getByRole("link", { name: "විස්තර සංස්කරණය කරන්න" }).click();
-  await expect(ho.getByRole("button", { name: SEND })).toBeHidden();
+  await expect(ho.getByRole("button", { name: SAVE })).toBeHidden();
   await ho.getByLabel("දුරකතන අංකය", { exact: true }).fill("077 000 0909");
   await ho.getByRole("button", { name: "වෙනස්කම් සුරකින්න" }).click();
   await expect(ho).toHaveURL(`${url}?notice=changed`);

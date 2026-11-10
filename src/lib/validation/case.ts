@@ -16,6 +16,7 @@ export type KindValue = (typeof KINDS)[number];
 export const CASE_FIELDS = [
   "category",
   "kind",
+  "applicationNumber",
   "childName",
   "name",
   "nic",
@@ -30,6 +31,7 @@ export type CaseField = (typeof CASE_FIELDS)[number];
 export type CaseErrorKey =
   | "categoryRequired"
   | "kindRequired"
+  | "applicationNumberRequired"
   | "childNameRequired"
   | "nameRequired"
   | "guardianNameRequired"
@@ -41,6 +43,8 @@ export type CaseErrorKey =
 export type CaseValues = {
   category: CategoryValue | null;
   kind: KindValue | null;
+  /** CASE-12: as typed from the paper application, without spaces at either end. */
+  applicationNumber: string | null;
   childName: string | null;
   name: string | null;
   nic: string | null;
@@ -52,11 +56,8 @@ export type CaseValues = {
 };
 export type CaseErrors = Partial<Record<CaseField, CaseErrorKey>>;
 
-/**
- * "draft" checks only the fields that are filled in (CASE-4).
- * "submit" also needs every required field (CASE-5).
- */
-export type CaseCheck = "draft" | "submit";
+/** CASE-12: the longest Application Number, as typed from the paper application. */
+export const APPLICATION_NUMBER_MAX = 30;
 
 /** Free text: empty becomes null; when filled in, `min` to `max` characters. */
 const text = (min: number, max: number) =>
@@ -74,6 +75,7 @@ const choice = <T extends string>(values: readonly T[]) =>
 const FIELD_SCHEMAS: Record<CaseField, z.ZodType<string | null, string>> = {
   category: choice(CATEGORIES),
   kind: choice(KINDS),
+  applicationNumber: text(1, APPLICATION_NUMBER_MAX),
   childName: text(2, 100),
   name: text(2, 100),
   nic: z
@@ -97,23 +99,24 @@ const FIELD_SCHEMAS: Record<CaseField, z.ZodType<string | null, string>> = {
 };
 
 /**
- * The required fields that are still empty (CASE-2). Submitting needs none (CASE-5). The NIC, address,
- * GN division and phone numbers are optional: some beneficiaries and guardians have none.
+ * The required fields that are still empty (CASE-2, CASE-12). Every save needs none (CASE-5, CASE-9):
+ * there are no drafts. The NIC, address, GN division and phone numbers are optional: some beneficiaries
+ * and guardians have none.
  */
 export function missingRequired(values: CaseValues): CaseErrors {
   const atRisk = values.category === "CHILD_AT_RISK";
   const errors: CaseErrors = {};
   if (!values.category) errors.category = "categoryRequired";
   if (!values.kind) errors.kind = "kindRequired";
+  if (!values.applicationNumber) errors.applicationNumber = "applicationNumberRequired";
   if (atRisk && !values.childName) errors.childName = "childNameRequired";
   if (!values.name) errors.name = atRisk ? "guardianNameRequired" : "nameRequired";
   return errors;
 }
 
-/** Reads the case form. Missing fields count as empty. */
+/** Reads the case form, with every required field (CASE-5). Missing fields count as empty. */
 export function parseCaseForm(
   read: (field: CaseField) => string,
-  check: CaseCheck,
 ): { ok: true; value: CaseValues } | { ok: false; errors: CaseErrors } {
   const values = {} as Record<CaseField, string | null>;
   const errors: CaseErrors = {};
@@ -131,14 +134,24 @@ export function parseCaseForm(
   }
   // A lone phone number goes first.
   if (!value.mobile1 && !errors.mobile1 && value.mobile2) [value.mobile1, value.mobile2] = [value.mobile2, null];
-  if (check === "submit") {
-    for (const [field, key] of Object.entries(missingRequired(value))) errors[field as CaseField] ??= key;
-  }
+  for (const [field, key] of Object.entries(missingRequired(value))) errors[field as CaseField] ??= key;
   return Object.keys(errors).length === 0 ? { ok: true, value } : { ok: false, errors };
 }
 
-/** A DS office chosen on the form (CASE-3), or null when none is. */
+/** A DS office chosen on the form (CASE-3, CASE-13), or null when none is. */
 export function parseOfficeId(raw: string): number | null {
   const id = Number(raw);
   return raw !== "" && Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * CASE-13: the form's answer to "is the house built, or the land bought, in the DS division where the
+ * beneficiary lives?". `same` is "yes", the default; `other` names the DS office where it is built, or
+ * null when none was chosen yet.
+ */
+export type BuildAnswer = { kind: "same" } | { kind: "other"; dsOfficeId: number | null };
+
+/** Reads the answer as the form sends it: `built` ("same" or "other") and `buildDsOfficeId`. */
+export function parseBuildAnswer(built: string, buildDsOfficeId: string): BuildAnswer {
+  return built === "other" ? { kind: "other", dsOfficeId: parseOfficeId(buildDsOfficeId) } : { kind: "same" };
 }

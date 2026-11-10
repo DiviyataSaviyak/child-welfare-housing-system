@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { formatDate } from "@/lib/dates";
+import type { BuildSetting, CaseFormValues } from "@/components/forms/case-form";
 import type { CaseDetails } from "@/server/cases/queries";
-import type { ReplacementRequest } from "@/server/cases/replacements";
-import type { CaseFormValues, ReplacementOption } from "@/components/forms/case-form";
+import type { DistrictOptions } from "@/server/lists/queries";
 
 /** A case page's back link, title and one line under it, as in the prototype. */
 export function PageHeader({
@@ -37,6 +36,7 @@ export function formValues(details: CaseDetails | null): CaseFormValues {
   return {
     category: details?.category ?? "",
     kind: details?.kind ?? "",
+    applicationNumber: details?.applicationNumber ?? "",
     childName: details?.childName ?? "",
     name: details?.name ?? "",
     nic: details?.nic ?? "",
@@ -58,18 +58,28 @@ export function caseName(
   return childName ? t("withChild", { name: shown, child: childName }) : shown;
 }
 
-/** The cases the case form offers to replace (CASE-11), with their names and days written out. */
-export function replacementOptions(
-  t: (key: "noName" | "withChild" | "noNumber", values?: Record<string, string>) => string,
-  requests: ReplacementRequest[],
-): ReplacementOption[] {
-  return requests.map((request) => ({
-    id: request.id,
-    dsOfficeId: request.dsOfficeId,
-    number: request.applicationNumber ?? t("noNumber"),
-    name: caseName(t, request.name, request.childName),
-    stopped: request.status === "STOPPED",
-    date: request.decidedAt ? formatDate(request.decidedAt) : null,
-    reason: request.reason,
-  }));
+/**
+ * CASE-13: the form's "where is it built?" for a saved case, or a new one (`details` null): asked while the
+ * case awaits its allocation, fixed after.
+ */
+export function buildSetting(
+  details: CaseDetails | null,
+  canChange: boolean,
+  districts: DistrictOptions[],
+): BuildSetting {
+  const elsewhere = details && details.buildDsOfficeId !== details.dsOfficeId ? details : null;
+  if (canChange) {
+    return {
+      kind: "choose",
+      districts,
+      districtId: elsewhere?.buildDistrictId ?? null,
+      dsOfficeId: elsewhere?.buildDsOfficeId ?? null,
+    };
+  }
+  return {
+    kind: "fixed",
+    dsOfficeId: elsewhere?.buildDsOfficeId ?? null,
+    districtName: elsewhere?.buildDistrictName ?? "",
+    officeName: elsewhere?.buildOfficeName ?? "",
+  };
 }

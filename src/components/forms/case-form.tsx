@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowRightLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { FormError, FormField, FormTextArea } from "@/components/forms/form-field";
@@ -24,37 +23,32 @@ import { NicMatches } from "./nic-matches";
 export type CaseFormValues = Record<CaseField, string>;
 export type CaseFormState = { errors: CaseErrors; error: CaseCommandError | null };
 
-/** Where the case belongs (CASE-3). */
+/** Where the beneficiary lives: the DS office of residence, which enters the case (CASE-3). */
 export type OfficeSetting =
   /** A DS officer's own office, from their account. */
-  | { kind: "own"; districtName: string; officeName: string }
-  /** Head Office, once the case has its number: the office is part of it. */
-  | { kind: "fixed"; districtName: string; officeName: string }
-  /** Head Office chooses the district, then the DS office. */
+  | { kind: "own"; dsOfficeId: number; districtName: string; officeName: string }
+  /** The Ministry, once the case is allocated: the office stays. */
+  | { kind: "fixed"; dsOfficeId: number; districtName: string; officeName: string }
+  /** The Ministry chooses the district, then the DS office. */
   | { kind: "choose"; districts: DistrictOptions[]; districtId: number | null; dsOfficeId: number | null };
 
-/** A case Head Office asked to replace (CASE-11), as the form offers it, for its own DS office. */
-export type ReplacementOption = {
-  id: string;
-  dsOfficeId: number;
-  number: string;
-  name: string;
-  /** Stopped, not rejected. */
-  stopped: boolean;
-  /** The day Head Office decided, written out. */
-  date: string | null;
-  reason: string | null;
-};
+/** CASE-13: where the house is built or the land bought. */
+export type BuildSetting =
+  /** Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. */
+  | { kind: "choose"; districts: DistrictOptions[]; districtId: number | null; dsOfficeId: number | null }
+  /** Once the case is allocated, it stays; `dsOfficeId` is null for the DS of residence. */
+  | { kind: "fixed"; dsOfficeId: number | null; districtName: string; officeName: string };
 
 export type CaseFormActions = DocumentActions & {
   save: (state: CaseFormState, form: FormData) => Promise<CaseFormState>;
   checkNic: (nic: string, caseId: string, dsOfficeId: number | null) => Promise<NicMatch[]>;
 };
 
-type Intent = "save" | "submit";
+type Built = "same" | "other";
 
 const EMPTY: CaseFormState = { errors: {}, error: null };
 const DETAIL_FIELDS: CaseField[] = [
+  "applicationNumber",
   "childName",
   "name",
   "nic",
@@ -68,36 +62,33 @@ const DETAIL_FIELDS: CaseField[] = [
 /**
  * CASE-1: the case form on one page, in four numbered parts, as in the prototype. Everything typed is
  * kept in state, so a refused save loses nothing (ERR-1, ERR-3). The browser runs the same checks as the
- * server before anything is sent, and submitting shows a summary to confirm first (CASE-5).
- * In "change" mode Head Office corrects a verified case (CASE-9): one save button, and every required
- * field must stay filled in. While Head Office has asked the case's office for another name, the form
- * first asks whether this person is in that case's place, and submitting needs an answer (CASE-11).
+ * server before anything is sent. There are no drafts: every save needs every required field, and a new
+ * case shows a summary to confirm first, then goes straight to "awaiting fund allocation" (CASE-5).
+ * The kind of help is followed by where the house is built (CASE-13); the Application Number opens the
+ * beneficiary's details (CASE-12). A saved case is changed with one save button (CASE-9); `intro` says
+ * that every change is logged, for the Ministry's changes after the allocation.
  */
 export function CaseForm({
   caseId,
   version,
   initial,
   office,
+  build,
   documents,
-  returnReason,
   actions,
-  mode = "entry",
-  replacements = [],
-  replacesCaseId = null,
+  mode,
+  intro = false,
 }: {
   caseId: string;
   /** The version the form was opened with (CASE-10); null for a new case. */
   version: number | null;
   initial: CaseFormValues;
   office: OfficeSetting;
+  build: BuildSetting;
   documents: { id: string; name: string }[];
-  returnReason: string | null;
   actions: CaseFormActions;
-  mode?: "entry" | "change";
-  /** The cases waiting for another name that this one may replace, of any office the form may choose. */
-  replacements?: ReplacementOption[];
-  /** The case this one already replaces. */
-  replacesCaseId?: string | null;
+  mode: "new" | "edit";
+  intro?: boolean;
 }) {
   const t = useTranslations("cases");
   const [state, dispatch, pending] = useActionState(actions.save, EMPTY);
@@ -105,14 +96,14 @@ export function CaseForm({
   const [values, setValues] = useState(initial);
   const [districtId, setDistrictId] = useState(office.kind === "choose" ? String(office.districtId ?? "") : "");
   const [dsOfficeId, setDsOfficeId] = useState(office.kind === "choose" ? String(office.dsOfficeId ?? "") : "");
+  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null ? "same" : "other");
+  const [buildDistrictId, setBuildDistrictId] = useState(build.kind === "choose" ? String(build.districtId ?? "") : "");
+  const [buildOfficeId, setBuildOfficeId] = useState(build.kind === "choose" ? String(build.dsOfficeId ?? "") : "");
   const [uploads, setUploads] = useState<Upload[]>([]);
   // Checks made in the browser; null once the form has gone to the server, whose answer then shows.
   const [localErrors, setLocalErrors] = useState<CaseErrors | null>(null);
   const [officeMissing, setOfficeMissing] = useState(false);
-  // "" until answered, "none" for no, or the id of the case replaced (CASE-11).
-  const [replaces, setReplaces] = useState(replacesCaseId ?? "");
-  const [replacementMissing, setReplacementMissing] = useState(false);
-  const [intent, setIntent] = useState<Intent>("submit");
+  const [buildMissing, setBuildMissing] = useState(false);
   const [failedTries, setFailedTries] = useState(0);
   const [nicCheck, setNicCheck] = useState<{ nic: string; matches: NicMatch[] } | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -129,16 +120,13 @@ export function CaseForm({
   const errors = localErrors ?? state.errors;
   const serverError = localErrors === null ? state.error : null;
   const showOfficeError = officeMissing || serverError === "officeRequired";
+  const showBuildError = buildMissing || serverError === "buildOfficeRequired";
   const uploading = uploads.some((u) => u.state === "uploading");
   const documentCount = documents.length + uploads.filter((u) => u.state === "done").length;
   const chosenOffice = office.kind === "choose" ? parseOfficeId(dsOfficeId) : null;
-  // A Head Office officer choosing the office sees the requests of the office chosen.
-  const replacementChoices =
-    office.kind === "choose" ? replacements.filter((r) => r.dsOfficeId === chosenOffice) : replacements;
-  const askReplacement = mode === "entry" && replacementChoices.length > 0;
-  const replacesValue = replaces === "none" || replacementChoices.some((r) => r.id === replaces) ? replaces : "";
-  const replaced = replacementChoices.find((r) => r.id === replacesValue);
-  const showReplacementError = askReplacement && (replacementMissing || serverError === "replacementRequired");
+  // The DS of residence, which "the same DS division" means and the build office can't be (CASE-13).
+  const residence = office.kind === "choose" ? chosenOffice : office.dsOfficeId;
+  const chosenBuildOffice = build.kind === "choose" && built === "other" ? parseOfficeId(buildOfficeId) : null;
 
   const set = (field: CaseField) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setValues((current) => ({ ...current, [field]: event.target.value }));
@@ -164,40 +152,42 @@ export function CaseForm({
   }
   const matches = nicCheck && nicCheck.nic === normaliseNic(values.nic) ? nicCheck.matches : [];
 
-  function send(chosen: Intent) {
+  function send() {
     const form = new FormData();
     form.set("id", caseId);
     form.set("version", version === null ? "" : String(version));
-    form.set("intent", chosen);
     for (const field of CASE_FIELDS) form.set(field, values[field]);
     if (office.kind === "choose") form.set("dsOfficeId", dsOfficeId);
-    // When asked, the answer; when no longer asked because another office was chosen, its link goes.
-    if (askReplacement) form.set("replaces", replacesValue);
-    else if (replacesCaseId && mode === "entry") form.set("replaces", "none");
+    if (build.kind === "choose") {
+      form.set("built", built);
+      if (built === "other") form.set("buildDsOfficeId", buildOfficeId);
+    } else if (build.dsOfficeId !== null) {
+      form.set("built", "other");
+      form.set("buildDsOfficeId", String(build.dsOfficeId));
+    } else {
+      form.set("built", "same");
+    }
     for (const upload of uploads) if (upload.state === "done" && upload.id) form.append("documentIds", upload.id);
     startTransition(() => dispatch(form));
   }
 
-  async function attempt(chosen: Intent) {
-    setIntent(chosen);
-    const checked = parseCaseForm(
-      (field) => values[field],
-      chosen === "submit" || mode === "change" ? "submit" : "draft",
-    );
+  async function attempt() {
+    const checked = parseCaseForm((field) => values[field]);
     const noOffice = office.kind === "choose" && chosenOffice === null;
-    const noAnswer = chosen === "submit" && askReplacement && replacesValue === "";
-    if (!checked.ok || noOffice || noAnswer) {
+    const noBuild = build.kind === "choose" && built === "other" && chosenBuildOffice === null;
+    if (!checked.ok || noOffice || noBuild) {
       setLocalErrors(checked.ok ? {} : checked.errors);
       setOfficeMissing(noOffice);
-      setReplacementMissing(noAnswer);
+      setBuildMissing(noBuild);
       setFailedTries((n) => n + 1);
       return;
     }
     setLocalErrors(null);
     setOfficeMissing(false);
-    setReplacementMissing(false);
-    if (chosen === "save") {
-      send("save");
+    setBuildMissing(false);
+    // CASE-9: a change is saved at once; a new case is confirmed first (CASE-5).
+    if (mode === "edit") {
+      send();
       return;
     }
     await lookUp(values.nic);
@@ -205,30 +195,34 @@ export function CaseForm({
   }
 
   // The list above the buttons (ERR-1), in the order of the form, each linked to its field.
+  const fieldError = (field: CaseField) => {
+    const key = errors[field];
+    if (!key) return [];
+    const text = t(`form.errors.${key}`);
+    const message =
+      key === "tooShort" || key === "tooLong"
+        ? t("form.errors.inField", { field: fieldLabel(field), message: text })
+        : text;
+    const target = field === "category" || field === "kind" ? `part-${field}` : field;
+    return [{ key: field, target, message }];
+  };
   const errorList = [
-    ...(showReplacementError
-      ? [{ key: "replaces", target: "part-replaces", message: t("form.errors.replacementRequired") }]
+    ...fieldError("category"),
+    ...fieldError("kind"),
+    ...(showBuildError
+      ? [{ key: "built", target: "buildDsOfficeId", message: t("form.errors.buildOfficeRequired") }]
       : []),
-    ...CASE_FIELDS.flatMap((field) => {
-      const key = errors[field];
-      if (!key) return [];
-      const text = t(`form.errors.${key}`);
-      const message =
-        key === "tooShort" || key === "tooLong"
-          ? t("form.errors.inField", { field: fieldLabel(field), message: text })
-          : text;
-      const target = field === "category" || field === "kind" ? `part-${field}` : field;
-      return [{ key: field, target, message }];
-    }),
+    ...CASE_FIELDS.filter((field) => field !== "category" && field !== "kind").flatMap(fieldError),
     ...(showOfficeError ? [{ key: "office", target: "dsOfficeId", message: t("form.errors.officeRequired") }] : []),
   ];
 
-  const complete = parseCaseForm((field) => values[field], "submit");
+  const complete = parseCaseForm((field) => values[field]);
   const incomplete: CaseErrors = complete.ok ? {} : complete.errors;
   const officeChosen = office.kind !== "choose" || chosenOffice !== null;
+  const buildChosen = build.kind !== "choose" || built === "same" || chosenBuildOffice !== null;
   const parts = [
     { key: "category", done: !incomplete.category, optional: false },
-    { key: "kind", done: !incomplete.kind, optional: false },
+    { key: "kind", done: !incomplete.kind && buildChosen, optional: false },
     { key: "details", done: DETAIL_FIELDS.every((f) => !incomplete[f]) && officeChosen, optional: false },
     { key: "documents", done: documentCount > 0, optional: true },
   ] as const;
@@ -238,6 +232,9 @@ export function CaseForm({
     office.kind === "choose"
       ? (district?.offices.find((o) => String(o.id) === dsOfficeId)?.name ?? "")
       : office.officeName;
+  const buildDistrict =
+    build.kind === "choose" ? build.districts.find((d) => String(d.id) === buildDistrictId) : undefined;
+  const buildOfficeName = buildDistrict?.offices.find((o) => String(o.id) === buildOfficeId)?.name ?? "";
   const busy = pending || uploading;
 
   return (
@@ -246,71 +243,12 @@ export function CaseForm({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void attempt(mode === "change" ? "save" : "submit");
+          void attempt();
         }}
         className="flex min-w-0 flex-1 flex-col gap-5"
       >
-        {mode === "change" && (
+        {intro && (
           <p className="rounded-lg bg-[#E4EDF8] px-4 py-3 text-[15px] text-[#1E4E8C]">{t("form.changeIntro")}</p>
-        )}
-        {returnReason !== null && (
-          <section
-            aria-labelledby="returned-title"
-            className="flex flex-col gap-1.5 rounded-xl border-2 border-[#E8B45A] bg-[#FFF4E0] px-6 py-4 text-[#6B3A04]"
-          >
-            <h2 id="returned-title" className="text-lg font-bold">
-              {t("form.returned.title")}
-            </h2>
-            <p className="text-[15px]">{t("form.returned.text")}</p>
-            <p className="text-[17px] font-semibold whitespace-pre-line">{returnReason}</p>
-          </section>
-        )}
-
-        {askReplacement && (
-          <section
-            id="part-replaces"
-            aria-labelledby="part-replaces-title"
-            tabIndex={-1}
-            className={`flex flex-col gap-3.5 rounded-xl border-2 bg-card px-6 py-5 ${
-              showReplacementError ? "border-destructive" : "border-[#A9CBBF]"
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <ArrowRightLeft aria-hidden="true" className="mt-0.5 size-6.5 shrink-0 text-primary" />
-              <div className="flex flex-col gap-0.5">
-                <h2 id="part-replaces-title" className="text-xl font-bold">
-                  {t("form.replaces.title")}
-                </h2>
-                <p className="text-[15px] text-muted-foreground">{t("form.replaces.text")}</p>
-              </div>
-            </div>
-            <ChoiceCards
-              name="replaces"
-              labelledBy="part-replaces-title"
-              options={[
-                ...replacementChoices.map((r) => ({
-                  value: r.id,
-                  label: t("form.replaces.yes", { number: r.number }),
-                  hint: [
-                    r.date
-                      ? t(r.stopped ? "form.replaces.stoppedOn" : "form.replaces.rejectedOn", {
-                          name: r.name,
-                          date: r.date,
-                        })
-                      : r.name,
-                    ...(r.reason ? [t("form.replaces.reason", { reason: r.reason })] : []),
-                  ].join(" · "),
-                })),
-                { value: "none", label: t("form.replaces.no"), hint: t("form.replaces.noHint") },
-              ]}
-              value={replacesValue}
-              onChange={(value) => {
-                setReplaces(value);
-                setReplacementMissing(false);
-              }}
-              error={showReplacementError ? t("form.errors.replacementRequired") : undefined}
-            />
-          </section>
         )}
 
         <Part number={1} id="part-category" title={t("form.partCategory")}>
@@ -337,9 +275,78 @@ export function CaseForm({
             onChange={(value) => setValues((v) => ({ ...v, kind: value }))}
             error={errorText("kind")}
           />
+          <div className="flex flex-col gap-3 border-t pt-4">
+            <h3 id="built-title" className="text-lg font-bold">
+              {t("form.built.title")}
+            </h3>
+            {build.kind === "choose" ? (
+              <>
+                <ChoiceCards
+                  name="built"
+                  labelledBy="built-title"
+                  options={[
+                    { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
+                    { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
+                  ]}
+                  value={built}
+                  onChange={(value) => {
+                    setBuilt(value === "other" ? "other" : "same");
+                    setBuildMissing(false);
+                  }}
+                />
+                {built === "other" && (
+                  <div className="grid grid-cols-2 gap-5 rounded-lg bg-muted p-4">
+                    <Select
+                      id="buildDistrictId"
+                      label={t("form.built.district")}
+                      value={buildDistrictId}
+                      onChange={(value) => {
+                        setBuildDistrictId(value);
+                        setBuildOfficeId("");
+                      }}
+                      placeholder={t("form.choose")}
+                      options={build.districts.map((d) => ({ value: String(d.id), label: d.name }))}
+                    />
+                    <Select
+                      id="buildDsOfficeId"
+                      label={t("form.built.office")}
+                      value={buildOfficeId}
+                      onChange={(value) => {
+                        setBuildOfficeId(value);
+                        setBuildMissing(false);
+                      }}
+                      placeholder={buildDistrict ? t("form.choose") : t("form.chooseDistrictFirst")}
+                      disabled={!buildDistrict}
+                      options={(buildDistrict?.offices ?? [])
+                        .filter((o) => (o.active || o.id === build.dsOfficeId) && o.id !== residence)
+                        .map((o) => ({ value: String(o.id), label: o.name }))}
+                      error={showBuildError ? t("form.errors.buildOfficeRequired") : undefined}
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
+                {build.dsOfficeId === null
+                  ? t("form.built.fixedSame")
+                  : t("form.built.fixed", { district: build.districtName, office: build.officeName })}
+              </p>
+            )}
+          </div>
         </Part>
 
         <Part number={3} id="part-details" title={t("form.partDetails")}>
+          <div className="grid grid-cols-2 gap-5">
+            <FormField
+              id="applicationNumber"
+              label={t("form.applicationNumber")}
+              help={t("form.applicationNumberHelp")}
+              value={values.applicationNumber}
+              onChange={set("applicationNumber")}
+              autoComplete="off"
+              error={errorText("applicationNumber")}
+            />
+          </div>
           {atRisk && (
             <div className="grid grid-cols-2 gap-5">
               <FormField
@@ -467,9 +474,7 @@ export function CaseForm({
             tabIndex={-1}
             className="flex flex-col gap-1.5 rounded-lg border-2 border-destructive bg-destructive/5 px-5 py-4 text-[#8F1B12]"
           >
-            <p className="text-[17px] font-bold">
-              {intent === "submit" && mode === "entry" ? t("form.errors.summary") : t("form.errors.summaryDraft")}
-            </p>
+            <p className="text-[17px] font-bold">{t("form.errors.summary")}</p>
             <ul className="flex flex-col gap-1 text-[15px]">
               {errorList.map((item) => (
                 <li key={item.key}>
@@ -481,33 +486,17 @@ export function CaseForm({
             </ul>
           </div>
         )}
-        {serverError &&
-          serverError !== "officeRequired" &&
-          !(showReplacementError && serverError === "replacementRequired") && (
-            <FormError id="case-error" message={t(`form.errors.${serverError}`)} />
-          )}
+        {serverError && serverError !== "officeRequired" && serverError !== "buildOfficeRequired" && (
+          <FormError id="case-error" message={t(`form.errors.${serverError}`)} />
+        )}
 
         <div className="flex items-center justify-end gap-3">
-          {mode === "entry" && (
-            <button
-              type="button"
-              onClick={() => void attempt("save")}
-              disabled={busy}
-              className="h-13 rounded-lg border border-input bg-card px-6 text-[17px] font-semibold disabled:opacity-60"
-            >
-              {pending && intent === "save" ? t("form.saving") : t("form.saveDraft")}
-            </button>
-          )}
           <button
             type="submit"
             disabled={busy}
             className="h-13 rounded-lg bg-primary px-7 text-[17px] font-bold text-primary-foreground disabled:opacity-60"
           >
-            {pending && (mode === "change" || intent === "submit")
-              ? t("form.saving")
-              : mode === "change"
-                ? t("form.saveChanges")
-                : t("form.submit")}
+            {pending ? t("form.saving") : mode === "edit" ? t("form.saveChanges") : t("form.save")}
           </button>
         </div>
       </form>
@@ -554,16 +543,13 @@ export function CaseForm({
         <p className="text-[#3F4843]">{t("form.confirm.text")}</p>
         <dl className="flex flex-col overflow-hidden rounded-lg border">
           {[
-            ...(replaced
-              ? [
-                  {
-                    label: t("form.confirm.replaces"),
-                    value: t("form.replaces.ref", { number: replaced.number, name: replaced.name }),
-                  },
-                ]
-              : []),
             { label: t("form.confirm.category"), value: category ? t(`category.${category}`) : "" },
             { label: t("form.confirm.kind"), value: kind ? t(`kind.${kind}`) : "" },
+            {
+              label: t("form.confirm.built"),
+              value: built === "same" ? t("form.built.same") : buildOfficeName,
+            },
+            { label: t("form.confirm.applicationNumber"), value: values.applicationNumber.trim() },
             ...(atRisk ? [{ label: t("form.confirm.childName"), value: values.childName }] : []),
             { label: atRisk ? t("form.confirm.guardianName") : t("form.confirm.name"), value: values.name },
             { label: t("form.confirm.nic"), value: normaliseNic(values.nic) },
@@ -599,7 +585,7 @@ export function CaseForm({
             type="button"
             onClick={() => {
               setConfirming(false);
-              send("submit");
+              send();
             }}
             className="h-12 rounded-lg bg-primary px-7 text-[17px] font-bold text-primary-foreground"
           >

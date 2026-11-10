@@ -7,7 +7,6 @@ import { FILTERS, filterQuery, positive, readFilters, STATUSES } from "@/compone
 import { Pager } from "@/components/cases/pager";
 import { FormNotice } from "@/components/forms/form-field";
 import { listCases, PAGE_SIZE } from "@/server/cases/queries";
-import { isBeingEntered } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
@@ -76,10 +75,7 @@ export default async function HoCasesPage({
           districts={districts}
           statuses={STATUSES}
         />
-        <CaseTable
-          rows={list.rows}
-          href={(row) => (isBeingEntered(row.status) ? `/ministry/cases/${row.id}/edit` : `/ministry/cases/${row.id}`)}
-        />
+        <CaseTable rows={list.rows} href={(row) => `/ministry/cases/${row.id}`} />
         <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={pageHref} />
       </section>
     </div>

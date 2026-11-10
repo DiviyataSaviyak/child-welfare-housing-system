@@ -16,7 +16,7 @@ import {
 } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 import { applicationKey } from "./numbers";
-import { openRequests, REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
+import { REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
 
 export type CaseDetails = {
   id: string;
@@ -37,7 +37,14 @@ export type CaseDetails = {
   officeActive: boolean;
   districtId: number;
   districtName: string;
+  /** CASE-13: the DS office where the house is built or the land bought; the DS of residence by default. */
+  buildDsOfficeId: number;
+  buildOfficeName: string;
+  buildDistrictId: number;
+  buildDistrictName: string;
   version: number;
+  /** When the DS entered it: the allocation screen orders by it (REL-1). */
+  createdAt: Date;
   submittedAt: Date | null;
   verifiedAt: Date | null;
   /** When the system found it finished (CLS-1). */
@@ -141,7 +148,9 @@ export async function getCase(
       mobile2: true,
       remark: true,
       dsOfficeId: true,
+      buildDsOfficeId: true,
       version: true,
+      createdAt: true,
       submittedAt: true,
       verifiedAt: true,
       completedAt: true,
@@ -159,7 +168,9 @@ export async function getCase(
         },
       },
       updatedAt: true,
-      buildDsOffice: OFFICE_PLACE,
+      buildDsOffice: {
+        select: { ...OFFICE_PLACE.select, ...NAMES, district: { select: { id: true, provinceId: true, ...NAMES } } },
+      },
       dsOffice: {
         select: {
           id: true,
@@ -237,6 +248,9 @@ export async function getCase(
     officeActive: dsOffice.active,
     districtId: dsOffice.district.id,
     districtName: localName(dsOffice.district, locale),
+    buildOfficeName: localName(buildDsOffice, locale),
+    buildDistrictId: buildDsOffice.district.id,
+    buildDistrictName: localName(buildDsOffice.district, locale),
     returnReason: found.status === "RETURNED" && latest?.type === "SEND_BACK" ? latest.reason : null,
     rejectReason: found.status === "REJECTED" && latest?.type === "REJECT" ? latest.reason : null,
     stop:
@@ -289,7 +303,7 @@ export async function getCase(
 }
 
 export type CaseFilter = {
-  /** Matches the name, child's name, case number or NIC (HOME-2, FND-1). */
+  /** Matches the name, child's name, Application Number or NIC (HOME-2, FND-1, CASE-12). */
   q?: string;
   statuses?: CaseStatus[];
   category?: Category;
@@ -310,8 +324,14 @@ export type CaseRow = {
   kind: Kind | null;
   name: string | null;
   childName: string | null;
+  /** The DS office of residence, which entered it. */
+  dsOfficeId: number;
   officeName: string;
   districtName: string;
+  /** CASE-13: the DS office where it is built, which pays it. */
+  buildDsOfficeId: number;
+  buildOfficeName: string;
+  createdAt: Date;
   submittedAt: Date | null;
   updatedAt: Date;
   /** Installments paid (HOME-1); null before the release makes them. */
@@ -386,9 +406,13 @@ export async function listCases(
         kind: true,
         name: true,
         childName: true,
+        dsOfficeId: true,
+        buildDsOfficeId: true,
+        createdAt: true,
         submittedAt: true,
         updatedAt: true,
         dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+        buildDsOffice: { select: NAMES },
         release: { select: { id: true } },
         _count: { select: { installments: { where: { status: "RELEASED" } } } },
         stageUpdates: {
@@ -402,10 +426,11 @@ export async function listCases(
     db.case.count({ where }),
   ]);
   return {
-    rows: found.map(({ dsOffice, release, _count, stageUpdates, ...row }) => ({
+    rows: found.map(({ dsOffice, buildDsOffice, release, _count, stageUpdates, ...row }) => ({
       ...row,
       officeName: localName(dsOffice, locale),
       districtName: localName(dsOffice.district, locale),
+      buildOfficeName: localName(buildDsOffice, locale),
       paid: release ? _count.installments : null,
       stageName: stageUpdates[0]?.stage ? localName(stageUpdates[0].stage, locale) : null,
     })),
@@ -422,15 +447,7 @@ type TodoCase = { id: string; name: string | null; childName: string | null };
 
 export type TodoItem = TodoCase &
   (
-    | {
-        type: "replace";
-        applicationNumber: string | null;
-        status: CaseStatus;
-        /** Head Office's reason for rejecting or stopping the case it asks to replace (CASE-11). */
-        reason: string | null;
-      }
-    | { type: "returned"; /** Head Office's reason for sending the case back. */ reason: string | null }
-    | { type: "draft"; updatedAt: Date }
+    | { type: "received"; /** "YYYY-MM-DD": the District's release. */ releasedOn: string }
     | { type: "due"; number: number; /** "YYYY-MM-DD" */ expectedOn: string; overdue: boolean }
     | { type: "stale"; days: number }
   );
@@ -441,35 +458,32 @@ export const DUE_SOON_DAYS = 7;
 const TODO_TAKE = 20;
 
 /**
- * HOME-3, in this order: cases Head Office asked to replace with another name (CASE-11); cases sent
- * back, with Head Office's reason; installments being paid whose expected day has passed or is within
- * 7 days; cases in progress with no update for 30 days; drafts.
+ * HOME-3, in this order: cases whose allocation was received and whose first installment hasn't started;
+ * installments being paid whose expected day has passed or is within 7 days; cases in progress with no
+ * update for 30 days. Each is the work of the DS where the case is built (CASE-13).
  */
 export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date()): Promise<TodoItem[]> {
-  // CASE-13: each office's own work. The DS of residence corrects its cases; the DS where a case is
-  // built pays its installments and records its stages.
-  const scope = officeFilter(viewer, actingOffice("edit"));
   const progress = officeFilter(viewer, actingOffice("installment"));
-  if (!scope || !progress) return [];
+  if (!progress) return [];
   const today = colomboDay(now);
   const caseFields = { id: true, name: true, childName: true } as const;
 
-  const [replace, returned, due, stale, drafts] = await Promise.all([
-    openRequests(db, viewer),
+  const [received, due, stale] = await Promise.all([
     db.case.findMany({
-      where: { ...scope, status: "RETURNED" },
-      orderBy: { updatedAt: "desc" },
-      take: TODO_TAKE,
-      select: {
-        ...caseFields,
-        decisions: { where: { type: "SEND_BACK" }, orderBy: { at: "desc" }, take: 1, select: { reason: true } },
+      where: {
+        ...progress,
+        status: "ALLOCATION_RECEIVED",
+        installments: { some: { number: 1, status: "NOT_STARTED" } },
       },
+      orderBy: [{ release: { dsReleasedOn: "asc" } }, { id: "asc" }],
+      take: TODO_TAKE,
+      select: { ...caseFields, release: { select: { dsReleasedOn: true } } },
     }),
     db.installment.findMany({
       where: {
         status: "PROCESSING",
         expectedOn: { lte: dayToDate(addDays(today, DUE_SOON_DAYS)) },
-        case: { ...progress, status: "IN_PROGRESS" },
+        case: { ...progress, status: { in: ["ALLOCATION_RECEIVED", "IN_PROGRESS"] } },
       },
       orderBy: [{ expectedOn: "asc" }, { caseId: "asc" }],
       take: TODO_TAKE,
@@ -481,50 +495,34 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
       take: TODO_TAKE,
       select: { ...caseFields, updatedAt: true },
     }),
-    db.case.findMany({
-      where: { ...scope, status: "DRAFT" },
-      orderBy: { updatedAt: "desc" },
-      take: TODO_TAKE,
-      select: { ...caseFields, updatedAt: true },
-    }),
   ]);
 
   return [
-    ...replace.slice(0, TODO_TAKE).map((c) => ({
-      id: c.id,
-      name: c.name,
-      childName: c.childName,
-      type: "replace" as const,
-      applicationNumber: c.applicationNumber,
-      status: c.status,
-      reason: c.reason,
-    })),
-    ...returned.map(({ decisions, ...c }) => ({
+    ...received.map(({ release, ...c }) => ({
       ...c,
-      type: "returned" as const,
-      reason: decisions[0]?.reason ?? null,
+      type: "received" as const,
+      releasedOn: release?.dsReleasedOn ? dateToDay(release.dsReleasedOn) : today,
     })),
     ...due.map((i) => {
       const expectedOn = i.expectedOn ? dateToDay(i.expectedOn) : today;
       return { ...i.case, type: "due" as const, number: i.number, expectedOn, overdue: expectedOn < today };
     }),
     ...stale.map(({ updatedAt, ...c }) => ({ ...c, type: "stale" as const, days: daysBetween(updatedAt, now) })),
-    ...drafts.map((c) => ({ ...c, type: "draft" as const })),
   ];
 }
 
 export type OfficeMoney = { received: number; paidOut: number; balance: number };
 
 /**
- * HOME-4: what the officer's office has received from Head Office (the releases), what it has paid
- * to beneficiaries (the installments marked paid), and the balance it holds. The money is counted
+ * HOME-4: what the officer's office has received (the District's releases to it, REL-7), what it has
+ * paid to beneficiaries (the installments marked paid), and the balance it holds. The money is counted
  * where the house is built (CASE-13).
  */
 export async function officeMoney(db: PrismaClient, viewer: Viewer): Promise<OfficeMoney | null> {
   const scope = officeFilter(viewer, "built");
   if (!scope) return null;
   const [received, paid] = await Promise.all([
-    db.release.aggregate({ where: { case: scope }, _sum: { amount: true } }),
+    db.release.aggregate({ where: { dsReleaseId: { not: null }, case: scope }, _sum: { amount: true } }),
     db.installment.aggregate({ where: { status: "RELEASED", case: scope }, _sum: { amount: true } }),
   ]);
   const total = received._sum.amount ?? 0;

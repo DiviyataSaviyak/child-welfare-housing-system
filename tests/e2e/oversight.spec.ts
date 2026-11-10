@@ -1,6 +1,6 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { fillCase, newSubmittedCase, randomNic, submit } from "./case-helpers";
+import { fillCase, newSavedCase, randomNic, saveNew } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME, TEXT } from "./helpers";
 
 /**
@@ -57,7 +57,7 @@ test("AC-41, AC-42: each view-only account sees only its own area's cases, with 
   // A case in Kaduwela, and one in Homagama with a document.
   await signInAs(page, "ds0103", /\/ds$/);
   const kaduwela: Case = { id: "", name: `${TEST_CASE_NAME} බැලීම කඩුවෙල ${Date.now()}`, nic: randomNic() };
-  kaduwela.id = (await newSubmittedCase(page, kaduwela)).url.split("/").at(-1) ?? "";
+  kaduwela.id = (await newSavedCase(page, kaduwela)).url.split("/").at(-1) ?? "";
   await page.context().clearCookies();
 
   await signInAs(page, "ds0101", /\/ds$/);
@@ -66,7 +66,7 @@ test("AC-41, AC-42: each view-only account sees only its own area's cases, with 
   await fillCase(page, homagama);
   await page.getByTestId("document-input").setInputFiles(PDF);
   await expect(page.getByText("උඩුගත කළා. සුරැකූ විට ප්‍රතිලාභියාට එක් වේ.")).toBeVisible();
-  homagama.id = (await submit(page, "ds")).url.split("/").at(-1) ?? "";
+  homagama.id = (await saveNew(page, "ds")).url.split("/").at(-1) ?? "";
   homagama.file = (await page.getByRole("link", { name: PDF.name }).getAttribute("href")) ?? "";
   expect(homagama.file).toMatch(/^\/files\//);
 

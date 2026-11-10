@@ -24,6 +24,8 @@ const isAction = (value: string): value is Action => (ACTIONS as readonly string
 
 const FIELDS = [
   "dsOfficeId",
+  "buildDsOfficeId",
+  "applicationNumber",
   "category",
   "kind",
   "childName",
@@ -84,7 +86,12 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
         if ("replacesCaseId" in after) lines.push(t(text(after.replacesCaseId) ? "replacesSet" : "replacesCleared"));
         const added = count(after.documentsAdded);
         if (added > 0) lines.push(t("documentsAdded", { count: added }));
-        return { sentence: t(`actions.${entry.action}`), lines };
+        // CASE-12: since change 0006 a case is entered with its Application Number.
+        const number = entry.action === "case_created" ? text(after.applicationNumber) : null;
+        return {
+          sentence: number ? t("actions.case_createdNumber", { number }) : t(`actions.${entry.action}`),
+          lines,
+        };
       }
       case "case_submitted": {
         const number = text(after.caseNumber);

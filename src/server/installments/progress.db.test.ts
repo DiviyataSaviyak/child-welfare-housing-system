@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import { seed } from "../../../prisma/seed-data";
-import { createTestClient, freeOfficeId } from "../../../tests/db/client";
+import { asSubmittedV1, createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
@@ -51,6 +51,7 @@ const nextNic = () => `2003${String(++nicCounter).padStart(8, "0")}`;
 const values = (overrides: Partial<CaseValues> = {}): CaseValues => ({
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
+  applicationNumber: testApplicationNumber(),
   childName: null,
   name: "ප්‍රගති පරීක්ෂණ",
   nic: nextNic(),
@@ -73,12 +74,13 @@ async function running(overrides: Partial<CaseValues> = {}) {
     id: randomUUID(),
     version: null,
     dsOfficeId: null,
+    buildDsOfficeId: null,
     values: values(overrides),
     documentIds: [],
-    submit: true,
   };
   const saved = await saveCase(db, dsA, input);
   if (!saved.ok) throw new Error(saved.error);
+  await asSubmittedV1(db, saved.value.id, dsA.userId);
   const sent = await load(saved.value.id);
   const verified = await decideCase(db, ho, {
     caseId: sent.id,
@@ -374,9 +376,9 @@ describe("building progress (STG-1 to STG-5)", () => {
       id: randomUUID(),
       version: null,
       dsOfficeId: null,
+      buildDsOfficeId: null,
       values: values(),
       documentIds: [],
-      submit: true,
     });
     if (!saved.ok) throw new Error(saved.error);
     expect(await stage(saved.value.id, await version(saved.value.id), first!.id)).toMatchObject({
@@ -548,9 +550,9 @@ describe("stopping and reopening (CLS-2, CLS-3, AC-14)", () => {
       id: c.id,
       version: stopped.version,
       dsOfficeId: null,
+      buildDsOfficeId: null,
       values: values({ address: "නව ලිපිනය" }),
       documentIds: [],
-      submit: false,
     });
     expect(edit).toEqual({ ok: false, error: "notEditable" });
     expect(await stopAs(ho, "නැවත නවත්වන්න")).toEqual({ ok: false, error: "notAllowedNow" });
@@ -570,12 +572,19 @@ describe("stopping and reopening (CLS-2, CLS-3, AC-14)", () => {
       id: randomUUID(),
       version: null,
       dsOfficeId: null,
+      buildDsOfficeId: null,
       values: values(),
       documentIds: [],
-      submit: true,
     });
     if (!saved.ok) throw new Error(saved.error);
     const id = saved.value.id;
+    expect(
+      await stopCase(db, ho, { caseId: id, version: await version(id), reason: "ප්‍රතිපාදන බලාපොරොත්තුවෙන්" }),
+    ).toEqual({
+      ok: false,
+      error: "notAllowedNow",
+    });
+    await asSubmittedV1(db, id, dsA.userId);
     expect(await stopCase(db, ho, { caseId: id, version: await version(id), reason: "යවා ඇති තත්ත්වයේ" })).toEqual({
       ok: false,
       error: "notAllowedNow",
@@ -601,9 +610,9 @@ describe("Head Office's edits to a running case (CASE-9)", () => {
         id: c.id,
         version: await version(c.id),
         dsOfficeId: null,
+        buildDsOfficeId: null,
         values: { ...details, kind },
         documentIds: [],
-        submit: false,
       });
     expect(await edit("RENOVATION")).toMatchObject({ ok: true });
     expect(await edit("NEW_HOUSE")).toMatchObject({ ok: true });
@@ -639,7 +648,6 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
       "stage_updated",
       "case_released",
       "case_verified",
-      "case_submitted",
       "case_created",
     ]);
     expect(history?.[0]).toMatchObject({ actor: null });

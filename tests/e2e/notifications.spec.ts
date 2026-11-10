@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { asUser, newSubmittedCase, openAs, randomNic } from "./case-helpers";
+import { asUser, newSavedCase, openAs, randomNic } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME, TEXT } from "./helpers";
 
 /** Screen text the tests look for (messages/si.json). */
@@ -17,7 +17,7 @@ test("the menu's waiting count agrees with the dashboard after a DS office sends
   test.slow();
   await signInAs(ho, "ho0001", /\/ministry$/);
   await asUser(browser, "ds0101", async (ds) => {
-    await newSubmittedCase(ds, { name: `${TEST_CASE_NAME} මෙනුව ${Date.now()}`, nic: randomNic() });
+    await newSavedCase(ds, { name: `${TEST_CASE_NAME} මෙනුව ${Date.now()}`, nic: randomNic() });
   });
 
   const nav = ho.getByRole("navigation");
@@ -53,7 +53,7 @@ test("the bell counts a new notice while the DS moves by the menu, and clears wh
   await expect(bell).toHaveAccessibleName(BELL);
 
   const name = `${TEST_CASE_NAME} සීනුව ${Date.now()}`;
-  const { url } = await newSubmittedCase(ds, { name, nic: randomNic() });
+  const { url } = await newSavedCase(ds, { name, nic: randomNic() });
   const ho = await openAs(browser, "ho0001");
   await ho.goto(url.replace("/ds/", "/ministry/"));
   await ho.getByRole("button", { name: "අනුමත කරන්න", exact: true }).click();

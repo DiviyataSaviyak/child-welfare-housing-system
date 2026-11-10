@@ -125,6 +125,25 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
         });
         if (attached.count !== 1) throw new Refusal("scanUnavailable");
       }
+      // Change 0006's bridge until its tasks 6 and 7: version 1's letter releases to the DS offices too, so
+      // it also stands for the District's release to each DS where its cases are built, as the migration
+      // made of the older letters. The DS's money panel counts those (HOME-4).
+      const dsReleases = new Map<number, string>();
+      for (const officeId of new Set(found.map((c) => c.buildDsOffice.id))) {
+        const id = randomUUID();
+        dsReleases.set(officeId, id);
+        await tx.dsRelease.create({
+          data: {
+            id,
+            districtId: district.id,
+            dsOfficeId: officeId,
+            referenceNumber: letter.letterNumber,
+            releasedOn: dayToDate(letter.letterDate),
+            byId: actor.userId,
+            at: now,
+          },
+        });
+      }
       // In the order of their ids, so two letters for the same cases wait for each other, never deadlock.
       for (const c of found) {
         await applyMove(tx, c, "releaseV1", {
@@ -140,6 +159,8 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
             caseId: c.id,
             letterId,
             releasedOn: dayToDate(letter.letterDate),
+            dsReleaseId: dsReleases.get(c.buildDsOffice.id) ?? null,
+            dsReleasedOn: dayToDate(letter.letterDate),
             amount: RELEASE_AMOUNT,
             byId: actor.userId,
             at: now,

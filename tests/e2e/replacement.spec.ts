@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { CONFIRM, fillCase, newSubmittedCase, openAs, randomNic, SEND } from "./case-helpers";
+import { CONFIRM, fillCase, newSavedCase, openAs, randomNic, SAVE } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the test looks for (messages/si.json). */
@@ -16,7 +16,7 @@ test("AC-30: Head Office rejects and asks for another name; the DS office enters
   test.slow();
   await signInAs(ds, "ds0101", /\/ds$/);
   const oldName = `${TEST_CASE_NAME} පැරණි ${Date.now()}`;
-  const old = await newSubmittedCase(ds, { name: oldName, nic: randomNic() });
+  const old = await newSavedCase(ds, { name: oldName, nic: randomNic() });
   const oldId = old.url.split("/").at(-1) ?? "";
 
   // Head Office rejects it from its page, ticking the box (CHK-3).
@@ -40,12 +40,12 @@ test("AC-30: Head Office rejects and asks for another name; the DS office enters
   await expect(ds).toHaveURL(/\/ds\/cases\/new$/);
 
   // The form asks first, and won't send without an answer (CASE-11).
-  await ds.getByRole("button", { name: SEND }).click();
+  await ds.getByRole("button", { name: SAVE }).click();
   await expect(ds.locator("#case-errors")).toContainText(ANSWER_NEEDED);
   const newName = `${TEST_CASE_NAME} නව ${Date.now()}`;
   await fillCase(ds, { name: newName, nic: randomNic() });
   await ds.getByRole("radio", { name: new RegExp(`^ඔව්, ${old.number} වෙනුවට`) }).check();
-  await ds.getByRole("button", { name: SEND }).click();
+  await ds.getByRole("button", { name: SAVE }).click();
   const confirm = ds.getByRole("dialog");
   await expect(confirm).toContainText(`${old.number} (${oldName})`);
   await confirm.getByRole("button", { name: CONFIRM }).click();

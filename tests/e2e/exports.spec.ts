@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { newSubmittedCase, openAs, randomNic, SUBMITTED } from "./case-helpers";
+import { newSavedCase, openAs, randomNic, SUBMITTED } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen and file text the test looks for (messages/si.json). */
@@ -30,7 +30,7 @@ test("the DS officer and Head Office take their lists to Excel, with the screen'
   await signInAs(page, "ds0101", /\/ds$/);
   const name = `${TEST_CASE_NAME} එක්සෙල් ${Date.now()}`;
   const nic = randomNic();
-  const { number } = await newSubmittedCase(page, { name, nic });
+  const { number } = await newSavedCase(page, { name, nic });
   const row = [number, "නිවාසගත", "නව නිවසක්", SUBMITTED, name];
 
   // The DS officer's own list, with the search the screen shows.

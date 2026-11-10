@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
-import { createTestClient, freeOfficeId } from "../../../tests/db/client";
+import { asSubmittedV1, createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
 import { colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { defaultValidUntil, type ReleaseField } from "@/lib/validation/release";
@@ -12,7 +12,7 @@ import { correctRelease, type LetterInput, recordLetter } from "../releases/comm
 import { casesForLetter, districtsWaiting, getLetter, recentLetters } from "../releases/queries";
 import { type Actor, saveCase, type SaveCaseInput } from "./commands";
 import { decideCase } from "./decide";
-import { getCase, todoItems } from "./queries";
+import { getCase } from "./queries";
 import { listQueue, queueByOffice, queueCounts, waitingNow } from "./queues";
 
 const db = createTestClient();
@@ -33,6 +33,7 @@ const admin: Actor = {
 const values = (nic: string, overrides: Partial<CaseValues> = {}): CaseValues => ({
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
+  applicationNumber: testApplicationNumber(),
   childName: null,
   name: "පරීක්ෂණ ප්‍රතිලාභී",
   nic,
@@ -48,18 +49,19 @@ const input = (nic: string, overrides: Partial<SaveCaseInput> = {}): SaveCaseInp
   id: randomUUID(),
   version: null,
   dsOfficeId: null,
+  buildDsOfficeId: null,
   values: values(nic),
   documentIds: [],
-  submit: false,
   ...overrides,
 });
 
 const load = (id: string) => db.case.findUniqueOrThrow({ where: { id } });
 
-/** A case the office has sent to Head Office. */
-async function submitted(nic: string, actor = dsA) {
-  const result = await saveCase(db, actor, input(nic, { submit: true }));
+/** A case as version 1's submit left it (the bridge until change 0006's task 5 removes the check). */
+async function submitted(nic: string, actor = dsA, overrides: Partial<SaveCaseInput> = {}) {
+  const result = await saveCase(db, actor, input(nic, overrides));
   if (!result.ok) throw new Error(result.error);
+  await asSubmittedV1(db, result.value.id, actor.userId);
   return load(result.value.id);
 }
 
@@ -184,39 +186,7 @@ describe("checking a case (CHK-3)", () => {
 
     expect(await decide("sendBack", " ලිපිනය සම්පූර්ණ නැත. ")).toEqual({ ok: true, value: "RETURNED" });
     expect((await getCase(db, dsA, sent.id, "si"))?.returnReason).toBe("ලිපිනය සම්පූර්ණ නැත.");
-    const todo = await todoItems(db, dsA);
-    expect(todo.find((item) => item.id === sent.id)).toMatchObject({
-      type: "returned",
-      reason: "ලිපිනය සම්පූර්ණ නැත.",
-    });
     expect(await db.notification.count({ where: { caseId: sent.id, userId: dsA.userId, type: "SENT_BACK" } })).toBe(1);
-  });
-
-  it("puts a resubmitted case back in the queue, with its number, behind older ones (AC-8, AC-9)", async () => {
-    const first = await submitted("200200000003");
-    const second = await submitted("200200000004");
-    await decideCase(db, ho, {
-      caseId: first.id,
-      version: first.version,
-      decision: "sendBack",
-      reason: "ඡායාරූප නැත.",
-    });
-    const returned = await load(first.id);
-
-    const again = await saveCase(db, dsA, {
-      ...input("200200000003"),
-      id: first.id,
-      version: returned.version,
-      submit: true,
-    });
-    expect(again).toMatchObject({
-      ok: true,
-      value: { status: "SUBMITTED", applicationNumber: first.applicationNumber },
-    });
-
-    const queue = (await listQueue(db, ho, "check", 1, "si")).rows.map((row) => row.id);
-    expect(queue.indexOf(second.id)).toBeGreaterThanOrEqual(0);
-    expect(queue.indexOf(first.id)).toBeGreaterThan(queue.indexOf(second.id));
   });
 
   it("rejects for good (STS-2)", async () => {
@@ -235,9 +205,10 @@ describe("checking a case (CHK-3)", () => {
     expect(
       await decideCase(db, ho, { caseId: sent.id, version: rejected.version, decision: "verify", reason: null }),
     ).toEqual({ ok: false, error: "notAllowedNow" });
-    expect(
-      await saveCase(db, dsA, { ...input("200200000005"), id: sent.id, version: rejected.version, submit: true }),
-    ).toEqual({ ok: false, error: "notEditable" });
+    expect(await saveCase(db, dsA, { ...input("200200000005"), id: sent.id, version: rejected.version })).toEqual({
+      ok: false,
+      error: "notEditable",
+    });
   });
 
   it("lets only Head Office decide, and only a submitted case (STS-1, SEC-2)", async () => {
@@ -264,13 +235,10 @@ describe("checking a case (CHK-3)", () => {
       decision: "sendBack",
       reason: "ලිපිනය වැරදියි.",
     });
-    const returned = await load(sent.id);
-    await saveCase(db, dsA, {
-      ...input("200200000008"),
-      id: sent.id,
-      version: returned.version,
-      values: values("200200000008", { address: "නො. 2, නිවැරදි පාර" }),
-      submit: true,
+    // Sent again, changed: version 1's resubmit, which no screen makes now.
+    await db.case.update({
+      where: { id: sent.id },
+      data: { status: "SUBMITTED", address: "නො. 2, නිවැරදි පාර", version: { increment: 1 } },
     });
 
     // The check view was opened before it was sent back: its version is old.
@@ -324,7 +292,7 @@ describe("the queues (CHK-1, REL-1)", () => {
   it("lists submitted cases oldest first, flagging a NIC that another case has", async () => {
     const older = await submitted("200200000020");
     const twin = await submitted("200200000021");
-    await saveCase(db, dsB, input("200200000021", { submit: true }));
+    await submitted("200200000021", dsB);
     const { rows } = await listQueue(db, ho, "check", 1, "si");
 
     const ids = rows.map((row) => row.id);
@@ -512,9 +480,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       where: { active: true, districtId: { not: await districtOf(ready.dsOfficeId) } },
       select: { id: true },
     });
-    const saved = await saveCase(db, ho, input("200200000038", { dsOfficeId: elsewhere.id, submit: true }));
-    if (!saved.ok) throw new Error(saved.error);
-    const sentThere = await load(saved.value.id);
+    const sentThere = await submitted("200200000038", ho, { dsOfficeId: elsewhere.id });
     await decideCase(db, ho, { caseId: sentThere.id, version: sentThere.version, decision: "verify", reason: null });
     const there = await load(sentThere.id);
     const both = [ready, there].map(({ id, version }) => ({ id, version }));
@@ -690,44 +656,6 @@ describe("correcting a release's letter (REL-4)", () => {
       error: "noRelease",
       errors: {},
     });
-  });
-});
-
-describe("changing a verified case (CASE-9)", () => {
-  it("lets Head Office change it, logging the old and new value of each field", async () => {
-    const ready = await verified("200200000050");
-    const result = await saveCase(db, ho, {
-      ...input("200200000050"),
-      id: ready.id,
-      version: ready.version,
-      values: values("200200000050", { mobile1: "0770000050" }),
-    });
-
-    expect(result).toMatchObject({ ok: true, value: { status: "VERIFIED" } });
-    expect((await load(ready.id)).mobile1).toBe("0770000050");
-    const audit = await db.auditLog.findFirstOrThrow({
-      where: { caseId: ready.id, action: "case_updated" },
-      orderBy: { id: "desc" },
-    });
-    expect(audit).toMatchObject({
-      actorId: ho.userId,
-      before: { mobile1: "0710000001" },
-      after: { mobile1: "0770000050", documentsAdded: [] },
-    });
-  });
-
-  it("refuses the DS office, an empty required field and a submit", async () => {
-    const [running] = await released("200200000051");
-    const change = (actor: Actor, overrides: Partial<SaveCaseInput>) =>
-      saveCase(db, actor, { ...input("200200000051"), id: running.id, version: running.version, ...overrides });
-
-    expect(await change(dsA, {})).toEqual({ ok: false, error: "notEditable" });
-    expect(await change(ho, { values: values("200200000051", { name: null }) })).toEqual({
-      ok: false,
-      error: "incomplete",
-    });
-    expect(await change(ho, { submit: true })).toEqual({ ok: false, error: "notAllowedNow" });
-    expect((await load(running.id)).status).toBe("IN_PROGRESS");
   });
 });
 

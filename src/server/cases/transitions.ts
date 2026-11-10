@@ -18,8 +18,8 @@ export type Mover = Role | "SYSTEM";
 /**
  * Change 0006's moves: `save` (a new case), `allocate` (the Ministry's letter), `release` (the District's
  * release to the DS), and the system's `start` (installment 1 paid), `unstart` (that payment undone) and
- * `complete`. The others are version 1's, kept only while the code for drafts, the check, stopping and
- * version 1's letter is still there (change 0006, tasks 4 to 6).
+ * `complete`. The others are version 1's, kept only while the code for the check, stopping and version 1's
+ * letter is still there (change 0006, tasks 5 and 6).
  */
 export type Move =
   | "save"
@@ -28,7 +28,6 @@ export type Move =
   | "start"
   | "unstart"
   | "complete"
-  | "submit"
   | "verify"
   | "sendBack"
   | "reject"
@@ -112,16 +111,7 @@ export const MOVES: Record<Move, MoveRule> = {
     notify: "COMPLETED",
     audit: "case_completed",
   },
-  // Version 1's moves, until change 0006's tasks 4 to 6 remove the code that makes them.
-  submit: {
-    from: ["DRAFT", "RETURNED"],
-    to: ["SUBMITTED"],
-    who: ["DS_OFFICER", "MINISTRY_OFFICER"],
-    needsReason: false,
-    decision: "SUBMIT",
-    notify: null,
-    audit: "case_submitted",
-  },
+  // Version 1's moves, until change 0006's tasks 5 and 6 remove the code that makes them.
   verify: {
     from: ["SUBMITTED"],
     to: ["VERIFIED"],

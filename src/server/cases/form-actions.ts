@@ -1,17 +1,18 @@
 import { getLocale } from "next-intl/server";
 import type { CaseFormState } from "@/components/forms/case-form";
+import type { ProgressState } from "@/components/progress/types";
 import { db } from "../db";
 import { type UploadedFile, type UploadError, uploadDocument } from "../files/uploads";
-import { type Actor, type CaseCommandError, deleteDraft, removeDocument, type SavedCase, saveCase } from "./commands";
+import { type Actor, type CaseCommandError, deleteCase, removeDocument, type SavedCase, saveCase } from "./commands";
 import { findNicMatches, type NicMatch } from "./duplicates";
 import { readCaseForm } from "./form-data";
 
 /**
- * What the DS and Head Office case actions share. Each role's actions.ts checks the role first
+ * What the DS and Ministry case actions share. Each role's actions.ts checks the role first
  * (requireRole), then calls these, then sends the user to its own pages.
  */
 
-/** Reads and saves the case form (CASE-1 to CASE-7). */
+/** Reads and saves the case form (CASE-1 to CASE-13). */
 export async function saveCaseForm(
   actor: Actor,
   form: FormData,
@@ -20,7 +21,7 @@ export async function saveCaseForm(
   if (!read.ok) {
     return {
       ok: false,
-      state: "errors" in read ? { errors: read.errors, error: null } : { errors: {}, error: "notFound" },
+      state: "errors" in read ? { errors: read.errors, error: read.error } : { errors: {}, error: "notFound" },
     };
   }
   const result = await saveCase(db, actor, read.input);
@@ -68,8 +69,20 @@ export async function removeCaseDocument(
   return { error: result.ok ? null : result.error };
 }
 
-export async function deleteCaseDraft(actor: Actor, caseId: unknown): Promise<{ error: CaseCommandError | null }> {
-  if (typeof caseId !== "string") return { error: "notFound" };
-  const result = await deleteDraft(db, actor, caseId);
-  return { error: result.ok ? null : result.error };
+/**
+ * CASE-8: the delete pop-up's form (the case, the version the page showed, the reason). On success the
+ * caller moves to its list; a refusal comes back to the pop-up.
+ */
+export async function deleteCaseForm(actor: Actor, form: FormData): Promise<ProgressState | null> {
+  const read = (field: string) => {
+    const value = form.get(field);
+    return typeof value === "string" ? value : "";
+  };
+  const caseId = read("caseId");
+  const version = Number(read("version"));
+  if (caseId.length === 0 || caseId.length > 64 || !Number.isInteger(version)) {
+    return { error: "notFound", errors: {} };
+  }
+  const result = await deleteCase(db, actor, { caseId, version, reason: read("reason") });
+  return result.ok ? null : { error: result.error, errors: {} };
 }

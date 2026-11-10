@@ -31,6 +31,11 @@ export function caseFieldRows(t: CasesT, details: CaseDetails): { label: string;
     { label: t("page.fields.remark"), value: details.remark ?? none },
     { label: t("page.fields.office"), value: details.officeName },
     { label: t("page.fields.district"), value: details.districtName },
+    // CASE-13: only when it is built in another DS division.
+    ...(details.buildDsOfficeId !== details.dsOfficeId
+      ? [{ label: t("page.fields.built"), value: `${details.buildOfficeName}, ${details.buildDistrictName}` }]
+      : []),
+    { label: t("page.fields.createdAt"), value: formatDate(details.createdAt) },
     ...(details.submittedAt ? [{ label: t("page.fields.submittedAt"), value: formatDate(details.submittedAt) }] : []),
     ...(details.verifiedAt ? [{ label: t("page.fields.verifiedAt"), value: formatDate(details.verifiedAt) }] : []),
   ];
@@ -214,12 +219,17 @@ export async function CaseDetailsSection({ details, editHref }: { details: CaseD
   );
 }
 
-/** The line under a case page's title: number, office (for all but the DS office), category and kind. */
+/**
+ * The line under a case page's title: the Application Number, the office (for all but the DS office;
+ * for the DS office, the other office when it is built in another DS division), category and kind.
+ */
 export async function caseSubtitle(details: CaseDetails, audience: Audience): Promise<string> {
   const t = await getTranslations("cases");
+  const elsewhere = details.buildDsOfficeId !== details.dsOfficeId;
   return [
     details.applicationNumber ?? t("noNumber"),
     ...(audience !== "ds" ? [details.officeName] : []),
+    ...(elsewhere ? [t("home.builtIn", { office: details.buildOfficeName })] : []),
     ...(details.category ? [t(`category.${details.category}`)] : []),
     ...(details.kind ? [t(`kind.${details.kind}`)] : []),
   ].join(" · ");

@@ -24,7 +24,7 @@ import { colomboDay } from "@/lib/dates";
 import { balance, formatRupees } from "@/lib/money";
 import { duplicatesInFull } from "@/server/cases/duplicates";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
-import { canEditDetails } from "@/server/cases/rules";
+import { canDeleteCase, canEditDetails } from "@/server/cases/rules";
 import { statusToReopen } from "@/server/cases/stop";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -32,6 +32,7 @@ import { caseHistory } from "@/server/history/queries";
 import { lastPaid } from "@/server/installments/rules";
 import { getStageProgress } from "@/server/stages/queries";
 import { correctReleaseAction, decideAction } from "../../check/actions";
+import { deleteCaseAction } from "../actions";
 import { reopenAction, stopAction, undoInstallmentAction } from "./actions";
 
 /** What a stop, reopen or undo leaves on the page, by its key under "progress.notices". */
@@ -68,7 +69,7 @@ export default async function HoCasePage({
     caseSubtitle(details, "ministry"),
   ]);
   const notice = (await searchParams).notice;
-  const justSubmitted = notice === "submitted" && details.applicationNumber !== null;
+  const justCreated = notice === "created";
   const name = caseName(t, details.name, details.childName);
   const number = details.applicationNumber ?? t("noNumber");
   const now = new Date();
@@ -87,6 +88,27 @@ export default async function HoCasePage({
     cancel: tp("stop.cancel"),
     working: tp("stop.working"),
   };
+
+  // CASE-8: a case awaiting its allocation can be deleted, with a reason.
+  const remove = canDeleteCase(viewer.role, details.status) && (
+    <ReasonAction
+      key={`delete-${details.version}`}
+      id="delete"
+      look="danger"
+      hidden={hidden}
+      action={deleteCaseAction}
+      texts={{
+        button: t("deleteCase.button"),
+        title: t("deleteCase.title"),
+        text: t("deleteCase.text", { number }),
+        reason: t("deleteCase.reason"),
+        reasonHelp: t("deleteCase.reasonHelp"),
+        confirm: t("deleteCase.confirm"),
+        cancel: t("deleteCase.cancel"),
+        working: t("deleteCase.working"),
+      }}
+    />
+  );
 
   const canStop = details.status === "VERIFIED" || details.status === "IN_PROGRESS";
   const stop = canStop && (
@@ -172,21 +194,22 @@ export default async function HoCasePage({
           <div className="flex items-center gap-3.5">
             <StatusChip status={details.status} />
             {stop}
+            {remove}
           </div>
         }
       />
-      {justSubmitted && (
+      {justCreated && (
         <section
-          aria-labelledby="submitted-title"
+          aria-labelledby="created-title"
           className="flex max-w-4xl flex-col gap-2 rounded-xl border-2 border-primary bg-accent px-6 py-5"
         >
-          <h2 id="submitted-title" className="text-[22px] font-bold text-primary">
-            {t("submitted.title")}
+          <h2 id="created-title" className="text-[22px] font-bold text-primary">
+            {t("created.title")}
           </h2>
           <p className="text-lg">
-            {t("submitted.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
+            {t("created.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
-          <p className="text-[#3F4843]">{t("submitted.textHo")}</p>
+          <p className="text-[#3F4843]">{t("created.textMinistry")}</p>
         </section>
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}

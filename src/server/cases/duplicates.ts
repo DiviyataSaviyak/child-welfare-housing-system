@@ -7,28 +7,23 @@ import { caseScope, type Viewer } from "../permissions";
 
 /**
  * Another case with the same NIC. What it shows depends on who asks (CASE-6):
- * - a DS officer sees the case number and name of a case in their own office,
- * - and only the case number and office of a case elsewhere;
- * - Head Office sees all three (CHK-2).
- * A draft has no case number yet.
+ * - a DS officer sees the Application Number and name of a case of their own office,
+ * - and only the Application Number and DS office of a case elsewhere, since another DS may use the
+ *   same number (CASE-12);
+ * - the Ministry sees all three.
+ * The number can be empty only on a case left over from version 1's drafts, which the migration deleted.
  */
 export type NicMatch = { applicationNumber: string | null; name: string | null; officeName: string | null };
 
-/**
- * The cases that share a NIC key with a case of `ownOffice`. Drafts count only in that office;
- * elsewhere they have no number to show (CASE-6).
- */
-function matchWhere(key: string, ownOffice: number | null, exceptCaseId: string | null): Prisma.CaseWhereInput {
-  return {
-    nicKey: key,
-    ...(exceptCaseId ? { id: { not: exceptCaseId } } : {}),
-    OR: [{ status: { not: "DRAFT" } }, ...(ownOffice !== null ? [{ dsOfficeId: ownOffice }] : [])],
-  };
+/** The other cases that share a NIC key (CASE-6). There are no drafts, so every case counts. */
+function matchWhere(key: string, exceptCaseId: string | null): Prisma.CaseWhereInput {
+  return { nicKey: key, ...(exceptCaseId ? { id: { not: exceptCaseId } } : {}) };
 }
 
 /**
  * CASE-6: other cases with the same NIC, in either format, so 880001234V matches 198800001234.
- * The warning never blocks saving or submitting.
+ * The warning never blocks saving. `dsOfficeId` is the office the Ministry chose on the form; it is no
+ * longer needed, since a match shows the same whatever office the case is entered for.
  */
 export async function findNicMatches(
   db: PrismaClient,
@@ -38,12 +33,11 @@ export async function findNicMatches(
 ): Promise<NicMatch[]> {
   const scope = caseScope(viewer);
   const key = nicKey(input.nic);
-  // The warning is for the case form, which only an office's officers and Head Office open.
+  // The warning is for the case form, which only an office's officers and the Ministry open.
   if ((scope.kind !== "office" && scope.kind !== "all") || !key) return [];
 
-  const ownOffice = scope.kind === "office" ? scope.dsOfficeId : input.dsOfficeId;
   const rows = await db.case.findMany({
-    where: matchWhere(key, ownOffice, input.exceptCaseId),
+    where: matchWhere(key, input.exceptCaseId),
     orderBy: { createdAt: "asc" },
     take: 20,
     select: { applicationNumber: true, name: true, dsOfficeId: true, dsOffice: { select: NAMES } },
@@ -78,7 +72,7 @@ export async function duplicatesInFull(
   const key = input.nic ? nicKey(input.nic) : null;
   if (caseScope(viewer).kind !== "all" || !key) return [];
   const rows = await db.case.findMany({
-    where: matchWhere(key, input.dsOfficeId, input.caseId),
+    where: matchWhere(key, input.caseId),
     orderBy: { createdAt: "asc" },
     take: 20,
     select: {
@@ -105,18 +99,9 @@ export async function duplicateFlags(
   if (keys.length === 0) return new Set();
   const sharing = await db.case.findMany({
     where: { nicKey: { in: keys } },
-    select: { id: true, nicKey: true, status: true, dsOfficeId: true },
+    select: { id: true, nicKey: true },
   });
   return new Set(
-    cases
-      .filter((c) =>
-        sharing.some(
-          (other) =>
-            other.nicKey === c.nicKey &&
-            other.id !== c.id &&
-            (other.status !== "DRAFT" || other.dsOfficeId === c.dsOfficeId),
-        ),
-      )
-      .map((c) => c.id),
+    cases.filter((c) => sharing.some((other) => other.nicKey === c.nicKey && other.id !== c.id)).map((c) => c.id),
   );
 }

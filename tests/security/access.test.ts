@@ -175,7 +175,7 @@ const RULES: Record<string, Record<string, Rule>> = {
     uploadDocumentAction: DS,
     checkNicAction: DS,
     removeDocumentAction: DS,
-    deleteDraftAction: DS,
+    deleteCaseAction: DS,
   },
   "src/app/ds/cases/[id]/actions.ts": {
     startInstallmentAction: DS,
@@ -191,7 +191,7 @@ const RULES: Record<string, Record<string, Rule>> = {
     uploadDocumentAction: MINISTRY,
     checkNicAction: MINISTRY,
     removeDocumentAction: MINISTRY,
-    deleteDraftAction: MINISTRY,
+    deleteCaseAction: MINISTRY,
   },
   "src/app/ministry/cases/[id]/actions.ts": {
     stopAction: MINISTRY,

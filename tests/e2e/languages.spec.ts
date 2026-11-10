@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { asUser, newSubmittedCase, randomNic } from "./case-helpers";
+import { asUser, newSavedCase, randomNic } from "./case-helpers";
 import { chooseLanguage, screenText, signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** UI-9: the screens come in Sinhala, Tamil and English. Each browser keeps its own choice. */
@@ -55,7 +55,7 @@ test("the Ministry works in English, and its Excel file comes in English", async
   // A case of its own, so the list has something to export. Typed details stay as typed.
   const name = `${TEST_CASE_NAME} English ${Date.now()}`;
   const nic = randomNic();
-  await asUser(browser, "ds0101", (ds) => newSubmittedCase(ds, { name, nic }).then(() => undefined));
+  await asUser(browser, "ds0101", (ds) => newSavedCase(ds, { name, nic }).then(() => undefined));
 
   await signInAs(page, "ho0001", /\/ministry$/);
   await chooseLanguage(page, "English");

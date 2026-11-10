@@ -1,25 +1,24 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
-import { colomboYear } from "@/lib/dates";
 import { MAX_DOCUMENTS } from "@/lib/file-types";
 import { nicKey } from "@/lib/nic";
 import { CASE_FIELDS, type CaseValues, missingRequired } from "@/lib/validation/case";
+import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import { writeAudit } from "../audit";
 import { deleteStoredFile } from "../files/storage";
 import { logError } from "../log";
 import { CASE_PLACES, canActOn, canSeeCase, caseScope, type Viewer } from "../permissions";
-import { applicationKey, nextCaseNumber } from "./numbers";
+import { applicationKey } from "./numbers";
 import { isUniqueViolation, Refusal } from "./refusal";
-import { CLOSED, replacementRefusal } from "./replacements";
 import {
+  canChangeBuildOffice,
   canChangeOffice,
-  canDeleteDraft,
+  canDeleteCase,
   canEditDetails,
   canEnterCases,
   editableStatuses,
-  mustStayComplete,
 } from "./rules";
-import { applyMove, moveRefusal } from "./transitions";
+import { moveRefusal } from "./transitions";
 
 /** The signed-in user making a change. */
 export type Actor = Viewer & { userId: string };
@@ -27,16 +26,20 @@ export type Actor = Viewer & { userId: string };
 export type CaseCommandError =
   /** It doesn't exist, or it isn't the actor's to see (PRM-1). */
   | "notFound"
-  /** Its status doesn't allow this change (STS-1, STS-3, ERR-7). */
+  /** Its status, or the actor's office, doesn't allow this change (STS-1, CASE-9, CASE-13, ERR-7). */
   | "notEditable"
   /** Someone else saved it after this form was opened (CASE-10, ERR-3). */
   | "conflict"
-  /** A required field is empty, so it can't be submitted (CASE-5). */
+  /** A required field is empty (CASE-5). */
   | "incomplete"
-  /** Head Office didn't choose a DS office (CASE-3). */
+  /** The Ministry didn't choose a DS office (CASE-3). */
   | "officeRequired"
   /** The office is inactive and takes no new cases (LST-3). */
   | "officeInactive"
+  /** The form said the house is built in another DS division, and named none that can take it (CASE-13). */
+  | "buildOfficeRequired"
+  /** Another case of the same DS office of residence has this Application Number (CASE-12). */
+  | "applicationNumberTaken"
   /** More than 10 documents (CASE-2). */
   | "tooManyFiles"
   /** An upload to attach isn't the actor's, or is already on a case. */
@@ -46,11 +49,7 @@ export type CaseCommandError =
   /** The actor's role never takes this step (application spec, Roles and permissions). */
   | "roleNotAllowed"
   /** The kind of help decides the stages, so it stays once a stage is recorded (CASE-9, STG-4). */
-  | "kindLocked"
-  /** The form asked whether the person is in place of another case, and got no answer (CASE-11). */
-  | "replacementRequired"
-  /** The case chosen to replace no longer waits for another name, or another case took its place (CASE-11). */
-  | "replacementUnavailable";
+  | "kindLocked";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: CaseCommandError };
 
@@ -59,31 +58,31 @@ export type SaveCaseInput = {
   id: string;
   /** The version the form was opened with; null for a new case. */
   version: number | null;
-  /** The office chosen on the form. Only Head Office chooses (CASE-3); a DS officer's comes from their account. */
+  /** The office chosen on the form. Only the Ministry chooses (CASE-3); a DS officer's comes from their account. */
   dsOfficeId: number | null;
+  /**
+   * CASE-13: the DS office where the house is built or the land bought, when the form says it is another
+   * DS division; null for the DS of residence itself.
+   */
+  buildDsOfficeId: number | null;
   values: CaseValues;
   /** Uploads to put on the case. */
   documentIds: string[];
-  /** Also send the case to Head Office (CASE-5). */
-  submit: boolean;
-  /**
-   * The answer to "is this person in place of another case?" (CASE-11): undefined when the form didn't
-   * ask, "" when it asked and got no answer, null for "no", or the id of the case replaced.
-   */
-  replaces?: string | null;
 };
 
-export type SavedCase = { id: string; applicationNumber: string | null; status: CaseStatus };
+/** `created` is false for a change to a saved case. */
+export type SavedCase = { id: string; applicationNumber: string | null; status: CaseStatus; created: boolean };
 
 const CASE_SELECT = {
   id: true,
   dsOfficeId: true,
+  buildDsOfficeId: true,
   ...CASE_PLACES,
   status: true,
-  applicationNumber: true,
   version: true,
   category: true,
   kind: true,
+  applicationNumber: true,
   childName: true,
   name: true,
   nic: true,
@@ -92,23 +91,23 @@ const CASE_SELECT = {
   mobile1: true,
   mobile2: true,
   remark: true,
-  replacesCaseId: true,
 } as const satisfies Prisma.CaseSelect & Record<(typeof CASE_FIELDS)[number], true>;
 
 type StoredCase = Prisma.CaseGetPayload<{ select: typeof CASE_SELECT }>;
 
 /**
- * Saves the case form: a new case, or a change to a draft or a returned case (CASE-1 to CASE-7).
- * With `submit`, the case also goes to Head Office in the same transaction, and gets its number on its
- * first submit (CASE-5). Nothing is saved when anything is refused.
+ * Saves the case form: a new case, which goes straight to `AWAITING_ALLOCATION` (CASE-5), or a change to
+ * a saved one (CASE-9). Every required field is needed on every save: there are no drafts. Nothing is
+ * saved when anything is refused.
  */
 export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseInput): Promise<Result<SavedCase>> {
   const scope = caseScope(actor);
-  // Only an office's officers and Head Office enter cases; any other account changes nothing (PRM-5).
+  // Only an office's officers and the Ministry enter cases; any other account changes nothing (PRM-5).
   if (scope.kind === "none" || !canEnterCases(actor.role)) return { ok: false, error: "notFound" };
-  if (input.submit && Object.keys(missingRequired(input.values)).length > 0) return { ok: false, error: "incomplete" };
+  if (Object.keys(missingRequired(input.values)).length > 0) return { ok: false, error: "incomplete" };
 
-  // A first submit in a new year can meet another one at the counter; one try again is enough.
+  // The same new-case form sent twice at once, or two cases given one Application Number at once, meet
+  // on a unique key; the next try finds the saved case, or the number taken (ERR-8, CASE-12).
   for (let attempt = 1; ; attempt += 1) {
     const current = await db.case.findUnique({ where: { id: input.id }, select: CASE_SELECT });
     if (current && !canSeeCase(actor, current)) return { ok: false, error: "notFound" };
@@ -117,7 +116,7 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
     if (current && input.version === null) {
       return {
         ok: true,
-        value: { id: current.id, applicationNumber: current.applicationNumber, status: current.status },
+        value: { id: current.id, applicationNumber: current.applicationNumber, status: current.status, created: true },
       };
     }
 
@@ -127,11 +126,14 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
     }
 
     const office = scope.kind === "office" ? scope.dsOfficeId : (input.dsOfficeId ?? current?.dsOfficeId ?? null);
-    const problem = await checkSave(db, actor, current, input, office);
+    if (office === null) return { ok: false, error: "officeRequired" };
+    // "The same DS division" follows the case's office, wherever the Ministry moves it (CASE-13).
+    const built = input.buildDsOfficeId ?? office;
+    const problem = await checkSave(db, actor, current, input, office, built);
     if (problem) return { ok: false, error: problem };
 
     try {
-      const value = await db.$transaction((tx) => writeCase(tx, actor, current, input, office as number));
+      const value = await db.$transaction((tx) => writeCase(tx, actor, current, input, office, built));
       return { ok: true, value };
     } catch (error) {
       if (error instanceof Refusal) return { ok: false, error: error.reason as CaseCommandError };
@@ -146,39 +148,46 @@ async function checkSave(
   actor: Actor,
   current: StoredCase | null,
   input: SaveCaseInput,
-  office: number | null,
+  office: number,
+  built: number,
 ): Promise<CaseCommandError | null> {
-  if (office === null) return "officeRequired";
   if (current) {
     if (!canEditDetails(actor.role, current.status)) return "notEditable";
     if (current.version !== input.version) return "conflict";
     if (office !== current.dsOfficeId && !canChangeOffice(actor.role, current.status)) return "notEditable";
-    // CASE-9: a verified case keeps every required field, whichever button sent the form.
-    if (mustStayComplete(current.status) && Object.keys(missingRequired(input.values)).length > 0) return "incomplete";
+    // CASE-13: from the allocation on, the money goes to the office where it is built, so that stays.
+    if (built !== current.buildDsOfficeId && !canChangeBuildOffice(current.status)) return "notEditable";
     // The stages come from the kind of help (LST-4), so a case that has reached one keeps its kind.
     if (input.values.kind !== current.kind) {
       const reached = await db.stageUpdate.count({ where: { caseId: current.id, stageId: { not: null } } });
       if (reached > 0) return "kindLocked";
     }
-  }
-  if (input.submit) {
-    const refusal = moveRefusal(actor.role, "submit", current?.status ?? "DRAFT");
-    if (refusal) return refusal;
-    if (input.replaces === "") return "replacementRequired";
-  }
-  // CASE-11: a new link, or a linked draft moving to another office, must still find its case waiting.
-  const link = linkAfterSave(current, input);
-  if (link && (link !== current?.replacesCaseId || office !== current?.dsOfficeId)) {
-    const refusal = await replacementRefusal(db, { caseId: input.id, targetId: link, dsOfficeId: office });
+  } else {
+    const refusal = moveRefusal(actor.role, "save", null);
     if (refusal) return refusal;
   }
-  // A new case, or a draft moving to another office, needs an active office (LST-3).
+
+  // A new case, or one moving to another office, needs an active office (LST-3).
   if (!current || office !== current.dsOfficeId) {
     const found = await db.dsOffice.findUnique({ where: { id: office }, select: { active: true } });
     if (!found) return "notFound";
     if (!found.active) return "officeInactive";
   }
-  return null;
+  // CASE-13: another active DS office; the DS of residence itself is "the same DS division".
+  if (built !== office && (!current || built !== current.buildDsOfficeId)) {
+    const found = await db.dsOffice.findUnique({ where: { id: built }, select: { active: true } });
+    if (!found) return "buildOfficeRequired";
+    if (!found.active) return "officeInactive";
+  }
+  // CASE-12: unique within the DS office of residence, without case or spaces.
+  const taken = await db.case.count({
+    where: {
+      dsOfficeId: office,
+      applicationKey: applicationKey(input.values.applicationNumber ?? ""),
+      id: { not: input.id },
+    },
+  });
+  return taken > 0 ? "applicationNumberTaken" : null;
 }
 
 async function writeCase(
@@ -187,28 +196,32 @@ async function writeCase(
   current: StoredCase | null,
   input: SaveCaseInput,
   dsOfficeId: number,
+  buildDsOfficeId: number,
 ): Promise<SavedCase> {
-  const now = new Date();
-  const replacesCaseId = linkAfterSave(current, input);
   const fields = {
     ...input.values,
+    applicationKey: applicationKey(input.values.applicationNumber ?? ""),
     nicKey: input.values.nic ? nicKey(input.values.nic) : null,
     dsOfficeId,
-    // CASE-13: until change 0006's task 4 asks the form where it is built, a new case is built in its
-    // DS of residence, and a saved one keeps a DS where built of its own; built "in the same DS", it
-    // follows the case to the office it is saved in.
-    buildDsOfficeId: current && current.buildDsOffice.id !== current.dsOfficeId ? current.buildDsOffice.id : dsOfficeId,
-    replacesCaseId,
+    buildDsOfficeId,
   };
 
-  if (replacesCaseId && replacesCaseId !== (current?.replacesCaseId ?? null)) {
-    await claimReplaced(tx, replacesCaseId, dsOfficeId);
+  if (current) {
+    const updated = await tx.case.updateMany({
+      where: { id: current.id, version: current.version, status: { in: [...editableStatuses(actor.role)] } },
+      data: { ...fields, version: { increment: 1 } },
+    });
+    if (updated.count === 0) throw new Refusal("conflict");
+  } else {
+    // CASE-5: saved straight into AWAITING_ALLOCATION; no draft, no check, no generated number.
+    await tx.case.create({
+      data: { id: input.id, ...fields, status: "AWAITING_ALLOCATION", createdById: actor.userId },
+    });
   }
-  if (!current) await tx.case.create({ data: { id: input.id, ...fields, createdById: actor.userId } });
   const documentIds = await attachDocuments(tx, actor, input.id, input.documentIds);
 
   // CASE-9, HIS-1: the old and new value of every field that changed.
-  const changed = (["dsOfficeId", ...CASE_FIELDS, "replacesCaseId"] as const).filter(
+  const changed = (["dsOfficeId", "buildDsOfficeId", ...CASE_FIELDS] as const).filter(
     (field) => current?.[field] !== fields[field],
   );
   const pick = (source: Record<string, unknown>) => Object.fromEntries(changed.map((f) => [f, source[f] ?? null]));
@@ -219,7 +232,7 @@ async function writeCase(
       entityType: "case",
       entityId: input.id,
       caseId: input.id,
-      after: { ...withoutEmpty(pick(fields)), documentsAdded: documentIds },
+      after: { ...withoutEmpty(pick(fields)), status: "AWAITING_ALLOCATION", documentsAdded: documentIds },
     });
   } else if (changed.length > 0 || documentIds.length > 0) {
     await writeAudit(tx, {
@@ -232,68 +245,12 @@ async function writeCase(
       after: { ...pick(fields), documentsAdded: documentIds },
     });
   }
-
-  if (!input.submit) {
-    if (current) {
-      const updated = await tx.case.updateMany({
-        where: { id: current.id, version: current.version, status: { in: [...editableStatuses(actor.role)] } },
-        data: { ...fields, version: { increment: 1 } },
-      });
-      if (updated.count === 0) throw new Refusal("conflict");
-      return { id: input.id, applicationNumber: current.applicationNumber, status: current.status };
-    }
-    return { id: input.id, applicationNumber: null, status: "DRAFT" };
-  }
-
-  // Version 1's CASE-5: the number is given on the first submit only, and is the case's Application Number
-  // (CASE-12) until change 0006's task 4 asks for it. A new case was created as a draft above, so its
-  // history reads "created", then "submitted"; a saved one changes its fields with the move.
-  const applicationNumber = current?.applicationNumber ?? (await nextCaseNumber(tx, dsOfficeId, colomboYear(now)));
-  await applyMove(
-    tx,
-    current
-      ? { id: current.id, status: current.status, version: current.version }
-      : { id: input.id, status: "DRAFT", version: 1 },
-    "submit",
-    {
-      by: actor.role,
-      actorId: actor.userId,
-      at: now,
-      checkVersion: true,
-      data: {
-        ...(current ? fields : {}),
-        submittedAt: now,
-        applicationNumber,
-        applicationKey: applicationKey(applicationNumber),
-      },
-      // The history reads the number from `caseNumber`, as in the records written before.
-      auditAfter: { caseNumber: applicationNumber },
-    },
-  );
-  return { id: input.id, applicationNumber, status: "SUBMITTED" };
-}
-
-/**
- * The case this one replaces once saved (CASE-11): the form's answer, or the link it has when the form
- * didn't answer. A case Head Office has verified keeps its link.
- */
-function linkAfterSave(current: StoredCase | null, input: SaveCaseInput): string | null {
-  const kept = current?.replacesCaseId ?? null;
-  if (input.replaces === undefined || input.replaces === "") return kept;
-  if (current && mustStayComplete(current.status)) return kept;
-  return input.replaces;
-}
-
-/**
- * Takes the replaced case's row for this transaction and moves its version on, so reopening it at the
- * same moment (CLS-3) is refused as a conflict instead of reopening a case that now has a replacement.
- */
-async function claimReplaced(tx: Prisma.TransactionClient, id: string, dsOfficeId: number): Promise<void> {
-  const claimed = await tx.case.updateMany({
-    where: { id, dsOfficeId, anotherNameRequested: true, status: { in: [...CLOSED] } },
-    data: { version: { increment: 1 } },
-  });
-  if (claimed.count === 0) throw new Refusal("replacementUnavailable");
+  return {
+    id: input.id,
+    applicationNumber: fields.applicationNumber,
+    status: current?.status ?? "AWAITING_ALLOCATION",
+    created: !current,
+  };
 }
 
 const withoutEmpty = (values: Record<string, unknown>) =>
@@ -322,42 +279,64 @@ async function attachDocuments(
 async function findVisible(db: PrismaClient, actor: Actor, id: string) {
   const found = await db.case.findUnique({
     where: { id },
-    select: { id: true, dsOfficeId: true, ...CASE_PLACES, status: true },
+    select: { id: true, dsOfficeId: true, ...CASE_PLACES, status: true, version: true, applicationNumber: true },
   });
   return found && canSeeCase(actor, found) ? found : null;
 }
 
+export type DeleteCaseError = "notFound" | "notAllowedNow" | "conflict" | ReasonErrorKey;
+
 /**
- * CASE-8: deletes a draft with its documents. The record of the deletion holds no personal details;
- * the earlier records of the draft stay in the audit log, which can't be changed (HIS-3).
+ * CASE-8: deletes a case awaiting its allocation, with its documents, for example one entered twice. It
+ * needs a reason. The record of the deletion keeps the Application Number, the DS office and the reason,
+ * without personal details; the earlier records of the case stay in the audit log, which can't be
+ * changed (HIS-3).
  */
-export async function deleteDraft(db: PrismaClient, actor: Actor, id: string): Promise<Result<null>> {
-  const found = await findVisible(db, actor, id);
+export async function deleteCase(
+  db: PrismaClient,
+  actor: Actor,
+  input: { caseId: string; version: number; reason: string },
+): Promise<{ ok: true } | { ok: false; error: DeleteCaseError }> {
+  const found = await findVisible(db, actor, input.caseId);
   if (!found) return { ok: false, error: "notFound" };
-  if (!canDeleteDraft(actor.role, found.status) || !canActOn(actor, found, "delete")) {
-    return { ok: false, error: "notEditable" };
+  // CASE-8, CASE-13: only the DS of residence, or the Ministry, and only before the allocation.
+  if (!canDeleteCase(actor.role, found.status) || !canActOn(actor, found, "delete")) {
+    return { ok: false, error: "notAllowedNow" };
   }
+  const reason = parseReason(input.reason);
+  if (!reason.ok) return { ok: false, error: reason.error };
+  if (found.version !== input.version) return { ok: false, error: "conflict" };
 
   let files: { id: string; storedName: string }[];
   try {
     files = await db.$transaction(async (tx) => {
-      const onCase = await tx.storedFile.findMany({ where: { caseId: id }, select: { id: true, storedName: true } });
-      await tx.storedFile.deleteMany({ where: { caseId: id } });
-      // Submitted by someone else in the meantime: it is no longer a draft.
-      const deleted = await tx.case.deleteMany({ where: { id, status: "DRAFT" } });
-      if (deleted.count === 0) throw new Refusal("notEditable");
+      // Takes the row first, so a save or a letter at the same moment either goes first or finds it gone.
+      const claimed = await tx.case.updateMany({
+        where: { id: found.id, version: found.version, status: "AWAITING_ALLOCATION" },
+        data: { version: { increment: 1 } },
+      });
+      if (claimed.count === 0) throw new Refusal("conflict");
+      const onCase = await tx.storedFile.findMany({
+        where: { caseId: found.id },
+        select: { id: true, storedName: true },
+      });
+      await tx.storedFile.deleteMany({ where: { caseId: found.id } });
+      // A case moved over from version 1 may still hold its decisions and notices.
+      await tx.notification.deleteMany({ where: { caseId: found.id } });
+      await tx.decision.deleteMany({ where: { caseId: found.id } });
+      await tx.case.delete({ where: { id: found.id } });
       await writeAudit(tx, {
         actorId: actor.userId,
-        action: "case_draft_deleted",
+        action: "case_deleted",
         entityType: "case",
-        entityId: id,
-        caseId: id,
-        after: { dsOfficeId: found.dsOfficeId },
+        entityId: found.id,
+        caseId: found.id,
+        after: { applicationNumber: found.applicationNumber, dsOfficeId: found.dsOfficeId, reason: reason.value },
       });
       return onCase;
     });
   } catch (error) {
-    if (error instanceof Refusal) return { ok: false, error: error.reason as CaseCommandError };
+    if (error instanceof Refusal) return { ok: false, error: error.reason as DeleteCaseError };
     throw error;
   }
   for (const file of files) {
@@ -365,12 +344,12 @@ export async function deleteDraft(db: PrismaClient, actor: Actor, id: string): P
       logError("file_delete_failed", error, { fileId: file.id }),
     );
   }
-  return { ok: true, value: null };
+  return { ok: true };
 }
 
 /**
- * Takes a document off a draft or a returned case. The file itself is kept, because nothing on a
- * case is deleted (application spec, Data model); it no longer shows or opens.
+ * Takes a document off a case that can still be edited (CASE-2). The file itself is kept, because nothing
+ * on a case is deleted (application spec, Data model); it no longer shows or opens.
  */
 export async function removeDocument(
   db: PrismaClient,

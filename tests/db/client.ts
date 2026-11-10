@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { inject } from "vitest";
 import { PrismaClient } from "@/generated/prisma/client";
@@ -22,3 +23,20 @@ export async function freeOfficeId(db: PrismaClient): Promise<number> {
   });
   return office.id;
 }
+
+/**
+ * Change 0006's bridge, until its tasks 5 to 8 replace the tests that use it: puts a case saved as
+ * `AWAITING_ALLOCATION` where version 1's submit left it, `SUBMITTED` with its `SUBMIT` decision, so the
+ * tests of the check, stopping and version 1's letter still start from there. No screen submits now.
+ */
+export async function asSubmittedV1(db: PrismaClient, caseId: string, byId: string): Promise<void> {
+  const at = new Date();
+  await db.case.update({
+    where: { id: caseId },
+    data: { status: "SUBMITTED", submittedAt: at, version: { increment: 1 } },
+  });
+  await db.decision.create({ data: { id: randomUUID(), caseId, type: "SUBMIT", byId, at } });
+}
+
+/** A made-up Application Number (CASE-12), different for every case a test saves. */
+export const testApplicationNumber = (): string => `T/${randomUUID().slice(0, 13)}`;

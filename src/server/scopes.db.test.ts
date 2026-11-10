@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../prisma/seed-data";
-import { createTestClient } from "../../tests/db/client";
+import { asSubmittedV1, createTestClient } from "../../tests/db/client";
 import messages from "../../messages/si.json";
 import { colomboDay } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
 import { type Designation, roleOf } from "./auth/designations";
-import { type Actor, deleteDraft, saveCase } from "./cases/commands";
+import { type Actor, deleteCase, saveCase } from "./cases/commands";
 import { decideCase } from "./cases/decide";
 import { caseWhere, getCase, officeMoney } from "./cases/queries";
 import { stopCase } from "./cases/stop";
@@ -45,6 +45,7 @@ const PDF = new TextEncoder().encode("%PDF-1.4\n%made-up test file\n");
 const values = (nic: string): CaseValues => ({
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
+  applicationNumber: `S/${nic}`,
   childName: null,
   name: "විෂය පරීක්ෂණ",
   nic,
@@ -109,11 +110,12 @@ beforeAll(async () => {
       id: randomUUID(),
       version: null,
       dsOfficeId: office.id,
+      buildDsOfficeId: null,
       values: values(`19900000${index}${index}${index}${index}`),
       documentIds: office === otherProvince ? [documentId] : [],
-      submit: true,
     });
     if (!saved.ok) throw new Error(saved.error);
+    await asSubmittedV1(db, saved.value.id, headOffice.userId);
     caseIn.set(office.id, saved.value.id);
   }
 });
@@ -249,21 +251,22 @@ describe("an account that only views changes nothing (PRM-5, AC-42)", () => {
         id: randomUUID(),
         version: null,
         dsOfficeId: home.id,
+        buildDsOfficeId: null,
         values: values("199011112222"),
         documentIds: [],
-        submit: false,
       });
       expect(newCase.ok, `${label}, new case`).toBe(false);
       const edit = await saveCase(db, viewer, {
         id: caseId,
         version: before.version,
         dsOfficeId: home.id,
+        buildDsOfficeId: null,
         values: { ...values("199011112222"), name: "වෙනස් කළ" },
         documentIds: [],
-        submit: false,
       });
       expect(edit.ok, `${label}, edit`).toBe(false);
-      expect((await deleteDraft(db, viewer, caseId)).ok, `${label}, delete`).toBe(false);
+      const deleted = await deleteCase(db, viewer, { ...target, reason: "පරීක්ෂණ හේතුව" });
+      expect(deleted.ok, `${label}, delete`).toBe(false);
       const decided = await decideCase(db, viewer, { ...target, decision: "verify", reason: null });
       expect(decided.ok, `${label}, verify`).toBe(false);
       expect((await stopCase(db, viewer, { ...target, reason: "පරීක්ෂණ හේතුව" })).ok, `${label}, stop`).toBe(false);
@@ -326,14 +329,12 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
       id: randomUUID(),
       version: null,
       dsOfficeId: null,
+      buildDsOfficeId: sameProvince.id,
       values: values("199055556666"),
       documentIds: [],
-      submit: false,
     });
     if (!saved.ok) throw new Error(saved.error);
     caseId = saved.value.id;
-    // The form asks where it is built from change 0006's task 4; until then the test sets it.
-    await db.case.update({ where: { id: caseId }, data: { buildDsOfficeId: sameProvince.id } });
   });
 
   it("is listed and opened by both offices and both districts, and by nobody else", async () => {
@@ -372,28 +373,32 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
       id: caseId,
       version: before.version,
       dsOfficeId: null,
+      buildDsOfficeId: sameProvince.id,
       values: { ...values("199055556666"), name: "වෙනස් කළ" },
       documentIds: [],
-      submit: false,
     });
     expect(edit).toEqual({ ok: false, error: "notEditable" });
-    expect(await deleteDraft(db, builder, caseId)).toEqual({ ok: false, error: "notEditable" });
+    expect(await deleteCase(db, builder, { caseId, version: before.version, reason: "පරීක්ෂණ හේතුව" })).toEqual({
+      ok: false,
+      error: "notAllowedNow",
+    });
     expect(await current()).toEqual(before);
 
     const corrected = await saveCase(db, resident, {
       id: caseId,
       version: before.version,
       dsOfficeId: null,
+      buildDsOfficeId: sameProvince.id,
       values: { ...values("199055556666"), name: "නිවැරදි කළ" },
       documentIds: [],
-      submit: true,
     });
     expect(corrected.ok).toBe(true);
-    // Saving keeps where it is built, and the office stays the DS of residence.
+    // The office stays the DS of residence, and the case is still built in the other one.
     expect(await current()).toMatchObject({ dsOfficeId: home.id, buildDsOfficeId: sameProvince.id });
   });
 
   it("goes on the letter of the district where it is built, and both offices hear of it (NTF-1)", async () => {
+    await asSubmittedV1(db, caseId, resident.userId);
     const sent = await current();
     const verified = await decideCase(db, headOffice, {
       caseId,

@@ -468,7 +468,7 @@
         "completed": "Completed ({count})"
       },
       "search": "Search",
-      "searchPlaceholder": "Name, number or NIC number",
+      "searchPlaceholder": "Name, Application Number or NIC number",
       "columns": {
         "beneficiary": "Beneficiary",
         "kind": "Assistance",
@@ -479,24 +479,15 @@
       "empty": "No matching beneficiaries.",
       "emptyStart": "No beneficiaries yet. Press “Add a new beneficiary” to start.",
       "progress": {
-        "DRAFT": "Complete it and send it to the Ministry",
-        "SUBMITTED": "Days with the Ministry: {days}",
-        "submittedToday": "Sent to the Ministry today",
-        "RETURNED": "Correct it and send it again",
-        "VERIFIED": "Rs. 2,000,000 still to come",
+        "AWAITING_ALLOCATION": "Awaiting the Ministry's fund allocation",
+        "ALLOCATED_TO_DISTRICT": "Awaiting the District's release",
+        "ALLOCATION_RECEIVED": "Rs. 2,000,000 received; start the first installment",
         "COMPLETED": "Building completed",
         "IN_PROGRESS": "Rs. 2,000,000 received",
-        "STOPPED": "Stopped by the Ministry",
         "stale": "Days without an update: {days}"
       },
       "todo": {
         "title": "Your to-do list",
-        "returned": "{name}: sent back",
-        "returnedAction": "Correct it and send it again",
-        "noReason": "The Ministry gave no reason.",
-        "draft": "{name}: not sent yet",
-        "draftText": "Last saved {date}",
-        "draftAction": "Complete it and send it",
         "none": "Nothing to do for now.",
         "due": "{name}: {installment}",
         "dueText": "Due to be paid on {date}. Record it here once it is paid.",
@@ -504,18 +495,18 @@
         "stale": "{name}: update the progress",
         "staleText": "Days without an update: {days}.",
         "open": "Open",
-        "replace": "{name}: another name asked for",
-        "replaceRejected": "The Ministry rejected {number}: “{reason}” Enter another beneficiary in its place and send it.",
-        "replaceStopped": "The Ministry stopped {number}: “{reason}” Enter another beneficiary in its place and send it.",
-        "replaceAction": "Enter someone in its place"
+        "received": "{name}: allocation received",
+        "receivedText": "Received on {date}. Start paying the first installment."
       },
       "paid": "{paid} / {total}",
       "money": {
         "title": "Money",
-        "received": "Received from the Ministry",
+        "received": "Received from the District",
         "paidOut": "Paid to beneficiaries",
         "balance": "Balance with you"
-      }
+      },
+      "builtIn": "Built in {office}",
+      "enteredBy": "Entered by {office}"
     },
     "list": {
       "title": "Beneficiaries",
@@ -567,7 +558,7 @@
       "mobile2": "Second phone number (optional)",
       "remark": "Notes (optional)",
       "officeAuto": "The system fills in the district ({district}) and the DS division ({office}).",
-      "officeFixed": "District: {district} · DS division: {office}. This can't be changed once the beneficiary has a registration number.",
+      "officeFixed": "District: {district} · DS division: {office}. This can't be changed once the Ministry has allocated the funds.",
       "district": "District *",
       "office": "DS division *",
       "chooseDistrictFirst": "Choose the district first",
@@ -583,8 +574,6 @@
       "removeTitle": "Remove the document?",
       "removeText": "“{name}” will be removed from this beneficiary's documents.",
       "removeConfirm": "Yes, remove it",
-      "saveDraft": "Save to complete later",
-      "submit": "Send to the Ministry",
       "saving": "Saving...",
       "cancel": "No",
       "help": "If you have a problem, contact the Ministry.",
@@ -609,14 +598,14 @@
         "numberOffice": "{number} at the {office} DS office",
         "numberNameOffice": "{number} ({name}, {office} DS)",
         "draft": "A beneficiary not sent yet ({name})",
-        "advice": "Check whether it is the same person. This doesn't stop saving or sending; the Ministry will see it when checking."
+        "advice": "Check whether it is the same person. This doesn't stop saving; the Ministry sees it when allocating funds."
       },
       "confirm": {
-        "title": "Send to the Ministry?",
+        "title": "Save this beneficiary?",
         "text": "Please look over the details again.",
-        "after": "Once sent, this can't be changed until the Ministry has checked it.",
+        "after": "Once saved, it awaits the Ministry's fund allocation. Until then you can correct or delete it.",
         "back": "No, go back",
-        "send": "Yes, send it",
+        "send": "Yes, save it",
         "category": "Category",
         "kind": "Assistance",
         "childName": "Child's name",
@@ -629,11 +618,11 @@
         "office": "DS division",
         "documents": "Other documents",
         "documentCount": "{count, plural, =0 {None attached} one {# file} other {# files}}",
-        "replaces": "In place of"
+        "applicationNumber": "Application Number",
+        "built": "Built in"
       },
       "errors": {
-        "summary": "Correct these before sending:",
-        "summaryDraft": "Correct these before saving:",
+        "summary": "Correct these before saving:",
         "inField": "{field}: {message}",
         "categoryRequired": "Choose a category.",
         "kindRequired": "Choose the kind of assistance.",
@@ -660,43 +649,30 @@
         "notAllowedNow": "This can't be done in the beneficiary's current status. Reload the page.",
         "roleNotAllowed": "You can't do this.",
         "kindLocked": "Physical progress is already recorded for this beneficiary, so the kind of assistance can't be changed.",
-        "replacementRequired": "Choose whether this beneficiary is in place of the case the Ministry named.",
-        "replacementUnavailable": "A name can no longer be entered in place of the chosen case. Reload the page and choose again."
+        "applicationNumberRequired": "Enter the Application Number.",
+        "applicationNumberTaken": "Another beneficiary of this DS division already has this Application Number.",
+        "buildOfficeRequired": "Choose the DS division where the house is built."
       },
       "saveChanges": "Save the changes",
-      "changeIntro": "This beneficiary has been verified. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
-      "replaces": {
-        "title": "The Ministry has asked for another name *",
-        "text": "Is the beneficiary you are entering now the one sent in its place? This question shows only while there is such a request.",
-        "yes": "Yes, in place of {number}",
-        "rejectedOn": "{name} · rejected on {date}",
-        "stoppedOn": "{name} · stopped on {date}",
-        "reason": "Reason: {reason}",
-        "no": "No, this is a separate new beneficiary",
-        "noHint": "The request stays on the DS office's to-do list until a name is sent in its place.",
-        "ref": "{number} ({name})"
-      }
+      "changeIntro": "The Ministry has allocated funds for this beneficiary. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
+      "applicationNumber": "Application Number *",
+      "applicationNumberHelp": "The number on the beneficiary's paper application",
+      "built": {
+        "title": "DS division where the house is built or the land bought *",
+        "same": "The same DS division",
+        "sameHint": "Where the beneficiary lives",
+        "other": "Another DS division",
+        "otherHint": "That DS office pays the installments and records the progress",
+        "district": "District where it is built *",
+        "office": "DS division where it is built *",
+        "fixed": "Built in: {office} DS division, {district} District. This can't be changed once the Ministry has allocated the funds.",
+        "fixedSame": "Built in the DS division where the beneficiary lives. This can't be changed once the Ministry has allocated the funds."
+      },
+      "save": "Save"
     },
     "notices": {
-      "saved": "Saved. You can complete it later from the “My beneficiaries” page.",
-      "savedHo": "Saved.",
-      "deleted": "Draft deleted.",
+      "deleted": "Beneficiary deleted.",
       "changed": "Changes saved."
-    },
-    "submitted": {
-      "title": "Sent to the Ministry",
-      "number": "Registration number:",
-      "text": "Once the Ministry has checked it, you'll be told on the “My beneficiaries” page.",
-      "textHo": "It is now on the “To check” list.",
-      "addAnother": "Add another person"
-    },
-    "deleteDraft": {
-      "button": "Delete the draft",
-      "title": "Delete this draft?",
-      "text": "It hasn't been sent to the Ministry yet. Once deleted, its details and attached documents can't be recovered.",
-      "confirm": "Yes, delete it",
-      "cancel": "No",
-      "working": "Deleting..."
     },
     "page": {
       "details": "The beneficiary's details",
@@ -706,7 +682,7 @@
       "fix": "Correct and send again",
       "waiting": "The Ministry is checking this. The details can't be changed until they decide.",
       "fields": {
-        "number": "Registration number",
+        "number": "Application Number",
         "category": "Category",
         "kind": "Assistance given",
         "childName": "Child's name",
@@ -721,7 +697,10 @@
         "office": "DS division",
         "district": "District",
         "submittedAt": "Last sent on",
-        "verifiedAt": "Verified on"
+        "verifiedAt": "Verified on",
+        "applicationNumber": "Application Number",
+        "built": "Built in",
+        "createdAt": "Entered on"
       },
       "verifiedDs": "The Ministry has verified this. You'll be told once the Rs. 2,000,000 is released.",
       "rejectedTitle": "The Ministry has rejected this",
@@ -813,6 +792,23 @@
           "4": "Completing the house with the essentials"
         }
       }
+    },
+    "created": {
+      "title": "Saved",
+      "number": "Application Number:",
+      "text": "It now awaits the Ministry's fund allocation. Until then you can correct or delete it.",
+      "textMinistry": "It is now on the list awaiting fund allocation.",
+      "addAnother": "Add another person"
+    },
+    "deleteCase": {
+      "button": "Delete",
+      "title": "Delete this beneficiary?",
+      "text": "Use this only for a beneficiary entered by mistake, for example twice. The details and documents of {number} can't be recovered.",
+      "reason": "Reason for deleting *",
+      "reasonHelp": "The reason is kept in the records. 5 to 1,000 characters.",
+      "confirm": "Yes, delete it",
+      "cancel": "No",
+      "working": "Deleting..."
     }
   },
   "review": {
@@ -1126,6 +1122,7 @@
     },
     "actions": {
       "case_created": "Beneficiary entered",
+      "case_createdNumber": "Beneficiary entered. Application Number {number}",
       "case_updated": "Details changed",
       "document_removed": "A document was removed",
       "case_submitted": "Sent to the Ministry",
@@ -1154,6 +1151,8 @@
     "change": "{field}: {from} → {to}",
     "fields": {
       "dsOfficeId": "DS division",
+      "buildDsOfficeId": "DS division where built",
+      "applicationNumber": "Application Number",
       "category": "Category",
       "kind": "Assistance",
       "childName": "Child's name",
