@@ -44,8 +44,9 @@ function letterCases(form: FormData): { id: string; version: number }[] | null {
 }
 
 /**
- * REL-2, REL-3: records a district's allocation letter, which releases every case ticked on it. The
- * page then shows the letter's notice by its id, never by names (SEC-8), and stays on the district.
+ * REL-2, REL-3: records a district's allocation letter, which allocates every case ticked on it to the
+ * district. The page then shows the letter's notice by its id, never by names (SEC-8), and stays on the
+ * district.
  */
 export async function recordLetterAction(_previous: LetterState, form: FormData): Promise<LetterState> {
   const actor = await requireRole("MINISTRY_OFFICER");
@@ -64,7 +65,7 @@ export async function recordLetterAction(_previous: LetterState, form: FormData)
   // The menu's waiting counts live in the layout (NTF-1).
   revalidatePath("/ministry", "layout");
   redirect(
-    `/ministry/release?${new URLSearchParams({ notice: "letterRecorded", letter: result.letterId, districtId: String(districtId) })}`,
+    `/ministry/allocate?${new URLSearchParams({ notice: "letterRecorded", letter: result.letterId, districtId: String(districtId) })}`,
   );
 }
 

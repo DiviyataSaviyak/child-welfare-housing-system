@@ -3,6 +3,7 @@ import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../prisma/seed-data";
 import { createTestClient } from "../../tests/db/client";
+import { releaseToDsForTests } from "../../tests/ds-release-bridge";
 import messages from "../../messages/si.json";
 import { colomboDay } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
@@ -429,8 +430,10 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
       expect(
         notices.map((n) => n.type),
         officer.userId,
-      ).toEqual(["RELEASED"]);
+      ).toEqual(["ALLOCATED"]);
     }
+    // Until change 0006's task 7, the District's release to the DS where it is built is written directly.
+    await releaseToDsForTests(db, [caseId]);
     // The money counts where it is built (HOME-4, DSH-1).
     const after = await money();
     expect(after.builder - before.builder).toBe(2_000_000);

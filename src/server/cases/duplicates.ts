@@ -90,21 +90,45 @@ export async function duplicatesInFull(
 }
 
 /**
- * CASE-6: which of these cases share their NIC with another case, for the flag on each row of the
- * Ministry's letter form (REL-2, change 0006's task 6), as version 1's check queue showed it. One query for
- * all the cases.
+ * CASE-6: for each of these cases, every other case with the same NIC, in full, for the duplicate flag on
+ * each row of the Ministry's letter form (REL-2), as version 1's check queue showed them. One query for all
+ * the cases; a case with no match has no entry. The Ministry only.
  */
-export async function duplicateFlags(
+export async function duplicatesOf(
   db: PrismaClient,
-  cases: { id: string; nicKey: string | null; dsOfficeId: number }[],
-): Promise<Set<string>> {
+  viewer: Viewer,
+  cases: { id: string; nicKey: string | null }[],
+  locale: Locale,
+): Promise<Map<string, DuplicateCase[]>> {
   const keys = [...new Set(cases.flatMap((c) => (c.nicKey ? [c.nicKey] : [])))];
-  if (keys.length === 0) return new Set();
+  if (caseScope(viewer).kind !== "all" || keys.length === 0) return new Map();
   const sharing = await db.case.findMany({
     where: { nicKey: { in: keys } },
-    select: { id: true, nicKey: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      nicKey: true,
+      applicationNumber: true,
+      status: true,
+      name: true,
+      childName: true,
+      dsOffice: { select: NAMES },
+    },
   });
-  return new Set(
-    cases.filter((c) => sharing.some((other) => other.nicKey === c.nicKey && other.id !== c.id)).map((c) => c.id),
-  );
+  const found = new Map<string, DuplicateCase[]>();
+  for (const c of cases) {
+    const matches = sharing
+      .filter((other) => other.nicKey === c.nicKey && other.id !== c.id)
+      .slice(0, 20)
+      .map((match) => ({
+        id: match.id,
+        applicationNumber: match.applicationNumber,
+        status: match.status,
+        name: match.name,
+        childName: match.childName,
+        officeName: localName(match.dsOffice, locale),
+      }));
+    if (matches.length > 0) found.set(c.id, matches);
+  }
+  return found;
 }

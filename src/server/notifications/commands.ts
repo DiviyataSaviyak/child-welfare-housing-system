@@ -30,6 +30,31 @@ export async function notifyOffice(
 }
 
 /**
+ * NTF-1: tells every active District officer of a district about a Ministry letter to it, once per letter
+ * (REL-3). A notification belongs to a case, so it hangs on the letter's first case, from which the list
+ * reads the letter and how many cases it allocates. Call it in the letter's transaction.
+ */
+export async function notifyDistrict(
+  tx: Prisma.TransactionClient,
+  notice: { districtId: number; caseId: string; type: NotificationType; at: Date },
+): Promise<void> {
+  const officers = await tx.user.findMany({
+    where: { districtId: notice.districtId, role: "DISTRICT_OFFICER", banned: false },
+    select: { id: true },
+  });
+  if (officers.length === 0) return;
+  await tx.notification.createMany({
+    data: officers.map((officer) => ({
+      id: randomUUID(),
+      userId: officer.id,
+      caseId: notice.caseId,
+      type: notice.type,
+      createdAt: notice.at,
+    })),
+  });
+}
+
+/**
  * Marks one of the user's own notifications read and gives its case, so the screen can open it (NTF-1).
  * Anyone else's notification, or one about a case the user may no longer see (PRM-3), reads as not found.
  */

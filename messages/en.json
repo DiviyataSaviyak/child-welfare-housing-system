@@ -29,7 +29,7 @@
     "adminUsers": "Users",
     "adminLists": "Lists",
     "ministryCases": "Beneficiaries",
-    "ministryRelease": "To release allocations",
+    "ministryAllocate": "To release allocations",
     "oversightDashboard": "Summary",
     "oversightCases": "Beneficiaries",
     "waiting": "Beneficiaries waiting: {count}"
@@ -711,6 +711,8 @@
       "title": "Financial progress",
       "released": "Released to the District Secretary",
       "releasedDetail": "{date} · {district} District",
+      "allocated": "The Ministry has released {amount} to the {district} District. It is waiting for the District Secretariat to release it to the DS office.",
+      "allocatedDs": "The Ministry has released {amount} to the {district} District for this beneficiary. The installments can start once the District Secretariat releases it to your office.",
       "received": "Received through the District Secretary",
       "receivedDetail": "Letter {number}",
       "paid": "Paid to the beneficiary",
@@ -791,7 +793,7 @@
   },
   "review": {
     "title": "To release allocations",
-    "intro": "The DS offices enter only the beneficiaries they have approved. Once the allocation letter has gone to the District Secretary, record it here with the beneficiaries named in it.",
+    "intro": "The DS offices enter only the beneficiaries they have approved. Once the allocation letter has gone to the District Secretary, record it here with the beneficiaries named in it. The District Secretariat then releases the money to the DS offices.",
     "duplicates": {
       "title": "Other beneficiaries also have this NIC number. Check whether it is the same family or the same person.",
       "item": "{number}: {name} · {office} DS · {status}"
@@ -809,12 +811,17 @@
       "recordedSub": "{date} · beneficiaries: {count} · {amount}",
       "recordedUntil": "Valid until {date}",
       "title": "{district} District",
-      "intro": "The letter goes to the District Secretary, {district}. Keep ticked only the beneficiaries named in the letter.",
+      "intro": "The letter goes to the District Secretary, {district}. Tick only the beneficiaries named in the letter.",
       "casesLabel": "Beneficiaries on the letter",
+      "tickDistrict": "Tick all in the {district} District",
+      "tickOffice": "Tick all in {office}",
       "office": "{office} DS division ({count})",
-      "enteredOn": "{number} · entered on {date}",
-      "enteredToday": "{number} · entered today",
+      "enteredOn": "entered on {date}",
+      "enteredToday": "entered today",
+      "caseDetail": "{number} · {category} · {kind} · {entered}",
+      "livesIn": "Lives in the {office} DS division",
       "notOnLetter": "Not on this letter",
+      "duplicateFlag": "{count, plural, one {Another beneficiary has this NIC number} other {# other beneficiaries have this NIC number}}",
       "total": "Total amount",
       "totalHelp": "Beneficiaries: {count} × Rs. 2,000,000",
       "number": "My No. *",
@@ -831,8 +838,8 @@
       "note": "Note (optional)",
       "save": "Record the letter · {amount}",
       "working": "Saving...",
-      "caseTitle": "Releasing the Rs. 2,000,000",
-      "caseText": "Money for this beneficiary is released with an allocation letter to the {district} District Secretary. Once the letter has gone, record it on the “To release allocations” screen.",
+      "caseTitle": "Releasing the Rs. 2,000,000 allocation",
+      "caseText": "The allocation for this beneficiary is released with an allocation letter to the {district} District Secretary. Once the letter has gone, record it on the “To release allocations” screen.",
       "caseGo": "Go and record the letter →"
     },
     "correct": {
@@ -846,7 +853,7 @@
     },
     "notices": {
       "corrected": "The allocation letter's details were corrected.",
-      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). Their work is now in progress. The {offices} DS offices will be told."
+      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). They are now released to the district. The District Secretariat will release the money to the {offices} DS offices; they will be told."
     },
     "errors": {
       "summary": "Correct these before saving:",
@@ -857,6 +864,7 @@
       "dateInFuture": "The letter's date can't be in the future.",
       "dateBeforeEntered": "The letter's date can't be before the day a beneficiary on it was entered.",
       "dateAfterInstallment": "The date can't be after the date of an installment already recorded for a beneficiary on this letter.",
+      "dateAfterDsRelease": "The date can't be after the District Secretariat's release of a beneficiary on this letter.",
       "untilRequired": "Enter the valid-until date.",
       "untilInvalid": "This isn't a valid date.",
       "untilBeforeDate": "The valid-until date can't be before the letter's date.",
@@ -1023,6 +1031,7 @@
       "case_rejected": "Rejected",
       "case_released": "Rs. 2,000,000 released (reference number {reference})",
       "case_releasedLetter": "Rs. 2,000,000 released through the {district} District Secretary (letter {number})",
+      "case_allocated": "Rs. 2,000,000 allocation released to the {district} District (letter {number})",
       "release_corrected": "The allocation letter's details were corrected",
       "installment_started": "Payment of the {installment} started (expected on {date})",
       "installment_paid": "{installment} paid (paid on {date})",

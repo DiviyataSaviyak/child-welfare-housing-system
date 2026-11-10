@@ -196,7 +196,7 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/ministry/cases/[id]/actions.ts": {
     undoInstallmentAction: MINISTRY,
   },
-  "src/app/ministry/release/actions.ts": {
+  "src/app/ministry/allocate/actions.ts": {
     recordLetterAction: MINISTRY,
     uploadLetterScanAction: MINISTRY,
     correctReleaseAction: MINISTRY,

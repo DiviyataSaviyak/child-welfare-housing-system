@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { caseName } from "@/components/cases/page-header";
+import { positive } from "@/components/cases/list-filters";
 import { LetterForm, type LetterFormGroup } from "@/components/review/letter-form";
 import { LetterNotice } from "@/components/review/review-notice";
 import { colomboDay, daysBetween, formatDate } from "@/lib/dates";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { positive } from "@/components/cases/list-filters";
 import { casesForLetter, districtsWaiting, getLetter, recentLetters } from "@/server/releases/queries";
 import { recordLetterAction, uploadLetterScanAction } from "./actions";
 
-export type LetterSearchParams = Promise<{
+type SearchParams = Promise<{
   notice?: string | string[];
   districtId?: string | string[];
   letter?: string | string[];
@@ -20,13 +20,13 @@ export type LetterSearchParams = Promise<{
 const one = (value: string | string[] | undefined) => (typeof value === "string" ? value : null);
 
 /**
- * REL-1, REL-2, as in the prototype's release tab: the Ministry releases money by one allocation letter to
- * a District Secretary for several cases of the district awaiting their allocation. On the left, the
- * districts whose cases wait for a letter, and the letters recorded last; on the right, the chosen
- * district's letter (`?districtId=`, or the first district waiting). Nobody checks a case first (change
- * 0006); its task 6 turns this into the Ministry's allocation screen.
+ * REL-1, REL-2, as in the prototype's release tab: the Ministry allocates money by one allocation letter to
+ * a District Secretary for several cases of the district awaiting their allocation; the District then
+ * releases it to the DS offices (REL-6). On the left, the districts whose cases wait for a letter, and the
+ * letters recorded last; on the right, the chosen district's letter (`?districtId=`, or the first
+ * district waiting), with nothing ticked to start with, since the Ministry chooses whom it funds.
  */
-export async function LetterScreen({ searchParams }: { searchParams: LetterSearchParams }) {
+export default async function MinistryAllocatePage({ searchParams }: { searchParams: SearchParams }) {
   const viewer = await requireRole("MINISTRY_OFFICER");
   const params = await searchParams;
   const askedId = positive(one(params.districtId) ?? "");
@@ -48,15 +48,30 @@ export async function LetterScreen({ searchParams }: { searchParams: LetterSearc
   for (const c of cases) {
     let group = groups.at(-1);
     if (group?.office !== c.officeName) groups.push((group = { office: c.officeName, cases: [] }));
-    const number = c.applicationNumber;
+    const entered =
+      daysBetween(c.createdAt, now) > 0
+        ? t("letters.enteredOn", { date: formatDate(c.createdAt) })
+        : t("letters.enteredToday");
     group.cases.push({
       id: c.id,
       version: c.version,
       name: caseName(tc, c.name, c.childName),
-      detail:
-        daysBetween(c.createdAt, now) > 0
-          ? t("letters.enteredOn", { number, date: formatDate(c.createdAt) })
-          : t("letters.enteredToday", { number }),
+      detail: t("letters.caseDetail", {
+        number: c.applicationNumber,
+        category: tc(`category.${c.category}`),
+        kind: tc(`kindShort.${c.kind}`),
+        entered,
+      }),
+      residence: c.residenceName && t("letters.livesIn", { office: c.residenceName }),
+      duplicates: c.duplicates.map((match) => ({
+        id: match.id,
+        text: t("duplicates.item", {
+          number: match.applicationNumber,
+          name: caseName(tc, match.name, match.childName),
+          office: match.officeName,
+          status: tc(`status.${match.status}`),
+        }),
+      })),
       enteredOn: colomboDay(c.createdAt),
     });
   }
@@ -85,7 +100,7 @@ export async function LetterScreen({ searchParams }: { searchParams: LetterSearc
                   return (
                     <li key={d.id}>
                       <Link
-                        href={`/ministry/release?districtId=${d.id}`}
+                        href={`/ministry/allocate?districtId=${d.id}`}
                         aria-current={selected ? "true" : undefined}
                         className={`flex flex-col gap-0.5 rounded-xl border-2 px-4 py-3.5 ${
                           selected ? "border-primary bg-accent" : "border-border bg-card hover:border-primary/60"
@@ -162,6 +177,7 @@ export async function LetterScreen({ searchParams }: { searchParams: LetterSearc
               // A case that changed or left the list starts the form again.
               key={`${chosen.id}:${cases.map((c) => `${c.id}.${c.version}`).join(",")}`}
               districtId={chosen.id}
+              districtName={chosen.name}
               groups={groups}
               today={colomboDay(now)}
               action={recordLetterAction}

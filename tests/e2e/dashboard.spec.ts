@@ -44,5 +44,5 @@ test("the Ministry's dashboard: totals, a district's DS offices, filters and the
   const waiting = page.getByRole("region", { name: "ඔබේ ක්‍රියාව අවශ්‍යයි" });
   await expect(waiting.getByRole("link", { name: /^පරීක්ෂා කිරීමට/ })).toHaveCount(0);
   await waiting.getByRole("link", { name: /^ප්‍රතිපාදන මුදා හැරීමට/ }).click();
-  await expect(page).toHaveURL(/\/ministry\/release$/);
+  await expect(page).toHaveURL(/\/ministry\/allocate$/);
 });

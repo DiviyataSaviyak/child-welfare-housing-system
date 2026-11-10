@@ -1,9 +1,9 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { FileText, TriangleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useActionState, useRef, useState, useTransition } from "react";
-import type { LetterState } from "@/app/ministry/release/actions";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import type { LetterState } from "@/app/ministry/allocate/actions";
 import { FormError } from "@/components/forms/form-field";
 import { DOCUMENT_ACCEPT, documentProblem, SNIFF_BYTES } from "@/lib/file-types";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
@@ -23,8 +23,12 @@ export type LetterFormCase = {
   version: number;
   /** The name, with the child's if any. */
   name: string;
-  /** The Application Number and when it was entered. */
+  /** The Application Number, category, kind and when it was entered. */
   detail: string;
+  /** Where the beneficiary lives, when it isn't the DS office where it is built (CASE-13). */
+  residence: string | null;
+  /** The other cases with the same NIC, each with its link's text (CASE-6). */
+  duplicates: { id: string; text: string }[];
   /** "YYYY-MM-DD", in Colombo: the day it was entered. */
   enteredOn: string;
 };
@@ -36,21 +40,55 @@ type Scan =
   | { state: "done"; name: string; id: string }
   | { state: "refused"; name: string; problem: UploadError | "fileFailed" };
 
+/** A "tick all" box, half ticked when only some of its cases are. */
+function TickAll({
+  label,
+  ids,
+  ticked,
+  onChange,
+}: {
+  label: string;
+  ids: string[];
+  ticked: ReadonlySet<string>;
+  onChange: (ids: string[], on: boolean) => void;
+}) {
+  const box = useRef<HTMLInputElement>(null);
+  const count = ids.filter((id) => ticked.has(id)).length;
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = count > 0 && count < ids.length;
+  }, [count, ids.length]);
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-[15px] font-semibold">
+      <input
+        ref={box}
+        type="checkbox"
+        checked={count === ids.length}
+        onChange={(event) => onChange(ids, event.target.checked)}
+        className="size-5 accent-primary"
+      />
+      {label}
+    </label>
+  );
+}
+
 /**
  * REL-2, as in the prototype: one allocation letter to a District Secretary. The district's cases
- * awaiting their allocation are listed by DS office, all ticked to start with; the officer unticks any not named on the
- * letter. The total is Rs. 2,000,000 for each ticked case and is never typed in. The scan is optional
- * and uploads as soon as it is chosen. The browser runs the server's checks first, and what was typed
- * stays after a refusal (ERR-1).
+ * awaiting their allocation are listed by DS office, none ticked to start with, because the Ministry
+ * chooses whom it funds; each office and the whole district have "tick all". A case that shares its NIC
+ * with another shows a flag that opens the matches (CASE-6). The total is Rs. 2,000,000 for each ticked
+ * case and is never typed in. The scan is optional and uploads as soon as it is chosen. The browser runs
+ * the server's checks first, and what was typed stays after a refusal (ERR-1).
  */
 export function LetterForm({
   districtId,
+  districtName,
   groups,
   today,
   action,
   upload,
 }: {
   districtId: number;
+  districtName: string;
   groups: LetterFormGroup[];
   /** "YYYY-MM-DD", in Colombo. */
   today: string;
@@ -62,7 +100,7 @@ export function LetterForm({
   const locale = useLocale();
   const [state, dispatch, pending] = useActionState(action, { error: null, errors: {} });
   const [, startTransition] = useTransition();
-  const [left, setLeft] = useState<ReadonlySet<string>>(new Set());
+  const [on, setOn] = useState<ReadonlySet<string>>(new Set());
   const [values, setValues] = useState<LetterValues>({
     letterNumber: "",
     letterDate: today,
@@ -77,16 +115,18 @@ export function LetterForm({
   const errors = checkErrors ?? state.errors;
 
   const cases = groups.flatMap((group) => group.cases);
-  const ticked = cases.filter((c) => !left.has(c.id));
+  const ticked = cases.filter((c) => on.has(c.id));
   const total = formatRupees(ticked.length * RELEASE_AMOUNT, locale);
   const limits = { earliest: latestDay(ticked.map((c) => c.enteredOn)), today };
 
-  function toggle(id: string, on: boolean) {
+  function tick(ids: string[], value: boolean) {
     setNoCases(false);
-    setLeft((current) => {
+    setOn((current) => {
       const next = new Set(current);
-      if (on) next.delete(id);
-      else next.add(id);
+      for (const id of ids) {
+        if (value) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
   }
@@ -142,34 +182,68 @@ export function LetterForm({
     >
       <fieldset className="flex flex-col gap-3">
         <legend className="sr-only">{t("letters.casesLabel")}</legend>
+        <TickAll
+          label={t("letters.tickDistrict", { district: districtName })}
+          ids={cases.map((c) => c.id)}
+          ticked={on}
+          onChange={tick}
+        />
         {groups.map((group) => (
           <div key={group.office} className="overflow-hidden rounded-lg border">
-            <div className="bg-muted px-3.5 py-2 text-[15px] font-bold text-[#3F4843]">
-              {t("letters.office", { office: group.office, count: group.cases.length })}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-muted px-3.5 py-2">
+              <span className="text-[15px] font-bold text-[#3F4843]">
+                {t("letters.office", { office: group.office, count: group.cases.length })}
+              </span>
+              <TickAll
+                label={t("letters.tickOffice", { office: group.office })}
+                ids={group.cases.map((c) => c.id)}
+                ticked={on}
+                onChange={tick}
+              />
             </div>
             {group.cases.map((c) => {
-              const on = !left.has(c.id);
+              const ticks = on.has(c.id);
               return (
-                <label
-                  key={c.id}
-                  className={`grid cursor-pointer grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 border-t px-3.5 py-2.5 ${
-                    on ? "bg-card" : "bg-muted"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={(event) => toggle(c.id, event.target.checked)}
-                    className="size-5.5 accent-primary"
-                  />
-                  <span className={`flex min-w-0 flex-col ${on ? "" : "text-muted-foreground"}`}>
-                    <span className="font-bold">{c.name}</span>
-                    <span className="text-sm text-muted-foreground">{c.detail}</span>
-                  </span>
-                  <span className={`font-semibold ${on ? "" : "text-muted-foreground"}`}>
-                    {on ? formatRupees(RELEASE_AMOUNT, locale) : t("letters.notOnLetter")}
-                  </span>
-                </label>
+                <div key={c.id} className={`border-t ${ticks ? "bg-card" : "bg-muted"}`}>
+                  <label className="grid cursor-pointer grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={ticks}
+                      onChange={(event) => tick([c.id], event.target.checked)}
+                      className="size-5.5 accent-primary"
+                    />
+                    <span className={`flex min-w-0 flex-col ${ticks ? "" : "text-muted-foreground"}`}>
+                      <span className="font-bold">{c.name}</span>
+                      <span className="text-sm text-muted-foreground">{c.detail}</span>
+                      {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                    </span>
+                    <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>
+                      {ticks ? formatRupees(RELEASE_AMOUNT, locale) : t("letters.notOnLetter")}
+                    </span>
+                  </label>
+                  {c.duplicates.length > 0 && (
+                    <details className="mr-3.5 mb-2.5 ml-[54px] rounded-md border border-[#E8B45A] bg-[#FFF4E0] px-3 py-1.5 text-[#6B3A04]">
+                      <summary className="cursor-pointer text-sm font-semibold">
+                        <TriangleAlert aria-hidden="true" className="mr-1.5 inline size-4 align-[-3px]" />
+                        {t("letters.duplicateFlag", { count: c.duplicates.length })}
+                      </summary>
+                      <ul className="mt-1 flex flex-col gap-0.5 pb-1 text-sm">
+                        {c.duplicates.map((match) => (
+                          <li key={match.id}>
+                            <a
+                              href={`/ministry/cases/${match.id}`}
+                              target="_blank"
+                              rel="noopener"
+                              className="font-semibold underline underline-offset-2"
+                            >
+                              {match.text}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
               );
             })}
           </div>

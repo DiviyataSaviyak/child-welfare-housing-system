@@ -18,10 +18,9 @@ export type Mover = Role | "SYSTEM";
 /**
  * Change 0006's moves: `save` (a new case), `allocate` (the Ministry's letter), `release` (the District's
  * release to the DS), and the system's `start` (installment 1 paid), `unstart` (that payment undone) and
- * `complete`. `releaseV1` is version 1's letter, kept until change 0006's task 6 records the Ministry's
- * allocation in its place.
+ * `complete`.
  */
-export type Move = "save" | "allocate" | "release" | "start" | "unstart" | "complete" | "releaseV1";
+export type Move = "save" | "allocate" | "release" | "start" | "unstart" | "complete";
 
 type MoveRule = {
   /** The statuses it moves from; null is a case not yet saved. */
@@ -83,15 +82,6 @@ export const MOVES: Record<Move, MoveRule> = {
     who: ["SYSTEM"],
     notify: "COMPLETED",
     audit: "case_completed",
-  },
-  // Change 0006's bridge until its task 6: version 1's letter releases the money to the DS at once, from
-  // awaiting the allocation straight to the work, as it released a verified case before.
-  releaseV1: {
-    from: ["AWAITING_ALLOCATION"],
-    to: "IN_PROGRESS",
-    who: ["MINISTRY_OFFICER"],
-    notify: "RELEASED",
-    audit: "case_released",
   },
 };
 

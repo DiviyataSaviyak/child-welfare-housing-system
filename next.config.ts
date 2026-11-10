@@ -24,9 +24,11 @@ const nextConfig: NextConfig = {
   // arrive. Temporary (307), so browsers don't keep it for good while the change moves pages around.
   async redirects() {
     return [
-      // Version 1's check screen is gone (change 0006); its old addresses lead to the allocation letters.
-      { source: "/ho/check", destination: "/ministry/release", permanent: false },
-      { source: "/ministry/check", destination: "/ministry/release", permanent: false },
+      // Version 1's check screen is gone, and its letters screen is the allocation screen (change 0006).
+      { source: "/ho/check", destination: "/ministry/allocate", permanent: false },
+      { source: "/ministry/check", destination: "/ministry/allocate", permanent: false },
+      { source: "/ho/release", destination: "/ministry/allocate", permanent: false },
+      { source: "/ministry/release", destination: "/ministry/allocate", permanent: false },
       { source: "/ho/:path*", destination: "/ministry/:path*", permanent: false },
     ];
   },

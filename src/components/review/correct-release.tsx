@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState, useState, useTransition } from "react";
-import type { ReleaseState } from "@/app/ministry/release/actions";
+import type { ReleaseState } from "@/app/ministry/allocate/actions";
 import { FormError } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
 import { parseReleaseForm, RELEASE_FIELDS, type ReleaseDateLimits, type ReleaseErrors } from "@/lib/validation/release";

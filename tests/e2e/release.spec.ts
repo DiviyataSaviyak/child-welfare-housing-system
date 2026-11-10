@@ -6,35 +6,42 @@ import { signInAs, TEST_CASE_NAME } from "./helpers";
 const LETTERS_MENU = "ප්‍රතිපාදන මුදා හැරීමට";
 const LETTER = /^ලිපිය සටහන් කරන්න · /;
 const NOT_STARTED = "තවම ආරම්භ කර නැත";
+const ALLOCATED = "දිස්ත්‍රික්කයට මුදා හැර ඇත";
 
-test("AC-10: the DS saves a case, and the Ministry records its district's letter with nobody checking it first", async ({
+test("AC-52: the DS saves a case, and the Ministry allocates it to its district on a letter, with nothing ticked to start with", async ({
   page: ds,
   browser,
 }) => {
   test.slow();
   const ho = await openAs(browser, "ho0001");
-  const name = `${TEST_CASE_NAME} නිදහස් ${Date.now()}`;
+  const name = `${TEST_CASE_NAME} ප්‍රතිපාදන ${Date.now()}`;
   await signInAs(ds, "ds0101", /\/ds$/);
   const { url } = await newSavedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
 
-  // The case awaits its allocation at once, and the menu counts it (REL-1, NTF-1). There is no check queue.
+  // The case awaits its allocation at once, and the menu counts it (REL-1, NTF-1). There is no check queue,
+  // and the old addresses lead to the allocation screen.
   await ho.goto("/ministry");
   await expect(
     ho.getByRole("link", { name: new RegExp(`^${LETTERS_MENU} \\(බලා සිටින ප්‍රතිලාභීන් \\d+\\)$`) }),
   ).toBeVisible();
-  await ho.goto("/ministry/check");
-  await expect(ho).toHaveURL(/\/ministry\/release$/);
+  for (const old of ["/ministry/check", "/ministry/release"]) {
+    await ho.goto(old);
+    await expect(ho).toHaveURL(/\/ministry\/allocate$/);
+  }
 
-  // AC-10: on the letters screen, under Colombo's letter with Homagama's cases; a letter without a
-  // number is refused, and the total follows the ticks.
-  await ho.goto("/ministry/release");
+  // REL-2: under Colombo's letter with Homagama's cases, nothing ticked; "tick all" ticks the district;
+  // a letter with no case or no number is refused, and the total follows the ticks.
   await ho.getByRole("link", { name: /^කොළඹ දිස්ත්‍රික්කය/ }).click();
   const letter = ho.getByRole("region", { name: "කොළඹ දිස්ත්‍රික්කය", exact: true });
   const box = letter.getByRole("checkbox", { name: new RegExp(name) });
-  await expect(box).toBeChecked();
-  for (const other of await letter.getByRole("checkbox").all()) await other.uncheck();
+  await expect(box).not.toBeChecked();
   await expect(letter.getByTestId("letter-total")).toHaveText("රු. 0");
+  const all = letter.getByRole("checkbox", { name: "කොළඹ දිස්ත්‍රික්කයේ සියල්ල තෝරන්න" });
+  await all.check();
+  await expect(box).toBeChecked();
+  await all.uncheck();
+  await expect(box).not.toBeChecked();
   await letter.getByRole("button", { name: LETTER }).click();
   await expect(letter.locator("#letter-error")).toHaveText("ලිපියේ නම් ඇති අවම වශයෙන් එක් ප්‍රතිලාභියෙකු තෝරන්න.");
   await box.check();
@@ -43,7 +50,7 @@ test("AC-10: the DS saves a case, and the Ministry records its district's letter
   await expect(letter.locator("#letter-letterNumber-error")).toHaveText("මගේ අංකය ඇතුළත් කරන්න.");
   await letter.getByLabel("මගේ අංකය *").fill("MWCA/3/8/16/E2E-2026");
   await letter.getByRole("button", { name: LETTER }).click();
-  await expect(ho).toHaveURL(/\/ministry\/release\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
+  await expect(ho).toHaveURL(/\/ministry\/allocate\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
   await expect(ho.getByRole("status")).toContainText(
     "කොළඹ දිස්ත්‍රික්කයට ලිපිය MWCA/3/8/16/E2E-2026 සටහන් කළා: ප්‍රතිලාභීන් 1, රු. 2,000,000.",
   );
@@ -51,34 +58,40 @@ test("AC-10: the DS saves a case, and the Ministry records its district's letter
     ho.getByRole("region", { name: "සටහන් කළ ලිපි" }).getByText("කොළඹ · MWCA/3/8/16/E2E-2026"),
   ).toBeVisible();
 
-  // Four installments, none started; the letter is on the case.
+  // REL-3: released to the district, with the letter on the case and no installments yet.
   await ho.goto(`/ministry/cases/${caseId}`);
+  await expect(ho.getByText(ALLOCATED, { exact: true }).first()).toBeVisible();
   const money = ho.getByRole("region", { name: "මූල්‍ය ප්‍රගතිය" });
   await expect(money).toContainText("ප්‍රතිපාදන ලිපිය MWCA/3/8/16/E2E-2026");
   await expect(money).toContainText("කොළඹ දිස්ත්‍රික් ලේකම් වෙත · ප්‍රතිලාභීන් 1, මුළු රු. 2,000,000");
-  await expect(money.getByText(NOT_STARTED, { exact: true })).toHaveCount(4);
+  await expect(money).toContainText("අමාත්‍යංශය කොළඹ දිස්ත්‍රික්කයට රු. 2,000,000 මුදා හැර ඇත.");
+  await expect(money.getByText(NOT_STARTED, { exact: true })).toHaveCount(0);
 
-  // The DS is notified; opening the notice shows the case and marks it read.
+  // NTF-1: the DS is notified; opening the notice shows the case, still waiting for the District.
   await ds.goto("/ds/notifications");
-  const notice = ds.getByRole("button", { name: new RegExp(`^${name} සඳහා රු\\. 2,000,000 නිදහස් කර ඇත`) });
+  const notice = ds.getByRole("button", {
+    name: new RegExp(`^${name} සඳහා ප්‍රතිපාදන දිස්ත්‍රික්කයට මුදා හැර ඇත`),
+  });
   await expect(notice).toContainText("අලුත්");
   await notice.click();
   await expect(ds).toHaveURL(new RegExp(`/ds/cases/${caseId}$`));
   const dsMoney = ds.getByRole("region", { name: "මූල්‍ය ප්‍රගතිය" });
-  await expect(dsMoney.getByText(NOT_STARTED, { exact: true })).toHaveCount(4);
-  await expect(dsMoney).toContainText("අමාත්‍යංශයෙන් කොළඹ දිස්ත්‍රික් ලේකම් හරහා");
+  await expect(dsMoney).toContainText(
+    "අමාත්‍යංශය මෙම ප්‍රතිලාභියා සඳහා කොළඹ දිස්ත්‍රික්කයට රු. 2,000,000 මුදා හැර ඇත.",
+  );
+  await expect(dsMoney.getByText(NOT_STARTED, { exact: true })).toHaveCount(0);
   await ds.goto("/ds/notifications");
   await expect(ds.getByRole("button", { name: new RegExp(`^${name} සඳහා`) })).not.toContainText("අලුත්");
 
   await ho.context().close();
 });
 
-test("the Ministry corrects a case awaiting its allocation and its release, and both are saved (CASE-9, REL-4)", async ({
+test("the Ministry corrects a case awaiting its allocation and its allocation letter, and both are saved (CASE-9, REL-4)", async ({
   page: ho,
 }) => {
   test.slow();
   await signInAs(ho, "ho0001", /\/ministry$/);
-  // The Ministry enters the case itself for Homagama, then releases it from its page.
+  // The Ministry enters the case itself for Homagama, then allocates it from its page.
   await ho.goto("/ministry/cases/new");
   const name = `${TEST_CASE_NAME} නිවැරදි ${Date.now()}`;
   await fillCase(ho, { name, nic: randomNic() });
@@ -95,7 +108,7 @@ test("the Ministry corrects a case awaiting its allocation and its release, and 
   await expect(ho.getByText("0770000909", { exact: true })).toBeVisible();
 
   // A case awaiting its allocation leads to its district's letter.
-  await expect(ho.getByRole("region", { name: "රු. 2,000,000 නිදහස් කිරීම" })).toContainText(
+  await expect(ho.getByRole("region", { name: "රු. 2,000,000 ප්‍රතිපාදන මුදා හැරීම" })).toContainText(
     "කොළඹ දිස්ත්‍රික් ලේකම්ට යවන ප්‍රතිපාදන ලිපියකිනි",
   );
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();

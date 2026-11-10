@@ -1,4 +1,5 @@
 import { type Browser, expect, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the case tests look for (messages/si.json). */
@@ -73,27 +74,33 @@ export async function openAs(browser: Browser, username: string): Promise<Page> 
 }
 
 /**
- * On the letters screen, with a district's allocation letter open (REL-2): ticks only the named cases,
- * then records the letter under this number, dated today. Other tests' cases may wait in the same
- * district, so every other box is unticked first.
+ * On the allocation screen, with a district's allocation letter open (REL-2): ticks only the named cases,
+ * then records the letter under this number, dated today. Nothing is ticked to start with, and other
+ * tests' cases may wait in the same district, so only the named boxes are ticked.
  */
 export async function recordLetterFor(ho: Page, names: string[], letterNumber: string) {
   // The letter's section is named after its district; find it by its list of cases.
   const letter = ho.getByRole("region").filter({ has: ho.getByRole("group", { name: "ලිපියේ ප්‍රතිලාභීන්" }) });
   const boxes = letter.getByRole("checkbox");
   await expect(boxes.first()).toBeVisible();
-  for (const box of await boxes.all()) await box.uncheck();
+  for (const box of await boxes.all()) await expect(box).not.toBeChecked();
   for (const name of names) await letter.getByRole("checkbox", { name: new RegExp(name) }).check();
   await letter.getByLabel("මගේ අංකය *").fill(letterNumber);
   await letter.getByRole("button", { name: /^ලිපිය සටහන් කරන්න · / }).click();
-  await expect(ho).toHaveURL(/\/ministry\/release\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
+  await expect(ho).toHaveURL(/\/ministry\/allocate\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
   await expect(ho.getByRole("status")).toContainText(`ලිපිය ${letterNumber} සටහන් කළා`);
 }
 
+/** Until change 0006's task 7: the District's release of these cases, written by ds-release-bridge.ts. */
+function districtReleaseForTests(caseIds: string[]) {
+  execFileSync("npx", ["tsx", "tests/e2e/ds-release-bridge.ts", ...caseIds], { stdio: "inherit", shell: true });
+}
+
 /**
- * A case of the DS officer's office, released today on its district's allocation letter, which the
- * Ministry opens from the case's own page: ready for its installments and building progress (Phase 6).
- * Nobody checks it first (change 0006).
+ * A case of the DS officer's office, allocated today on its district's allocation letter, which the
+ * Ministry opens from the case's own page, then released to the DS: ready for its installments and
+ * building progress (Phase 6). Until change 0006's task 7, the District's release is written straight to
+ * the database (ds-release-bridge.ts).
  */
 export async function releasedCase(ds: Page, ho: Page, label: string) {
   const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
@@ -102,5 +109,6 @@ export async function releasedCase(ds: Page, ho: Page, label: string) {
   await ho.goto(`/ministry/cases/${caseId}`);
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();
   await recordLetterFor(ho, [name], `MWCA/E2E/${label}`);
+  districtReleaseForTests([caseId]);
   return { caseId, url, name, number };
 }

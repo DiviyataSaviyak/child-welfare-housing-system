@@ -22,7 +22,7 @@ import { db } from "@/server/db";
 import { caseHistory } from "@/server/history/queries";
 import { lastPaid } from "@/server/installments/rules";
 import { getStageProgress } from "@/server/stages/queries";
-import { correctReleaseAction } from "../../release/actions";
+import { correctReleaseAction } from "../../allocate/actions";
 import { deleteCaseAction } from "../actions";
 import { undoInstallmentAction } from "./actions";
 
@@ -169,7 +169,7 @@ export default async function HoCasePage({
                 {/* CASE-13: the letter goes to the district where it is built. */}
                 <p>{tr("letters.caseText", { district: details.buildDistrictName })}</p>
                 <Link
-                  href={`/ministry/release?districtId=${details.buildDistrictId}`}
+                  href={`/ministry/allocate?districtId=${details.buildDistrictId}`}
                   className="flex h-12 items-center self-start rounded-lg bg-primary px-5.5 text-[17px] font-bold text-primary-foreground"
                 >
                   {tr("letters.caseGo")}

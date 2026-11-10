@@ -2,6 +2,8 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
 import { dateToDay } from "@/lib/dates";
 import { localName, NAMES, nameField, type Names } from "@/lib/names";
+import type { Category, Kind } from "@/generated/prisma/enums";
+import { type DuplicateCase, duplicatesOf } from "../cases/duplicates";
 import { officeFilter, type Viewer } from "../permissions";
 
 /** A district with cases awaiting their allocation letter (REL-1). */
@@ -67,14 +69,21 @@ export type LetterCase = {
   applicationNumber: string;
   name: string | null;
   childName: string | null;
+  category: Category;
+  kind: Kind;
+  /** The DS office where it is built, which the form groups by (CASE-13). */
   officeName: string;
+  /** The DS office of residence, when it is another one. */
+  residenceName: string | null;
   /** When the DS entered it. */
   createdAt: Date;
+  /** The other cases with the same NIC (CASE-6); empty for none. */
+  duplicates: DuplicateCase[];
 };
 
 /**
  * REL-2: a district's cases awaiting their allocation, for its letter, by the DS office where each is
- * built (CASE-13), then the longest waiting first.
+ * built (CASE-13), then the longest waiting first, each with the other cases that share its NIC (CASE-6).
  */
 export async function casesForLetter(
   db: PrismaClient,
@@ -93,14 +102,33 @@ export async function casesForLetter(
       applicationNumber: true,
       name: true,
       childName: true,
+      category: true,
+      kind: true,
+      nicKey: true,
       createdAt: true,
+      dsOfficeId: true,
+      buildDsOfficeId: true,
+      dsOffice: { select: NAMES },
       buildDsOffice: { select: NAMES },
     },
   });
-  return found.map(({ buildDsOffice, ...row }) => ({ ...row, officeName: localName(buildDsOffice, locale) }));
+  const duplicates = await duplicatesOf(db, viewer, found, locale);
+  return found.map((c) => ({
+    id: c.id,
+    version: c.version,
+    applicationNumber: c.applicationNumber,
+    name: c.name,
+    childName: c.childName,
+    category: c.category,
+    kind: c.kind,
+    officeName: localName(c.buildDsOffice, locale),
+    residenceName: c.dsOfficeId === c.buildDsOfficeId ? null : localName(c.dsOffice, locale),
+    createdAt: c.createdAt,
+    duplicates: duplicates.get(c.id) ?? [],
+  }));
 }
 
-/** An allocation letter as the release screen and its notice show it. */
+/** An allocation letter as the allocation screen and its notice show it. */
 export type LetterSummary = {
   id: string;
   districtName: string;
@@ -109,7 +137,7 @@ export type LetterSummary = {
   letterDate: string;
   /** "YYYY-MM-DD" */
   validUntil: string;
-  /** The cases it released. */
+  /** The cases it allocated. */
   count: number;
   /** The DS offices where they are built, by name. */
   offices: string[];
@@ -145,7 +173,7 @@ const summary =
     offices: [...new Set(letter.releases.map((r) => localName(r.case.buildDsOffice, locale)))].sort(),
   });
 
-/** The letters recorded last, newest first, for the release screen's list (REL-2). The Ministry only. */
+/** The letters recorded last, newest first, for the allocation screen's list (REL-1). The Ministry only. */
 export async function recentLetters(
   db: PrismaClient,
   viewer: Viewer,

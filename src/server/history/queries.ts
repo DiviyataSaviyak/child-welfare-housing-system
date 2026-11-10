@@ -30,10 +30,13 @@ const isNames = (value: unknown): value is Names => {
 const ids = (value: unknown): number[] =>
   Array.isArray(value) ? value.filter((id): id is number => Number.isInteger(id)) : [];
 
+/** The actions whose record names an allocation letter and its district (REL-3). */
+const LETTER_ACTIONS = new Set(["case_released", "case_allocated"]);
+
 /**
  * The places and stages a record names, in the screen's language (UI-9). The audit log holds the
  * Sinhala names of the day, which stay as they are (HIS-3):
- * - a release names its district: it is read from the release's letter instead;
+ * - a release or an allocation names its district: it is read from its letter instead;
  * - a stage update names its stages: since 7 Oct 2026 in all three languages; for an older record the
  *   Sinhala screen keeps the names of the day, and the others read the stages' names now.
  */
@@ -43,7 +46,7 @@ async function localPlaces(
   locale: Locale,
 ): Promise<{ districtOfLetter: Map<string, string>; stageName: Map<number, string> }> {
   const letterIds = rows.flatMap((row) =>
-    row.action === "case_released" && typeof row.after.letterId === "string" ? [row.after.letterId] : [],
+    LETTER_ACTIONS.has(row.action) && typeof row.after.letterId === "string" ? [row.after.letterId] : [],
   );
   const stageIds =
     locale === "si"
@@ -99,7 +102,7 @@ export async function caseHistory(
   return records.map((row) => {
     const after = { ...row.after };
     const district = typeof after.letterId === "string" && districtOfLetter.get(after.letterId);
-    if (row.action === "case_released" && district) after.district = district;
+    if (LETTER_ACTIONS.has(row.action) && district) after.district = district;
     if (row.action === "stage_updated") {
       const names = Array.isArray(after.stageNames) ? after.stageNames : null;
       if (names?.every(isNames)) after.stages = names.map((n) => localName(n, locale));

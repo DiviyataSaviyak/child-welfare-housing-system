@@ -11,6 +11,7 @@ const ACTIONS = [
   "case_sent_back",
   "case_rejected",
   "case_released",
+  "case_allocated",
   "release_corrected",
   "installment_started",
   "installment_paid",
@@ -111,6 +112,14 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           lines,
         };
       }
+      case "case_allocated":
+        return {
+          sentence: t("actions.case_allocated", {
+            district: text(after.district) ?? tc("none"),
+            number: text(after.letterNumber) ?? tc("none"),
+          }),
+          lines,
+        };
       case "release_corrected": {
         for (const field of ["releasedOn", "letterDate", "validUntil"] as const) {
           if (field in after) {

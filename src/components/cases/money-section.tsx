@@ -21,7 +21,9 @@ const STATUS_TEXT: Record<InstallmentStatus, string> = {
 /**
  * "මූල්‍ය ප්‍රගතිය" as in the prototype: the Rs. 2,000,000 released through the District Secretary by
  * an allocation letter, what has been paid to the beneficiary, what the office still holds, the letter
- * itself, and the four installments (REL-3, INS-1). Head Office reads it as released to the District
+ * itself, and the four installments (REL-3, INS-1). While the Ministry's allocation waits for the
+ * District's release (`ALLOCATED_TO_DISTRICT`, no installments yet), it shows only the letter and says
+ * so (change 0006). Head Office reads it as released to the District
  * Secretary (and so does the view-only area), the DS office as received through them. `correction` is Head Office's button to correct
  * the letter (REL-4). `actions` gives each installment's button, if any: the DS office's next step
  * (INS-3, INS-4) or Head Office's undo (INS-6).
@@ -43,6 +45,7 @@ export async function MoneySection({
   const paid = installments.filter((i) => i.status === "RELEASED");
   const paidAmount = paidOut(installments);
   const { letter } = release;
+  const waiting = installments.length === 0;
   const tiles = [
     audience !== "ds"
       ? {
@@ -68,15 +71,24 @@ export async function MoneySection({
       <h2 id="money-title" className="text-xl font-bold">
         {t("money.title")}
       </h2>
-      <dl className="grid grid-cols-3 gap-3">
-        {tiles.map((tile) => (
-          <div key={tile.label} className="flex flex-col gap-0.5 rounded-lg bg-background px-4 py-3">
-            <dt className="text-[15px] text-muted-foreground">{tile.label}</dt>
-            <dd className="text-[22px] font-bold">{formatRupees(tile.amount, locale)}</dd>
-            <dd className="text-sm text-[#3F4843]">{tile.detail}</dd>
-          </div>
-        ))}
-      </dl>
+      {waiting ? (
+        <p className="rounded-lg bg-background px-4 py-3 text-[#3F4843]">
+          {t(audience === "ds" ? "money.allocatedDs" : "money.allocated", {
+            amount: formatRupees(release.amount, locale),
+            district: letter.districtName,
+          })}
+        </p>
+      ) : (
+        <dl className="grid grid-cols-3 gap-3">
+          {tiles.map((tile) => (
+            <div key={tile.label} className="flex flex-col gap-0.5 rounded-lg bg-background px-4 py-3">
+              <dt className="text-[15px] text-muted-foreground">{tile.label}</dt>
+              <dd className="text-[22px] font-bold">{formatRupees(tile.amount, locale)}</dd>
+              <dd className="text-sm text-[#3F4843]">{tile.detail}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
         <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
@@ -108,60 +120,65 @@ export async function MoneySection({
         )}
       </div>
 
-      <table className="w-full border-collapse text-left">
-        <thead className="text-[15px] text-muted-foreground">
-          <tr className="border-b">
-            <th scope="col" className="py-2 pr-3 font-semibold">
-              {t("money.installment")}
-            </th>
-            <th scope="col" className="px-3 py-2 font-semibold">
-              {t("money.status")}
-            </th>
-            {actions && (
-              <th scope="col" className="py-2 pl-3 text-right font-semibold">
-                <span className="sr-only">{tp("installments.actions")}</span>
+      {!waiting && (
+        <table className="w-full border-collapse text-left">
+          <thead className="text-[15px] text-muted-foreground">
+            <tr className="border-b">
+              <th scope="col" className="py-2 pr-3 font-semibold">
+                {t("money.installment")}
               </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {installments.map((item) => (
-            <tr key={item.number} className="border-b last:border-b-0">
-              <td className="py-2.5 pr-3">
-                <div className="flex items-center gap-3">
-                  <span
-                    aria-hidden="true"
-                    className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 font-bold ${DOT[item.status]}`}
-                  >
-                    {item.number}
-                  </span>
-                  <span className="flex flex-col">
-                    <span className="font-semibold">{t(`installment.name.${item.number as 1 | 2 | 3 | 4}`)}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {item.purpose
-                        ? t("money.amountPurpose", { amount: formatRupees(item.amount, locale), purpose: item.purpose })
-                        : formatRupees(item.amount, locale)}
-                    </span>
-                  </span>
-                </div>
-              </td>
-              <td className="px-3 py-2.5">
-                <span className={`flex flex-col ${STATUS_TEXT[item.status]}`}>
-                  <span className="font-semibold">{t(`installment.status.${item.status}`)}</span>
-                  {item.releasedOn ? (
-                    <span className="text-sm">{t("money.paidOn", { date: formatDate(item.releasedOn) })}</span>
-                  ) : (
-                    item.expectedOn && (
-                      <span className="text-sm">{t("money.expectedOn", { date: formatDate(item.expectedOn) })}</span>
-                    )
-                  )}
-                </span>
-              </td>
-              {actions && <td className="py-2.5 pl-3 text-right">{actions(item)}</td>}
+              <th scope="col" className="px-3 py-2 font-semibold">
+                {t("money.status")}
+              </th>
+              {actions && (
+                <th scope="col" className="py-2 pl-3 text-right font-semibold">
+                  <span className="sr-only">{tp("installments.actions")}</span>
+                </th>
+              )}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {installments.map((item) => (
+              <tr key={item.number} className="border-b last:border-b-0">
+                <td className="py-2.5 pr-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      aria-hidden="true"
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 font-bold ${DOT[item.status]}`}
+                    >
+                      {item.number}
+                    </span>
+                    <span className="flex flex-col">
+                      <span className="font-semibold">{t(`installment.name.${item.number as 1 | 2 | 3 | 4}`)}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {item.purpose
+                          ? t("money.amountPurpose", {
+                              amount: formatRupees(item.amount, locale),
+                              purpose: item.purpose,
+                            })
+                          : formatRupees(item.amount, locale)}
+                      </span>
+                    </span>
+                  </div>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`flex flex-col ${STATUS_TEXT[item.status]}`}>
+                    <span className="font-semibold">{t(`installment.status.${item.status}`)}</span>
+                    {item.releasedOn ? (
+                      <span className="text-sm">{t("money.paidOn", { date: formatDate(item.releasedOn) })}</span>
+                    ) : (
+                      item.expectedOn && (
+                        <span className="text-sm">{t("money.expectedOn", { date: formatDate(item.expectedOn) })}</span>
+                      )
+                    )}
+                  </span>
+                </td>
+                {actions && <td className="py-2.5 pl-3 text-right">{actions(item)}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-[#3F4843]">
         <div className="flex flex-col gap-0.5">

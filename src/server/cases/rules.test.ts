@@ -59,8 +59,6 @@ const ALLOWED: [Move, CaseStatus | null, CaseStatus, Mover[]][] = [
   ["start", "ALLOCATION_RECEIVED", "IN_PROGRESS", ["SYSTEM"]],
   ["unstart", "IN_PROGRESS", "ALLOCATION_RECEIVED", ["SYSTEM"]],
   ["complete", "IN_PROGRESS", "COMPLETED", ["SYSTEM"]],
-  // Version 1's letter, until change 0006's task 6 records the Ministry's allocation in its place.
-  ["releaseV1", "AWAITING_ALLOCATION", "IN_PROGRESS", ["MINISTRY_OFFICER"]],
 ];
 const MOVERS: Mover[] = ["DS_OFFICER", "DISTRICT_OFFICER", "MINISTRY_OFFICER", "VIEWER", "ADMIN", "SYSTEM"];
 
@@ -88,9 +86,7 @@ describe("status changes (application spec, Case statuses and transitions)", () 
   });
 
   it("has no check, send back, reject, stop or reopen (change 0006, AC-58)", () => {
-    expect(Object.keys(MOVES).sort()).toEqual(
-      ["allocate", "complete", "release", "releaseV1", "save", "start", "unstart"].sort(),
-    );
+    expect(Object.keys(MOVES).sort()).toEqual(["allocate", "complete", "release", "save", "start", "unstart"].sort());
     expect(STATUSES.toSorted()).toEqual(
       ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED", "IN_PROGRESS", "COMPLETED"].sort(),
     );
@@ -98,7 +94,7 @@ describe("status changes (application spec, Case statuses and transitions)", () 
 
   it("tells the offices about every move but saving, starting and undoing a start (NTF-1)", () => {
     const told = (Object.keys(MOVES) as Move[]).filter((move) => MOVES[move].notify !== null);
-    expect(told.sort()).toEqual(["allocate", "complete", "release", "releaseV1"]);
+    expect(told.sort()).toEqual(["allocate", "complete", "release"]);
   });
 
   it("has no way out of a completed case (STS-2)", () => {
@@ -106,7 +102,7 @@ describe("status changes (application spec, Case statuses and transitions)", () 
   });
 
   it("takes a case from its allocation to its first installment and back (change 0006)", () => {
-    expect(movesFrom("AWAITING_ALLOCATION").sort()).toEqual(["allocate", "releaseV1"]);
+    expect(movesFrom("AWAITING_ALLOCATION")).toEqual(["allocate"]);
     expect(movesFrom("ALLOCATED_TO_DISTRICT")).toEqual(["release"]);
     expect(movesFrom("ALLOCATION_RECEIVED")).toEqual(["start"]);
     expect(movesFrom("IN_PROGRESS").sort()).toEqual(["complete", "unstart"]);

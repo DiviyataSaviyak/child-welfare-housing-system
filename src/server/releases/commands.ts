@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
-import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "@/lib/money";
+import { RELEASE_AMOUNT } from "@/lib/money";
 import {
   latestDay,
   parseReleaseForm,
@@ -13,6 +13,7 @@ import { writeAudit } from "../audit";
 import type { Actor } from "../cases/commands";
 import { Refusal } from "../cases/refusal";
 import { applyMove, type MoveError, moveRefusal } from "../cases/transitions";
+import { notifyDistrict } from "../notifications/commands";
 import { CASE_PLACES, canSeeCase } from "../permissions";
 
 export type ReleaseCommandError =
@@ -45,14 +46,13 @@ export type LetterInput = {
 const refused = (error: ReleaseCommandError) => ({ ok: false as const, error, errors: {} });
 
 /**
- * REL-2, REL-3: records one allocation letter to a District Secretary, releasing Rs. 2,000,000 for each
- * case awaiting its allocation ticked on it, all of them built in that district. In one transaction the
- * letter is saved with its scan, and each case moves to IN_PROGRESS with its release and four NOT_STARTED
- * installments of Rs. 500,000, and its DS offices' officers are notified (transitions.ts). The amounts are
- * never typed in. If any case can't be released, nothing is.
- *
- * This is version 1's letter, which released to the DS at once; change 0006's task 6 makes it the
- * Ministry's allocation to the district, and its task 7 adds the District's release.
+ * REL-2, REL-3: records the Ministry's allocation letter to one District Secretary, allocating
+ * Rs. 2,000,000 for each case awaiting its allocation ticked on it, all of them built in that district
+ * (CASE-13). In one transaction the letter is saved with its scan, each case moves to ALLOCATED_TO_DISTRICT
+ * with its allocation (a `release` row on the letter's date, with no District release yet), the cases' DS
+ * officers are told (transitions.ts), and the district's District officers get one notice for the letter.
+ * No installments are made: the District's release makes them (REL-7). The amounts are never typed in.
+ * If any case can't be allocated, nothing is.
  */
 export async function recordLetter(db: PrismaClient, actor: Actor, input: LetterInput): Promise<LetterResult> {
   const ids = [...new Set(input.cases.map((c) => c.id))].sort();
@@ -78,7 +78,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
     !canSeeCase(actor, c) || c.buildDsOffice.districtId !== input.districtId;
   if (!district || found.length !== ids.length || found.some(elsewhere)) return refused("notFound");
   for (const c of found) {
-    const refusal = moveRefusal(actor.role, "releaseV1", c.status);
+    const refusal = moveRefusal(actor.role, "allocate", c.status);
     if (refusal) return refused(refusal);
   }
 
@@ -127,28 +127,9 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
         });
         if (attached.count !== 1) throw new Refusal("scanUnavailable");
       }
-      // Change 0006's bridge until its tasks 6 and 7: version 1's letter releases to the DS offices too, so
-      // it also stands for the District's release to each DS where its cases are built, as the migration
-      // made of the older letters. The DS's money panel counts those (HOME-4).
-      const dsReleases = new Map<number, string>();
-      for (const officeId of new Set(found.map((c) => c.buildDsOffice.id))) {
-        const id = randomUUID();
-        dsReleases.set(officeId, id);
-        await tx.dsRelease.create({
-          data: {
-            id,
-            districtId: district.id,
-            dsOfficeId: officeId,
-            referenceNumber: letter.letterNumber,
-            releasedOn: dayToDate(letter.letterDate),
-            byId: actor.userId,
-            at: now,
-          },
-        });
-      }
       // In the order of their ids, so two letters for the same cases wait for each other, never deadlock.
       for (const c of found) {
-        await applyMove(tx, c, "releaseV1", {
+        await applyMove(tx, c, "allocate", {
           by: actor.role,
           actorId: actor.userId,
           at: now,
@@ -161,22 +142,13 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
             caseId: c.id,
             letterId,
             releasedOn: dayToDate(letter.letterDate),
-            dsReleaseId: dsReleases.get(c.buildDsOffice.id) ?? null,
-            dsReleasedOn: dayToDate(letter.letterDate),
             amount: RELEASE_AMOUNT,
             byId: actor.userId,
             at: now,
           },
         });
-        await tx.installment.createMany({
-          data: Array.from({ length: INSTALLMENT_COUNT }, (_, index) => ({
-            id: randomUUID(),
-            caseId: c.id,
-            number: index + 1,
-            amount: INSTALLMENT_AMOUNT,
-          })),
-        });
       }
+      await notifyDistrict(tx, { districtId: district.id, caseId: ids[0], type: "DISTRICT_LETTER", at: now });
       await writeAudit(tx, {
         actorId: actor.userId,
         action: "letter_recorded",
@@ -201,11 +173,11 @@ export type ReleaseInput = {
 };
 
 /**
- * REL-4: Head Office corrects the allocation letter of a case's release: its number, date, last valid
- * day or note. The change is for every case on the letter, so the REL-2 date rules apply to all of
- * them, and the date can't move past an installment date already recorded on any of them (INS-3,
- * INS-4). A new date moves each of their releases too. The old and new value of every changed field is
- * logged on each of the letter's cases.
+ * REL-4: the Ministry corrects the allocation letter of a case: its number, date, last valid day or note.
+ * The change is for every case on the letter, so the REL-2 date rules apply to all of them, and the date
+ * can't move past the District's release of any of them (REL-6), nor past an installment date already
+ * recorded on one (INS-3, INS-4). A new date moves each of their allocations too. The old and new value
+ * of every changed field is logged on each of the letter's cases.
  */
 export async function correctRelease(db: PrismaClient, actor: Actor, input: ReleaseInput): Promise<ReleaseResult> {
   const found = await db.case.findUnique({
@@ -226,6 +198,7 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
               note: true,
               releases: {
                 select: {
+                  dsReleasedOn: true,
                   case: {
                     select: {
                       id: true,
@@ -247,6 +220,9 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
   const current = found.release?.letter;
   if (!current) return refused("noRelease");
   const cases = current.releases.map((release) => release.case);
+  const firstDsRelease = current.releases
+    .flatMap((release) => (release.dsReleasedOn ? [dateToDay(release.dsReleasedOn)] : []))
+    .sort()[0];
 
   const limits = {
     earliest: latestDay(cases.map((c) => colomboDay(c.createdAt))),
@@ -260,6 +236,9 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
     .flatMap((i) => [i.expectedOn, i.releasedOn])
     .flatMap((date) => (date ? [dateToDay(date)] : []))
     .sort()[0];
+  if (firstDsRelease && next.letterDate > firstDsRelease) {
+    return { ok: false, error: null, errors: { letterDate: "dateAfterDsRelease" } };
+  }
   if (firstInstallmentDay && next.letterDate > firstInstallmentDay) {
     return { ok: false, error: null, errors: { letterDate: "dateAfterInstallment" } };
   }

@@ -10,6 +10,7 @@ export type ReleaseErrorKey =
   | "dateInFuture"
   | "dateBeforeEntered"
   | "dateAfterInstallment"
+  | "dateAfterDsRelease"
   | "untilRequired"
   | "untilInvalid"
   | "untilBeforeDate"

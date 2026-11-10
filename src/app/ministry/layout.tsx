@@ -18,7 +18,11 @@ export default async function HoLayout({ children }: { children: React.ReactNode
       nav={[
         { href: "/ministry", labelKey: "ministryDashboard", exact: true },
         { href: "/ministry/cases", labelKey: "ministryCases" },
-        { href: "/ministry/release", labelKey: "ministryRelease", count: { ...waiting, source: "/ministry/waiting" } },
+        {
+          href: "/ministry/allocate",
+          labelKey: "ministryAllocate",
+          count: { ...waiting, source: "/ministry/waiting" },
+        },
       ]}
     >
       {children}

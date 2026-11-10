@@ -25,7 +25,9 @@ describe("returning to the page asked for after sign-in (ERR-4)", () => {
   it("allows a page in the role's own area", () => {
     expect(safeReturnPath("/ds/cases/new", "DS_OFFICER")).toBe("/ds/cases/new");
     expect(safeReturnPath("/ds", "DS_OFFICER")).toBe("/ds");
-    expect(safeReturnPath("/ministry/release?districtId=3", "MINISTRY_OFFICER")).toBe("/ministry/release?districtId=3");
+    expect(safeReturnPath("/ministry/allocate?districtId=3", "MINISTRY_OFFICER")).toBe(
+      "/ministry/allocate?districtId=3",
+    );
   });
 
   it("refuses another role's pages", () => {

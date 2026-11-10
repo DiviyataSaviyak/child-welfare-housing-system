@@ -34,7 +34,7 @@ export default async function HoDashboardPage({
           <h2 id="waiting-title" className="mb-1.5 text-[19px] font-bold">
             {t("waiting.title")}
           </h2>
-          <Link href="/ministry/release" className="flex items-center justify-between gap-3 py-2.5 hover:text-primary">
+          <Link href="/ministry/allocate" className="flex items-center justify-between gap-3 py-2.5 hover:text-primary">
             <span className="font-semibold underline-offset-3 hover:underline">{t("waiting.release")} →</span>
             <span className="text-xl font-bold tabular-nums">{formatNumber(waiting.count)}</span>
           </Link>

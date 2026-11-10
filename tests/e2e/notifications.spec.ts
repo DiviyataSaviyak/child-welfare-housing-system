@@ -42,7 +42,7 @@ test("the bell counts a new notice while the DS moves by the menu, and clears wh
   browser,
 }) => {
   test.slow();
-  // Kaduwela's officer: no other test has the Ministry release a Kaduwela case, so its notices are this test's.
+  // Kaduwela's officer: no other test has the Ministry allocate a Kaduwela case, so its notices are this test's.
   await signInAs(ds, "ds0103", /\/ds$/);
   const bell = ds.getByRole("banner").getByRole("link", { name: new RegExp(`^${BELL}`) });
   await bell.click();
@@ -66,7 +66,7 @@ test("the bell counts a new notice while the DS moves by the menu, and clears wh
 
   await bell.click();
   await expect(
-    ds.getByRole("button", { name: new RegExp(`^${name} සඳහා රු\\. 2,000,000 නිදහස් කර ඇත`) }),
+    ds.getByRole("button", { name: new RegExp(`^${name} සඳහා ප්‍රතිපාදන දිස්ත්‍රික්කයට මුදා හැර ඇත`) }),
   ).toContainText("අලුත්");
   await markAll.click();
   await expect(bell).toHaveAccessibleName(BELL);

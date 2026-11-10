@@ -16,6 +16,7 @@ import { readStoredFile } from "../files/storage";
 import { fileForViewer, uploadPhoto } from "../files/uploads";
 import { caseHistory } from "../history/queries";
 import { recordLetter } from "../releases/commands";
+import { releaseToDsForTests } from "../../../tests/ds-release-bridge";
 import { recordStageUpdate } from "../stages/commands";
 import { getStageProgress } from "../stages/queries";
 import { markInstallmentPaid, startInstallment, undoInstallmentPayment } from "./commands";
@@ -88,6 +89,8 @@ async function running(overrides: Partial<CaseValues> = {}) {
     scanId: null,
   });
   if (!release.ok) throw new Error(String(release.error ?? JSON.stringify(release.errors)));
+  // Until change 0006's task 7, the District's release is written directly, on the letter's day.
+  await releaseToDsForTests(db, [ready.id]);
   return load(ready.id);
 }
 
@@ -557,12 +560,12 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
       "installment_paid",
       "installment_started",
       "stage_updated",
-      "case_released",
+      "case_allocated",
       "case_created",
     ]);
     expect(history?.[0]).toMatchObject({ actor: null });
     expect(history?.[1]).toMatchObject({ actor: { name: "ප්‍රා. පරීක්ෂණ", role: "DS_OFFICER" }, after: { number: 4 } });
-    expect(history?.find((e) => e.action === "case_released")).toMatchObject({ actor: { role: "MINISTRY_OFFICER" } });
+    expect(history?.find((e) => e.action === "case_allocated")).toMatchObject({ actor: { role: "MINISTRY_OFFICER" } });
     expect(history?.every((e) => e.at instanceof Date)).toBe(true);
 
     expect(await caseHistory(db, dsB, c.id, "si")).toBeNull();
@@ -622,7 +625,7 @@ describe("the case history in Tamil and English (UI-9)", () => {
     expect(stagesOf(en)).toEqual([[first!.nameEn, second!.nameEn]]);
 
     const district = await db.district.findFirstOrThrow({ where: { dsOffices: { some: { id: c.dsOfficeId } } } });
-    const released = (history: typeof si) => history?.find((e) => e.action === "case_released")?.after.district;
+    const released = (history: typeof si) => history?.find((e) => e.action === "case_allocated")?.after.district;
     expect([released(si), released(ta), released(en)]).toEqual([district.nameSi, district.nameTa, district.nameEn]);
   });
 

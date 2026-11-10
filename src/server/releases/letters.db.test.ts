@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
+import { releaseToDsForTests } from "../../../tests/ds-release-bridge";
 import { colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { defaultValidUntil, type ReleaseField } from "@/lib/validation/release";
@@ -18,6 +19,8 @@ const db = createTestClient();
 let dsA: Actor;
 let dsB: Actor;
 let ho: Actor;
+/** The District CRPO of dsA's district, who hears of each letter to it (NTF-1). */
+let district: Actor;
 const admin: Actor = {
   userId: "review-test-admin",
   role: "ADMIN",
@@ -88,7 +91,7 @@ async function letter(cases: Ticked[], overrides: Partial<Record<ReleaseField, s
   };
 }
 
-/** Saved, then released together on one letter. */
+/** Saved, then allocated together on one letter. */
 async function released(...nics: string[]) {
   const ready = [];
   for (const nic of nics) ready.push(await awaiting(nic));
@@ -136,14 +139,33 @@ beforeAll(async () => {
   await db.user.create({
     data: { id: admin.userId, name: "පරිපාලක", email: "review-test-admin@no-email.invalid", role: "ADMIN" },
   });
+  const districtId = await districtOf(dsA.dsOfficeId!);
+  await db.user.create({
+    data: {
+      id: "review-test-district",
+      name: "",
+      email: "review-test-district@no-email.invalid",
+      role: "DISTRICT_OFFICER",
+      designation: "DISTRICT_CRPO",
+      districtId,
+    },
+  });
+  district = {
+    userId: "review-test-district",
+    role: "DISTRICT_OFFICER",
+    designation: "DISTRICT_CRPO",
+    districtId,
+    provinceId: null,
+    dsOfficeId: null,
+  };
 });
 
 afterAll(async () => {
   await db.$disconnect();
 });
 
-describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
-  it("releases every case ticked on the district's letter: four installments each, and each office told", async () => {
+describe("the Ministry's allocation letter (REL-1 to REL-3, AC-52)", () => {
+  it("allocates every case ticked on the district's letter, with no installments, and tells both the offices and the district", async () => {
     const first = await awaiting("200200000030");
     const second = await awaiting("200200000035");
     const left = await awaiting("200200000036");
@@ -161,26 +183,32 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       byId: ho.userId,
     });
     for (const c of [first, second]) {
-      expect((await load(c.id)).status).toBe("IN_PROGRESS");
+      expect((await load(c.id)).status).toBe("ALLOCATED_TO_DISTRICT");
       const release = await db.release.findUniqueOrThrow({ where: { caseId: c.id } });
-      expect(release).toMatchObject({ letterId, amount: 2_000_000, releasedOn: dayToDate(today()) });
-      const installments = await db.installment.findMany({ where: { caseId: c.id }, orderBy: { number: "asc" } });
-      expect(installments.map((i) => [i.number, i.amount, i.status])).toEqual([
-        [1, 500_000, "NOT_STARTED"],
-        [2, 500_000, "NOT_STARTED"],
-        [3, 500_000, "NOT_STARTED"],
-        [4, 500_000, "NOT_STARTED"],
-      ]);
-      expect(await db.notification.count({ where: { caseId: c.id, userId: dsA.userId, type: "RELEASED" } })).toBe(1);
-      const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_released" } });
+      expect(release).toMatchObject({
+        letterId,
+        amount: 2_000_000,
+        releasedOn: dayToDate(today()),
+        dsReleaseId: null,
+        dsReleasedOn: null,
+      });
+      // REL-3: the District's release makes the installments, not the letter.
+      expect(await db.installment.count({ where: { caseId: c.id } })).toBe(0);
+      expect(await db.notification.count({ where: { caseId: c.id, userId: dsA.userId, type: "ALLOCATED" } })).toBe(1);
+      const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_allocated" } });
       expect(audit.after).toMatchObject({
-        status: "IN_PROGRESS",
+        status: "ALLOCATED_TO_DISTRICT",
         amount: 2_000_000,
         letterId,
         letterNumber: "MWCA/3/8/16/02-2026",
         cases: 2,
       });
     }
+    // NTF-1: the district's CRPO hears once for the whole letter, on its first case.
+    const told = await db.notification.findMany({
+      where: { userId: district.userId, case: { release: { letterId } } },
+    });
+    expect(told.map((n) => [n.type, n.caseId])).toEqual([["DISTRICT_LETTER", [first.id, second.id].sort()[0]]]);
     // The case left off the letter still waits for one.
     expect((await load(left.id)).status).toBe("AWAITING_ALLOCATION");
     expect(await db.auditLog.count({ where: { entityId: letterId, action: "letter_recorded" } })).toBe(1);
@@ -191,10 +219,35 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       amount: 2_000_000,
       letter: { id: letterId, letterNumber: "MWCA/3/8/16/02-2026", cases: 2, note: "පළමු ලිපිය", scanId: null },
     });
-    expect(details?.installments).toHaveLength(4);
+    expect(details?.installments).toEqual([]);
     expect(await getLetter(db, ho, letterId, "si")).toMatchObject({ count: 2, offices: [details?.officeName] });
     expect((await recentLetters(db, ho, "si"))[0]?.id).toBe(letterId);
     expect(await getLetter(db, dsA, letterId, "si")).toBeNull();
+  });
+
+  it("gives each case its category, kind, DS of residence when another, and the cases sharing its NIC (REL-2, CASE-6)", async () => {
+    const elsewhere = await db.dsOffice.findFirstOrThrow({
+      where: { active: true, id: { not: dsA.dsOfficeId! }, districtId: await districtOf(dsA.dsOfficeId!) },
+      select: { id: true },
+    });
+    const twin = await awaiting("200200000070");
+    const built = await awaiting("200200000070", dsA, { buildDsOfficeId: elsewhere.id });
+    const plain = await awaiting("200200000071");
+    const rows = await casesForLetter(db, ho, await districtOf(dsA.dsOfficeId!), "si");
+    const row = (id: string) => rows.find((r) => r.id === id);
+
+    expect(row(plain.id)).toMatchObject({
+      category: "CARE_LEAVER",
+      kind: "NEW_HOUSE",
+      residenceName: null,
+      duplicates: [],
+    });
+    expect(row(built.id)?.residenceName).toBe(row(plain.id)?.officeName);
+    expect(row(built.id)?.officeName).not.toBe(row(plain.id)?.officeName);
+    expect(row(twin.id)?.duplicates.map((d) => d.id)).toEqual([built.id]);
+    expect(row(built.id)?.duplicates.map((d) => [d.id, d.applicationNumber, d.status])).toEqual([
+      [twin.id, twin.applicationNumber, "AWAITING_ALLOCATION"],
+    ]);
   });
 
   it("lists the districts waiting for a letter and each one's cases awaiting it, for the Ministry only", async () => {
@@ -251,7 +304,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     });
   });
 
-  it("releases all or nothing, and refuses no case, another district, a DS officer, an admin and an old form", async () => {
+  it("allocates all or nothing, and refuses no case, another district, a DS officer, a District CRPO, an admin and an old form", async () => {
     const [running] = await released("200200000032");
     const ready = await awaiting("200200000033");
     const record = async (actor: Actor, cases: Ticked[]) => recordLetter(db, actor, await letter(cases));
@@ -277,6 +330,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     });
 
     expect(await record(dsA, [ready])).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
+    expect(await record(district, [ready])).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
     expect(await record(admin, [ready])).toEqual({ ok: false, error: "notFound", errors: {} });
     expect(await record(ho, [{ ...ready, version: ready.version - 1 }])).toEqual({
       ok: false,
@@ -288,7 +342,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     expect(await record(ho, [ready])).toMatchObject({ ok: true });
     expect(await record(ho, [ready])).toEqual({ ok: false, error: "notAllowedNow", errors: {} });
     expect(await db.release.count({ where: { caseId: ready.id } })).toBe(1);
-    expect(await db.installment.count({ where: { caseId: ready.id } })).toBe(4);
+    expect(await db.installment.count({ where: { caseId: ready.id } })).toBe(0);
   });
 
   it("keeps the officer's own scan with the letter, which only the letter's offices may open", async () => {
@@ -404,35 +458,43 @@ describe("correcting a release's letter (REL-4)", () => {
     });
   });
 
-  it("can't move the date past an installment of any case on it, or before a case was entered; only the Ministry corrects", async () => {
+  it("can't move the date past a District release or an installment of any case on it, or before a case was entered; only the Ministry corrects", async () => {
     const [running, other] = await released("200200000041", "200200000045");
-    // Both entered 10 days ago; the other case's first installment expected 5 days ago (Phase 6 records those).
+    // Both entered 10 days ago and on a letter of 9 days ago; the District released the other one 7 days
+    // ago, and its first installment is expected 5 days ago.
     await db.case.updateMany({
       where: { id: { in: [running.id, other.id] } },
       data: { createdAt: new Date(Date.now() - 10 * DAY) },
     });
+    await db.release.updateMany({
+      where: { caseId: { in: [running.id, other.id] } },
+      data: { releasedOn: dayToDate(daysAgo(9)) },
+    });
+    await releaseToDsForTests(db, [other.id], { on: dayToDate(daysAgo(7)) });
     await db.installment.updateMany({
       where: { caseId: other.id, number: 1 },
       data: { status: "PROCESSING", expectedOn: dayToDate(daysAgo(5)) },
     });
+    const version = (await load(running.id)).version;
     const correct = (actor: Actor, letterDate: string) =>
-      correctRelease(db, actor, { caseId: running.id, version: running.version, form: letterForm({ letterDate }) });
+      correctRelease(db, actor, { caseId: running.id, version, form: letterForm({ letterDate }) });
 
-    expect(await correct(dsA, daysAgo(6))).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
-    expect(await correct(ho, daysAgo(3))).toEqual({
+    expect(await correct(dsA, daysAgo(8))).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
+    expect(await correct(district, daysAgo(8))).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
+    expect(await correct(ho, daysAgo(6))).toEqual({
       ok: false,
       error: null,
-      errors: { letterDate: "dateAfterInstallment" },
+      errors: { letterDate: "dateAfterDsRelease" },
     });
     expect(await correct(ho, daysAgo(11))).toEqual({
       ok: false,
       error: null,
       errors: { letterDate: "dateBeforeEntered" },
     });
-    expect(await correct(ho, daysAgo(6))).toEqual({ ok: true });
+    expect(await correct(ho, daysAgo(8))).toEqual({ ok: true });
     for (const c of [running, other]) {
       expect((await db.release.findUniqueOrThrow({ where: { caseId: c.id } })).releasedOn).toEqual(
-        dayToDate(daysAgo(6)),
+        dayToDate(daysAgo(8)),
       );
     }
 
@@ -452,7 +514,7 @@ describe("notifications (NTF-1)", () => {
 
     // Saving tells nobody; the letter tells the office (NTF-1).
     const mine = (await listNotifications(db, dsA)).filter((n) => n.caseId === ready.id);
-    expect(mine.map((n) => [n.type, n.read])).toEqual([["RELEASED", false]]);
+    expect(mine.map((n) => [n.type, n.read])).toEqual([["ALLOCATED", false]]);
     const before = await unreadCount(db, dsA);
     expect((await unreadNow(db, dsA)).count).toBe(before);
     expect(await openNotification(db, dsA, mine[0]!.id)).toEqual({ caseId: ready.id });
