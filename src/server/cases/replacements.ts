@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
-import { officeFilter, type Viewer } from "../permissions";
+import { actingOffice, officeFilter, type Viewer } from "../permissions";
 
 /**
  * CASE-11: replacing a beneficiary. When Head Office rejects or stops a case it may ask the DS office
@@ -66,7 +66,8 @@ export async function openRequests(
   viewer: Viewer,
   options: { dsOfficeId?: number; forCaseId?: string } = {},
 ): Promise<ReplacementRequest[]> {
-  const scope = officeFilter(viewer);
+  // Another name is entered by the DS of residence, as any case is (CASE-13).
+  const scope = officeFilter(viewer, actingOffice("edit"));
   if (!scope) return [];
   const found = await db.case.findMany({
     where: {

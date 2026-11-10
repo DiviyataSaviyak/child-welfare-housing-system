@@ -31,8 +31,9 @@ export default async function EditCasePage({
   const { id } = await params;
   const details = await getCase(db, viewer, id, locale);
   if (!details) notFound();
-  // Nobody changes a case while Head Office checks it, or after (STS-3, CASE-9).
-  if (!canEditDetails(viewer.role, details.status)) redirect(`/ds/cases/${id}`);
+  // Nobody changes a case while Head Office checks it, or after (STS-3, CASE-9); and only the DS of
+  // residence changes it, not the DS where it is built (CASE-13).
+  if (!details.actsOn.edit || !canEditDetails(viewer.role, details.status)) redirect(`/ds/cases/${id}`);
 
   const [t, requests] = await Promise.all([
     getTranslations("cases"),

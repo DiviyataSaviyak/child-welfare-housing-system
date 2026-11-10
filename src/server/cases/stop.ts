@@ -2,7 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { balance } from "@/lib/money";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
-import { canSeeOffice, OFFICE_PLACE } from "../permissions";
+import { CASE_PLACES, canSeeCase } from "../permissions";
 import type { Actor } from "./commands";
 import { Refusal, type Result } from "./refusal";
 import { applyMove, type MoveError, moveRefusal } from "./transitions";
@@ -37,7 +37,7 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       id: true,
       status: true,
       dsOfficeId: true,
-      dsOffice: OFFICE_PLACE,
+      ...CASE_PLACES,
       version: true,
       statusBeforeStop: true,
       anotherNameRequested: true,
@@ -46,7 +46,7 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       installments: { select: { amount: true, status: true } },
     },
   });
-  return found && canSeeOffice(actor, found.dsOffice) ? found : null;
+  return found && canSeeCase(actor, found) ? found : null;
 }
 
 /**

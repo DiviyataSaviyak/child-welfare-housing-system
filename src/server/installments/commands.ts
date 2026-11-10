@@ -15,7 +15,7 @@ import { claimCase } from "../cases/claim";
 import type { Actor } from "../cases/commands";
 import { completeIfDone } from "../cases/complete";
 import { Refusal } from "../cases/refusal";
-import { canSeeOffice, OFFICE_PLACE } from "../permissions";
+import { CASE_PLACES, canActOn, canSeeCase } from "../permissions";
 import { lastPaid, previousPaidOn, type StepRefusal, stepRefusal } from "./rules";
 
 export type InstallmentError =
@@ -53,7 +53,7 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       id: true,
       status: true,
       dsOfficeId: true,
-      dsOffice: OFFICE_PLACE,
+      ...CASE_PLACES,
       version: true,
       kind: true,
       release: { select: { releasedOn: true } },
@@ -63,7 +63,7 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       },
     },
   });
-  if (!found || !canSeeOffice(actor, found.dsOffice)) return null;
+  if (!found || !canSeeCase(actor, found)) return null;
   return {
     ...found,
     releasedOn: found.release && dateToDay(found.release.releasedOn),
@@ -76,15 +76,17 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
 }
 
 /**
- * Checks what every DS installment step shares: the case is the officer's to see (PRM-1), only its DS
- * office changes installments (application spec, Roles and permissions), the case is in progress
- * (INS-5), and the installment is the next one and in the right state (INS-2). Gives the case, or the
- * refusal.
+ * Checks what every DS installment step shares: the case is the officer's to see (PRM-1), only the DS
+ * office where it is built changes installments (CASE-13; application spec, Roles and permissions),
+ * the case is in progress (INS-5), and the installment is the next one and in the right state (INS-2).
+ * Gives the case, or the refusal.
  */
 async function prepareStep(db: PrismaClient, actor: Actor, target: Target, step: "start" | "pay") {
   const found = await load(db, actor, target.caseId);
   if (!found) return { refusal: refused("notFound") };
-  if (actor.role !== "DS_OFFICER") return { refusal: refused("roleNotAllowed") };
+  if (actor.role !== "DS_OFFICER" || !canActOn(actor, found, "installment")) {
+    return { refusal: refused("roleNotAllowed") };
+  }
   if (found.status !== "IN_PROGRESS" || !found.releasedOn) return { refusal: refused("caseNotRunning") };
   const refusal = stepRefusal(found.installments, target.number, step);
   if (refusal === "noSuchInstallment") return { refusal: refused("notFound") };
@@ -201,7 +203,7 @@ export async function undoInstallmentPayment(
 ): Promise<InstallmentResult> {
   const found = await load(db, actor, input.caseId);
   if (!found) return refused("notFound");
-  if (actor.role !== "MINISTRY_OFFICER") return refused("roleNotAllowed");
+  if (actor.role !== "MINISTRY_OFFICER" || !canActOn(actor, found, "installment")) return refused("roleNotAllowed");
   if (found.status !== "IN_PROGRESS") return refused("caseNotRunning");
   const target = lastPaid(found.installments);
   if (!target) return refused("nothingToUndo");

@@ -210,7 +210,7 @@ export function movesFrom(status: CaseStatus): Move[] {
   return (Object.keys(MOVES) as Move[]).filter((move) => MOVES[move].from.includes(status));
 }
 
-export type MovingCase = { id: string; status: CaseStatus; dsOfficeId: number; version: number };
+export type MovingCase = { id: string; status: CaseStatus; version: number };
 
 export type MoveInput = {
   by: Mover;
@@ -276,7 +276,17 @@ export async function applyMove(
     after: { status: to, ...(rule.needsReason ? { reason } : {}), ...input.auditAfter },
   });
   if (rule.notify) {
-    await notifyOffice(tx, { dsOfficeId: current.dsOfficeId, caseId: current.id, type: rule.notify, at: input.at });
+    // NTF-1, CASE-13: both of the case's offices hear of it, read after the update so they are current.
+    const offices = await tx.case.findUniqueOrThrow({
+      where: { id: current.id },
+      select: { dsOfficeId: true, buildDsOfficeId: true },
+    });
+    await notifyOffice(tx, {
+      dsOfficeIds: [offices.dsOfficeId, offices.buildDsOfficeId],
+      caseId: current.id,
+      type: rule.notify,
+      at: input.at,
+    });
   }
   return to;
 }

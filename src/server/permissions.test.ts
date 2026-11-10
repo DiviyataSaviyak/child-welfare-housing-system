@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { DESIGNATIONS, type Designation, officeTypeOf, roleOf } from "./auth/designations";
-import { canSeeOffice, caseScope, type OfficePlace, officeFilter, type Viewer } from "./permissions";
+import {
+  actingOffice,
+  type CaseAction,
+  type CasePlaces,
+  canActOn,
+  canSeeCase,
+  caseScope,
+  type OfficePlace,
+  officeFilter,
+  type Viewer,
+} from "./permissions";
 
 // Two provinces; the first has two districts, the first district has two DS offices.
 const PROVINCE = 1;
@@ -32,7 +42,9 @@ const secretary = viewer("MINISTRY_SECRETARY");
 const programmeOfficer = viewer("MINISTRY_PROGRAMME_OFFICER");
 const admin = viewer(null);
 
-const seen = (who: Viewer) => OFFICES.filter((office) => canSeeOffice(who, office)).map((office) => office.id);
+/** A case entered and built in one office, as most are. */
+const at = (office: OfficePlace): CasePlaces => ({ dsOffice: office, buildDsOffice: office });
+const seen = (who: Viewer) => OFFICES.filter((office) => canSeeCase(who, at(office))).map((office) => office.id);
 
 describe("which cases each account may see (PRM-1, PRM-2, PRM-4)", () => {
   it.each([
@@ -58,14 +70,32 @@ describe("which cases each account may see (PRM-1, PRM-2, PRM-4)", () => {
     }
   });
 
-  it("limits each query to the viewer's area, through the case's office", () => {
-    expect(officeFilter(crpo)).toEqual({ dsOfficeId: HOMAGAMA.id });
-    expect(officeFilter(divisionalSecretary)).toEqual({ dsOfficeId: HOMAGAMA.id });
-    expect(officeFilter(districtSecretary)).toEqual({ dsOffice: { districtId: DISTRICT } });
-    expect(officeFilter(commissioner)).toEqual({ dsOffice: { district: { provinceId: PROVINCE } } });
+  it("limits each query to the viewer's area, through either of the case's offices", () => {
+    const own = { OR: [{ dsOfficeId: HOMAGAMA.id }, { buildDsOfficeId: HOMAGAMA.id }] };
+    expect(officeFilter(crpo)).toEqual(own);
+    expect(officeFilter(divisionalSecretary)).toEqual(own);
+    expect(officeFilter(districtSecretary)).toEqual({
+      OR: [{ dsOffice: { districtId: DISTRICT } }, { buildDsOffice: { districtId: DISTRICT } }],
+    });
+    expect(officeFilter(commissioner)).toEqual({
+      OR: [
+        { dsOffice: { district: { provinceId: PROVINCE } } },
+        { buildDsOffice: { district: { provinceId: PROVINCE } } },
+      ],
+    });
     expect(officeFilter(secretary)).toEqual({});
     expect(officeFilter(programmeOfficer)).toEqual({});
     expect(officeFilter(admin)).toBeNull();
+  });
+
+  it("limits a query to one of the case's offices when asked", () => {
+    expect(officeFilter(crpo, "residence")).toEqual({ dsOfficeId: HOMAGAMA.id });
+    expect(officeFilter(crpo, "built")).toEqual({ buildDsOfficeId: HOMAGAMA.id });
+    expect(officeFilter(districtCrpo, "built")).toEqual({ buildDsOffice: { districtId: DISTRICT } });
+    expect(officeFilter(commissioner, "residence")).toEqual({ dsOffice: { district: { provinceId: PROVINCE } } });
+    expect(officeFilter(programmeOfficer, "built")).toEqual({});
+    expect(officeFilter(admin, "residence")).toBeNull();
+    expect(officeFilter(viewer("DS_CRPO"), "built")).toBeNull();
   });
 
   it("decides by the designation, not by whichever place is filled in", () => {
@@ -103,6 +133,55 @@ describe("which cases each account may see (PRM-1, PRM-2, PRM-4)", () => {
     for (const broken of [unknown, mismatched, noDesignation, adminWithOne]) {
       expect(caseScope(broken)).toEqual({ kind: "none" });
       expect(seen(broken)).toEqual([]);
+    }
+  });
+});
+
+describe("a case lived in one DS office and built in another (CASE-13)", () => {
+  // Entered by Homagama, built in the neighbouring district.
+  const built = { dsOffice: HOMAGAMA, buildDsOffice: NEIGHBOUR } satisfies CasePlaces;
+  const neighbourCrpo = viewer("DS_CRPO", { dsOfficeId: NEIGHBOUR.id });
+  const neighbourDistrictCrpo = viewer("DISTRICT_CRPO", { districtId: OTHER_DISTRICT });
+  const kaduwelaCrpo = viewer("DS_CRPO", { dsOfficeId: KADUWELA.id });
+  const farCommissioner = viewer("PROVINCE_COMMISSIONER", { provinceId: OTHER_PROVINCE });
+
+  it("goes through the DS of residence to edit or delete, and through the DS where built for the rest", () => {
+    const acting: Record<CaseAction, string> = {
+      edit: "residence",
+      delete: "residence",
+      installment: "built",
+      stage: "built",
+      release: "built",
+    };
+    for (const [action, office] of Object.entries(acting)) expect(actingOffice(action as CaseAction)).toBe(office);
+  });
+
+  it("is seen by both offices and both districts, and by nobody else (PRM-1, PRM-4)", () => {
+    for (const who of [crpo, neighbourCrpo, districtCrpo, neighbourDistrictCrpo, commissioner, programmeOfficer]) {
+      expect(canSeeCase(who, built), who.designation ?? "admin").toBe(true);
+    }
+    for (const who of [kaduwelaCrpo, farCommissioner, admin]) {
+      expect(canSeeCase(who, built), who.designation ?? "admin").toBe(false);
+    }
+  });
+
+  it("gives each office only the actions whose turn it is", () => {
+    const actions = (who: Viewer) =>
+      (["edit", "delete", "installment", "stage", "release"] as const).filter((a) => canActOn(who, built, a));
+    expect(actions(crpo)).toEqual(["edit", "delete"]);
+    expect(actions(neighbourCrpo)).toEqual(["installment", "stage", "release"]);
+    // The District where it is built releases it (REL-9); the District of residence only sees it.
+    expect(canActOn(neighbourDistrictCrpo, built, "release")).toBe(true);
+    expect(canActOn(districtCrpo, built, "release")).toBe(false);
+    // The Ministry acts on any case; the role and status rules decide the rest.
+    expect(actions(programmeOfficer)).toEqual(["edit", "delete", "installment", "stage", "release"]);
+    expect(actions(kaduwelaCrpo)).toEqual([]);
+    expect(actions(admin)).toEqual([]);
+  });
+
+  it("gives an office that both lives and builds every action", () => {
+    for (const action of ["edit", "delete", "installment", "stage", "release"] as const) {
+      expect(canActOn(crpo, at(HOMAGAMA), action), action).toBe(true);
     }
   });
 });

@@ -10,7 +10,7 @@ export type WaitingDistrict = {
   name: string;
   /** Verified cases waiting. */
   count: number;
-  /** The DS offices they belong to, by name. */
+  /** The DS offices where they are built, by name (CASE-13). */
   offices: string[];
   /** The oldest verification among them. */
   oldest: Date | null;
@@ -18,27 +18,28 @@ export type WaitingDistrict = {
 
 /**
  * REL-1: the districts whose verified cases wait for an allocation letter, the most cases first, as in
- * the prototype; then the longest waiting. Only Head Office records letters; anyone else gets none.
+ * the prototype; then the longest waiting. A case waits in the district where it is built (CASE-13).
+ * Only the Ministry records letters; anyone else gets none.
  */
 export async function districtsWaiting(db: PrismaClient, viewer: Viewer, locale: Locale): Promise<WaitingDistrict[]> {
   const scope = officeFilter(viewer);
   if (viewer.role !== "MINISTRY_OFFICER" || !scope) return [];
   const groups = await db.case.groupBy({
-    by: ["dsOfficeId"],
-    where: { ...scope, status: "VERIFIED" },
+    by: ["buildDsOfficeId"],
+    where: { AND: [scope], status: "VERIFIED" },
     _count: { _all: true },
     _min: { verifiedAt: true },
   });
   if (groups.length === 0) return [];
   const offices = await db.dsOffice.findMany({
-    where: { id: { in: groups.map((g) => g.dsOfficeId) } },
+    where: { id: { in: groups.map((g) => g.buildDsOfficeId) } },
     orderBy: { [nameField(locale)]: "asc" },
     select: { id: true, ...NAMES, district: { select: { id: true, ...NAMES } } },
   });
 
   const districts = new Map<number, WaitingDistrict>();
   for (const office of offices) {
-    const group = groups.find((g) => g.dsOfficeId === office.id);
+    const group = groups.find((g) => g.buildDsOfficeId === office.id);
     if (!group) continue;
     const district = districts.get(office.district.id) ?? {
       id: office.district.id,
@@ -70,7 +71,10 @@ export type LetterCase = {
   verifiedAt: Date | null;
 };
 
-/** REL-2: a district's verified cases for its letter, by DS office, then the longest waiting first. */
+/**
+ * REL-2: a district's verified cases for its letter, by the DS office where each is built (CASE-13),
+ * then the longest waiting first.
+ */
 export async function casesForLetter(
   db: PrismaClient,
   viewer: Viewer,
@@ -80,9 +84,9 @@ export async function casesForLetter(
   const scope = officeFilter(viewer);
   if (viewer.role !== "MINISTRY_OFFICER" || !scope) return [];
   const found = await db.case.findMany({
-    where: { AND: [scope, { dsOffice: { districtId } }], status: "VERIFIED" },
+    where: { AND: [scope, { buildDsOffice: { districtId } }], status: "VERIFIED" },
     orderBy: [
-      { dsOffice: { [nameField(locale)]: "asc" } },
+      { buildDsOffice: { [nameField(locale)]: "asc" } },
       { verifiedAt: { sort: "asc", nulls: "first" } },
       { id: "asc" },
     ],
@@ -93,10 +97,10 @@ export async function casesForLetter(
       name: true,
       childName: true,
       verifiedAt: true,
-      dsOffice: { select: NAMES },
+      buildDsOffice: { select: NAMES },
     },
   });
-  return found.map(({ dsOffice, ...row }) => ({ ...row, officeName: localName(dsOffice, locale) }));
+  return found.map(({ buildDsOffice, ...row }) => ({ ...row, officeName: localName(buildDsOffice, locale) }));
 }
 
 /** An allocation letter as the release screen and its notice show it. */
@@ -110,7 +114,7 @@ export type LetterSummary = {
   validUntil: string;
   /** The cases it released. */
   count: number;
-  /** Their DS offices, by name. */
+  /** The DS offices where they are built, by name. */
   offices: string[];
 };
 
@@ -120,7 +124,7 @@ const LETTER_SELECT = {
   letterDate: true,
   validUntil: true,
   district: { select: NAMES },
-  releases: { select: { case: { select: { dsOffice: { select: NAMES } } } } },
+  releases: { select: { case: { select: { buildDsOffice: { select: NAMES } } } } },
 } as const;
 
 type FoundLetter = {
@@ -129,7 +133,7 @@ type FoundLetter = {
   letterDate: Date;
   validUntil: Date;
   district: Names;
-  releases: { case: { dsOffice: Names } }[];
+  releases: { case: { buildDsOffice: Names } }[];
 };
 
 const summary =
@@ -141,7 +145,7 @@ const summary =
     letterDate: dateToDay(letter.letterDate),
     validUntil: dateToDay(letter.validUntil),
     count: letter.releases.length,
-    offices: [...new Set(letter.releases.map((r) => localName(r.case.dsOffice, locale)))].sort(),
+    offices: [...new Set(letter.releases.map((r) => localName(r.case.buildDsOffice, locale)))].sort(),
   });
 
 /** The letters recorded last, newest first, for the release screen's list (REL-2). Head Office only. */

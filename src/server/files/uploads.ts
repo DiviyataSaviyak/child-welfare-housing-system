@@ -4,7 +4,7 @@ import type { FileKind } from "@/generated/prisma/enums";
 import { documentProblem, type FileProblem, photoProblem, SNIFF_BYTES, sniffType } from "@/lib/file-types";
 import { logError } from "../log";
 import { canEnterCases } from "../cases/rules";
-import { canSeeOffice, caseScope, OFFICE_PLACE, type Viewer } from "../permissions";
+import { CASE_PLACES, canSeeCase, caseScope, type Viewer } from "../permissions";
 import { processPhoto } from "./images";
 import { deleteStoredFile, writeStoredFile } from "./storage";
 
@@ -177,15 +177,15 @@ export async function fileForViewer(
       mimeType: true,
       uploadedById: true,
       removedAt: true,
-      case: { select: { dsOffice: OFFICE_PLACE } },
-      letter: { select: { releases: { select: { case: { select: { dsOffice: OFFICE_PLACE } } } } } },
+      case: { select: CASE_PLACES },
+      letter: { select: { releases: { select: { case: { select: CASE_PLACES } } } } },
     },
   });
   if (!file || file.removedAt) return null;
   const allowed = file.case
-    ? canSeeOffice(viewer, file.case.dsOffice)
+    ? canSeeCase(viewer, file.case)
     : file.letter
-      ? file.letter.releases.some((release) => canSeeOffice(viewer, release.case.dsOffice))
+      ? file.letter.releases.some((release) => canSeeCase(viewer, release.case))
       : file.uploadedById === viewer.userId;
   if (!allowed) return null;
   if (variant === "thumb") {

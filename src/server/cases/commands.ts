@@ -7,7 +7,7 @@ import { CASE_FIELDS, type CaseValues, missingRequired } from "@/lib/validation/
 import { writeAudit } from "../audit";
 import { deleteStoredFile } from "../files/storage";
 import { logError } from "../log";
-import { canSeeOffice, caseScope, OFFICE_PLACE, type Viewer } from "../permissions";
+import { CASE_PLACES, canActOn, canSeeCase, caseScope, type Viewer } from "../permissions";
 import { applicationKey, nextCaseNumber } from "./numbers";
 import { isUniqueViolation, Refusal } from "./refusal";
 import { CLOSED, replacementRefusal } from "./replacements";
@@ -78,7 +78,7 @@ export type SavedCase = { id: string; applicationNumber: string | null; status: 
 const CASE_SELECT = {
   id: true,
   dsOfficeId: true,
-  dsOffice: OFFICE_PLACE,
+  ...CASE_PLACES,
   status: true,
   applicationNumber: true,
   version: true,
@@ -111,7 +111,7 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
   // A first submit in a new year can meet another one at the counter; one try again is enough.
   for (let attempt = 1; ; attempt += 1) {
     const current = await db.case.findUnique({ where: { id: input.id }, select: CASE_SELECT });
-    if (current && !canSeeOffice(actor, current.dsOffice)) return { ok: false, error: "notFound" };
+    if (current && !canSeeCase(actor, current)) return { ok: false, error: "notFound" };
     if (!current && input.version !== null) return { ok: false, error: "notFound" };
     // ERR-8: the same new-case form arrived twice. The first one saved the case; this one changes nothing.
     if (current && input.version === null) {
@@ -119,6 +119,11 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
         ok: true,
         value: { id: current.id, applicationNumber: current.applicationNumber, status: current.status },
       };
+    }
+
+    // CASE-9, CASE-13: the DS where it is built sees the case but doesn't change its details.
+    if (current && !canActOn(actor, current, "edit")) {
+      return { ok: false, error: "notEditable" };
     }
 
     const office = scope.kind === "office" ? scope.dsOfficeId : (input.dsOfficeId ?? current?.dsOfficeId ?? null);
@@ -189,8 +194,10 @@ async function writeCase(
     ...input.values,
     nicKey: input.values.nic ? nicKey(input.values.nic) : null,
     dsOfficeId,
-    // CASE-13: built in the DS of residence until change 0006's task 4 asks the form where it is built.
-    buildDsOfficeId: dsOfficeId,
+    // CASE-13: until change 0006's task 4 asks the form where it is built, a new case is built in its
+    // DS of residence, and a saved one keeps a DS where built of its own; built "in the same DS", it
+    // follows the case to the office it is saved in.
+    buildDsOfficeId: current && current.buildDsOffice.id !== current.dsOfficeId ? current.buildDsOffice.id : dsOfficeId,
     replacesCaseId,
   };
 
@@ -245,8 +252,8 @@ async function writeCase(
   await applyMove(
     tx,
     current
-      ? { id: current.id, status: current.status, dsOfficeId: current.dsOfficeId, version: current.version }
-      : { id: input.id, status: "DRAFT", dsOfficeId, version: 1 },
+      ? { id: current.id, status: current.status, version: current.version }
+      : { id: input.id, status: "DRAFT", version: 1 },
     "submit",
     {
       by: actor.role,
@@ -315,9 +322,9 @@ async function attachDocuments(
 async function findVisible(db: PrismaClient, actor: Actor, id: string) {
   const found = await db.case.findUnique({
     where: { id },
-    select: { id: true, dsOfficeId: true, dsOffice: OFFICE_PLACE, status: true },
+    select: { id: true, dsOfficeId: true, ...CASE_PLACES, status: true },
   });
-  return found && canSeeOffice(actor, found.dsOffice) ? found : null;
+  return found && canSeeCase(actor, found) ? found : null;
 }
 
 /**
@@ -327,7 +334,9 @@ async function findVisible(db: PrismaClient, actor: Actor, id: string) {
 export async function deleteDraft(db: PrismaClient, actor: Actor, id: string): Promise<Result<null>> {
   const found = await findVisible(db, actor, id);
   if (!found) return { ok: false, error: "notFound" };
-  if (!canDeleteDraft(actor.role, found.status)) return { ok: false, error: "notEditable" };
+  if (!canDeleteDraft(actor.role, found.status) || !canActOn(actor, found, "delete")) {
+    return { ok: false, error: "notEditable" };
+  }
 
   let files: { id: string; storedName: string }[];
   try {
@@ -371,7 +380,9 @@ export async function removeDocument(
 ): Promise<Result<null>> {
   const found = await findVisible(db, actor, caseId);
   if (!found) return { ok: false, error: "notFound" };
-  if (!canEditDetails(actor.role, found.status)) return { ok: false, error: "notEditable" };
+  if (!canEditDetails(actor.role, found.status) || !canActOn(actor, found, "edit")) {
+    return { ok: false, error: "notEditable" };
+  }
 
   try {
     await db.$transaction(async (tx) => {

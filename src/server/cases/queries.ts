@@ -5,7 +5,15 @@ import { addDays, colomboDay, colomboStartOf, dateToDay, dayToDate, daysBetween 
 import { localName, NAMES } from "@/lib/names";
 import { nicKey, normaliseNic } from "@/lib/nic";
 import { latestDay } from "@/lib/validation/release";
-import { canSeeOffice, OFFICE_PLACE, officeFilter, type Viewer } from "../permissions";
+import {
+  actingOffice,
+  CASE_PLACES,
+  canActOn,
+  canSeeCase,
+  OFFICE_PLACE,
+  officeFilter,
+  type Viewer,
+} from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 import { applicationKey } from "./numbers";
 import { openRequests, REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
@@ -52,6 +60,12 @@ export type CaseDetails = {
   release: ReleaseDetails | null;
   /** The four installments, made with the release (INS-1), in order. */
   installments: InstallmentDetails[];
+  /**
+   * Which of the case's actions the viewer's office has (CASE-13): `edit` for the DS of residence,
+   * `progress` (installments and stages) for the DS where it is built. Both are true for the Ministry.
+   * The role and the status still decide the rest (rules.ts, transitions.ts).
+   */
+  actsOn: { edit: boolean; progress: boolean };
 };
 
 /** Another case named on this one's page, with a link to it. */
@@ -133,7 +147,7 @@ export async function getCase(
       completedAt: true,
       statusBeforeStop: true,
       anotherNameRequested: true,
-      replaces: { select: { ...REQUEST_SELECT, dsOffice: OFFICE_PLACE } },
+      replaces: { select: { ...REQUEST_SELECT, ...CASE_PLACES } },
       replacedBy: {
         select: {
           id: true,
@@ -141,10 +155,11 @@ export async function getCase(
           name: true,
           childName: true,
           status: true,
-          dsOffice: OFFICE_PLACE,
+          ...CASE_PLACES,
         },
       },
       updatedAt: true,
+      buildDsOffice: OFFICE_PLACE,
       dsOffice: {
         select: {
           id: true,
@@ -199,9 +214,21 @@ export async function getCase(
       },
     },
   });
-  if (!found || !canSeeOffice(viewer, found.dsOffice)) return null;
-  const { dsOffice, files, decisions, release, installments, statusBeforeStop, replaces, replacedBy, ...fields } =
-    found;
+  if (!found || !canSeeCase(viewer, found)) return null;
+  const {
+    dsOffice,
+    buildDsOffice,
+    files,
+    decisions,
+    release,
+    installments,
+    statusBeforeStop,
+    replaces,
+    replacedBy,
+    ...fields
+  } = found;
+  const places = { dsOffice, buildDsOffice };
+  const actsOn = { edit: canActOn(viewer, places, "edit"), progress: canActOn(viewer, places, "installment") };
   const latest = decisions[0];
   const stopped = found.status === "STOPPED" && latest?.type === "STOP";
   return {
@@ -221,9 +248,9 @@ export async function getCase(
           }
         : null,
     // Both cases are always of one office (CASE-11); the check keeps it that way for the viewer.
-    replaces: replaces && canSeeOffice(viewer, replaces.dsOffice) ? toRequest(replaces) : null,
+    replaces: replaces && canSeeCase(viewer, replaces) ? toRequest(replaces) : null,
     replacedBy:
-      replacedBy && canSeeOffice(viewer, replacedBy.dsOffice)
+      replacedBy && canSeeCase(viewer, replacedBy)
         ? {
             id: replacedBy.id,
             applicationNumber: replacedBy.applicationNumber,
@@ -257,6 +284,7 @@ export async function getCase(
       expectedOn: i.expectedOn && dateToDay(i.expectedOn),
       releasedOn: i.releasedOn && dateToDay(i.releasedOn),
     })),
+    actsOn,
   };
 }
 
@@ -418,8 +446,11 @@ const TODO_TAKE = 20;
  * 7 days; cases in progress with no update for 30 days; drafts.
  */
 export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date()): Promise<TodoItem[]> {
-  const scope = officeFilter(viewer);
-  if (!scope) return [];
+  // CASE-13: each office's own work. The DS of residence corrects its cases; the DS where a case is
+  // built pays its installments and records its stages.
+  const scope = officeFilter(viewer, actingOffice("edit"));
+  const progress = officeFilter(viewer, actingOffice("installment"));
+  if (!scope || !progress) return [];
   const today = colomboDay(now);
   const caseFields = { id: true, name: true, childName: true } as const;
 
@@ -438,14 +469,14 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
       where: {
         status: "PROCESSING",
         expectedOn: { lte: dayToDate(addDays(today, DUE_SOON_DAYS)) },
-        case: { ...scope, status: "IN_PROGRESS" },
+        case: { ...progress, status: "IN_PROGRESS" },
       },
       orderBy: [{ expectedOn: "asc" }, { caseId: "asc" }],
       take: TODO_TAKE,
       select: { number: true, expectedOn: true, case: { select: caseFields } },
     }),
     db.case.findMany({
-      where: { ...scope, status: "IN_PROGRESS", updatedAt: { lt: staleBefore(now) } },
+      where: { ...progress, status: "IN_PROGRESS", updatedAt: { lt: staleBefore(now) } },
       orderBy: { updatedAt: "asc" },
       take: TODO_TAKE,
       select: { ...caseFields, updatedAt: true },
@@ -486,10 +517,11 @@ export type OfficeMoney = { received: number; paidOut: number; balance: number }
 
 /**
  * HOME-4: what the officer's office has received from Head Office (the releases), what it has paid
- * to beneficiaries (the installments marked paid), and the balance it holds.
+ * to beneficiaries (the installments marked paid), and the balance it holds. The money is counted
+ * where the house is built (CASE-13).
  */
 export async function officeMoney(db: PrismaClient, viewer: Viewer): Promise<OfficeMoney | null> {
-  const scope = officeFilter(viewer);
+  const scope = officeFilter(viewer, "built");
   if (!scope) return null;
   const [received, paid] = await Promise.all([
     db.release.aggregate({ where: { case: scope }, _sum: { amount: true } }),

@@ -58,6 +58,8 @@ function add(into: Figures, more: Figures): Figures {
 /**
  * DSH-1: the dashboard's figures for the cases the viewer may see that match the filter. They are
  * read from the database on every call, never kept, so the page is never more than a moment old (DSH-2).
+ * A case counts once, under the DS office where it is built, and in the area of that office, as its
+ * money does (CASE-13).
  */
 export async function dashboard(
   db: PrismaClient,
@@ -66,12 +68,12 @@ export async function dashboard(
   locale: Locale,
   now = new Date(),
 ): Promise<Dashboard> {
-  const scope = officeFilter(viewer);
+  const scope = officeFilter(viewer, "built");
   if (!scope) return { totals: noFigures(), byOffice: new Map(), stale: { total: 0, cases: [] } };
 
   const where: Prisma.CaseWhereInput = {
     // AND, not a spread: a chosen district must narrow the viewer's area, never replace it.
-    AND: [scope, filter.districtId ? { dsOffice: { districtId: filter.districtId } } : {}],
+    AND: [scope, filter.districtId ? { buildDsOffice: { districtId: filter.districtId } } : {}],
     status: { not: "DRAFT" },
     ...(filter.category && { category: filter.category }),
     ...(filter.kind && { kind: filter.kind }),
@@ -79,12 +81,12 @@ export async function dashboard(
   const staleWhere: Prisma.CaseWhereInput = { ...where, status: "IN_PROGRESS", updatedAt: { lt: staleBefore(now) } };
 
   const [counts, funded, staleTotal, stale] = await Promise.all([
-    db.case.groupBy({ by: ["dsOfficeId", "status"], where, _count: { _all: true } }),
+    db.case.groupBy({ by: ["buildDsOfficeId", "status"], where, _count: { _all: true } }),
     // Prisma can't sum a related table by office, so the cases with money come back one row each.
     db.case.findMany({
       where: { ...where, release: { isNot: null } },
       select: {
-        dsOfficeId: true,
+        buildDsOfficeId: true,
         release: { select: { amount: true } },
         installments: { where: { status: "RELEASED" }, select: { amount: true } },
       },
@@ -100,7 +102,7 @@ export async function dashboard(
         name: true,
         childName: true,
         updatedAt: true,
-        dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+        buildDsOffice: { select: { ...NAMES, district: { select: NAMES } } },
       },
     }),
   ]);
@@ -111,14 +113,14 @@ export async function dashboard(
     if (!figures) byOffice.set(id, (figures = noFigures()));
     return figures;
   };
-  for (const { dsOfficeId, status, _count } of counts) {
-    const figures = office(dsOfficeId);
+  for (const { buildDsOfficeId, status, _count } of counts) {
+    const figures = office(buildDsOfficeId);
     figures.cases += _count._all;
     if (status === "IN_PROGRESS") figures.inProgress += _count._all;
     if (status === "COMPLETED") figures.completed += _count._all;
   }
-  for (const { dsOfficeId, release, installments } of funded) {
-    const figures = office(dsOfficeId);
+  for (const { buildDsOfficeId, release, installments } of funded) {
+    const figures = office(buildDsOfficeId);
     figures.released += release?.amount ?? 0;
     for (const installment of installments) figures.paidOut += installment.amount;
   }
@@ -128,10 +130,10 @@ export async function dashboard(
     byOffice,
     stale: {
       total: staleTotal,
-      cases: stale.map(({ updatedAt, dsOffice, ...c }) => ({
+      cases: stale.map(({ updatedAt, buildDsOffice, ...c }) => ({
         ...c,
-        officeName: localName(dsOffice, locale),
-        districtName: localName(dsOffice.district, locale),
+        officeName: localName(buildDsOffice, locale),
+        districtName: localName(buildDsOffice.district, locale),
         days: daysBetween(updatedAt, now),
       })),
     },

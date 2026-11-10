@@ -60,7 +60,8 @@ export default async function DsCasePage({
   ]);
   const notice = (await searchParams).notice;
   const justSubmitted = notice === "submitted" && details.applicationNumber !== null;
-  const running = details.status === "IN_PROGRESS" && details.release !== null;
+  // CASE-13: only the DS where it is built pays the installments and records the stages.
+  const running = details.status === "IN_PROGRESS" && details.release !== null && details.actsOn.progress;
   const today = colomboDay(new Date());
   const next = running ? nextInstallment(details.installments) : null;
 
@@ -163,7 +164,11 @@ export default async function DsCasePage({
             )}
             <CaseDetailsSection
               details={details}
-              editHref={canEditDetails(viewer.role, details.status) ? `/ds/cases/${details.id}/edit` : null}
+              editHref={
+                details.actsOn.edit && canEditDetails(viewer.role, details.status)
+                  ? `/ds/cases/${details.id}/edit`
+                  : null
+              }
             />
           </>
         }

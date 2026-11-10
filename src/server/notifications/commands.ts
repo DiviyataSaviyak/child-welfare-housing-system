@@ -4,15 +4,17 @@ import type { NotificationType } from "@/generated/prisma/enums";
 import { officeFilter, type Viewer } from "../permissions";
 
 /**
- * NTF-1: tells every active officer of a DS office about one of its cases. Call it in the same
- * transaction as the change, so the notice exists exactly when the change does.
+ * NTF-1: tells every active officer of a case's DS offices about it: the DS of residence and the DS
+ * where it is built (CASE-13). An officer has one office, so nobody hears twice, even when the two
+ * offices are the same. Call it in the same transaction as the change, so the notice exists exactly
+ * when the change does.
  */
 export async function notifyOffice(
   tx: Prisma.TransactionClient,
-  notice: { dsOfficeId: number; caseId: string; type: NotificationType; at: Date },
+  notice: { dsOfficeIds: number[]; caseId: string; type: NotificationType; at: Date },
 ): Promise<void> {
   const officers = await tx.user.findMany({
-    where: { dsOfficeId: notice.dsOfficeId, role: "DS_OFFICER", banned: false },
+    where: { dsOfficeId: { in: [...new Set(notice.dsOfficeIds)] }, role: "DS_OFFICER", banned: false },
     select: { id: true },
   });
   if (officers.length === 0) return;
