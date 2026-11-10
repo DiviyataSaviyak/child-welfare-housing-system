@@ -28,14 +28,12 @@ export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) 
           {matches.map((match) => (
             <li key={match.id}>
               <Link href={`/ministry/cases/${match.id}`} className="font-semibold underline underline-offset-2">
-                {match.applicationNumber === null
-                  ? t("review.duplicates.draft", { name: name(match), office: match.officeName })
-                  : t("review.duplicates.item", {
-                      number: match.applicationNumber,
-                      name: name(match),
-                      office: match.officeName,
-                      status: statusLabel(match.status),
-                    })}
+                {t("review.duplicates.item", {
+                  number: match.applicationNumber,
+                  name: name(match),
+                  office: match.officeName,
+                  status: statusLabel(match.status),
+                })}
               </Link>
             </li>
           ))}

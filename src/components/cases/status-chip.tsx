@@ -6,14 +6,8 @@ const STYLE: Record<CaseStatus, string> = {
   AWAITING_ALLOCATION: "bg-[#E4EDF8] text-[#1E4E8C]",
   ALLOCATED_TO_DISTRICT: "bg-[#FBEBD3] text-[#8A4A06]",
   ALLOCATION_RECEIVED: "bg-[#E3EFEB] text-[#0E5A4B]",
-  DRAFT: "bg-[#ECEAE4] text-[#4F5752]",
-  SUBMITTED: "bg-[#E4EDF8] text-[#1E4E8C]",
-  RETURNED: "bg-[#FBEBD3] text-[#8A4A06]",
-  VERIFIED: "bg-[#E3EFEB] text-[#0E5A4B]",
   IN_PROGRESS: "bg-[#EDE7F6] text-[#4B3A7A]",
   COMPLETED: "bg-primary text-primary-foreground",
-  REJECTED: "bg-[#FDF0EE] text-[#8F1B12]",
-  STOPPED: "bg-muted text-[#3F4843]",
 };
 
 export function StatusChip({ status }: { status: CaseStatus }) {

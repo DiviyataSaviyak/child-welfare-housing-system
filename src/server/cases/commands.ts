@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { MAX_DOCUMENTS } from "@/lib/file-types";
 import { nicKey } from "@/lib/nic";
-import { CASE_FIELDS, type CaseValues, missingRequired } from "@/lib/validation/case";
+import { CASE_FIELDS, type CaseValues, type CompleteCaseValues, completeValues } from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import { writeAudit } from "../audit";
 import { deleteStoredFile } from "../files/storage";
@@ -70,8 +70,11 @@ export type SaveCaseInput = {
   documentIds: string[];
 };
 
+/** A save whose required fields are all filled in. */
+type CompleteInput = SaveCaseInput & { values: CompleteCaseValues };
+
 /** `created` is false for a change to a saved case. */
-export type SavedCase = { id: string; applicationNumber: string | null; status: CaseStatus; created: boolean };
+export type SavedCase = { id: string; applicationNumber: string; status: CaseStatus; created: boolean };
 
 const CASE_SELECT = {
   id: true,
@@ -104,7 +107,9 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
   const scope = caseScope(actor);
   // Only an office's officers and the Ministry enter cases; any other account changes nothing (PRM-5).
   if (scope.kind === "none" || !canEnterCases(actor.role)) return { ok: false, error: "notFound" };
-  if (Object.keys(missingRequired(input.values)).length > 0) return { ok: false, error: "incomplete" };
+  const values = completeValues(input.values);
+  if (!values) return { ok: false, error: "incomplete" };
+  const complete: CompleteInput = { ...input, values };
 
   // The same new-case form sent twice at once, or two cases given one Application Number at once, meet
   // on a unique key; the next try finds the saved case, or the number taken (ERR-8, CASE-12).
@@ -129,11 +134,11 @@ export async function saveCase(db: PrismaClient, actor: Actor, input: SaveCaseIn
     if (office === null) return { ok: false, error: "officeRequired" };
     // "The same DS division" follows the case's office, wherever the Ministry moves it (CASE-13).
     const built = input.buildDsOfficeId ?? office;
-    const problem = await checkSave(db, actor, current, input, office, built);
+    const problem = await checkSave(db, actor, current, complete, office, built);
     if (problem) return { ok: false, error: problem };
 
     try {
-      const value = await db.$transaction((tx) => writeCase(tx, actor, current, input, office, built));
+      const value = await db.$transaction((tx) => writeCase(tx, actor, current, complete, office, built));
       return { ok: true, value };
     } catch (error) {
       if (error instanceof Refusal) return { ok: false, error: error.reason as CaseCommandError };
@@ -147,7 +152,7 @@ async function checkSave(
   db: PrismaClient,
   actor: Actor,
   current: StoredCase | null,
-  input: SaveCaseInput,
+  input: CompleteInput,
   office: number,
   built: number,
 ): Promise<CaseCommandError | null> {
@@ -183,7 +188,7 @@ async function checkSave(
   const taken = await db.case.count({
     where: {
       dsOfficeId: office,
-      applicationKey: applicationKey(input.values.applicationNumber ?? ""),
+      applicationKey: applicationKey(input.values.applicationNumber),
       id: { not: input.id },
     },
   });
@@ -194,13 +199,13 @@ async function writeCase(
   tx: Prisma.TransactionClient,
   actor: Actor,
   current: StoredCase | null,
-  input: SaveCaseInput,
+  input: CompleteInput,
   dsOfficeId: number,
   buildDsOfficeId: number,
 ): Promise<SavedCase> {
   const fields = {
     ...input.values,
-    applicationKey: applicationKey(input.values.applicationNumber ?? ""),
+    applicationKey: applicationKey(input.values.applicationNumber),
     nicKey: input.values.nic ? nicKey(input.values.nic) : null,
     dsOfficeId,
     buildDsOfficeId,

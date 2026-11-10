@@ -192,7 +192,7 @@ export default async function DsHomePage({
                           {caseName(t, row.name, row.childName)}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          {row.applicationNumber ?? t("noNumber")}
+                          {row.applicationNumber}
                           {row.category && ` · ${t(`category.${row.category}`)}`}
                         </span>
                         {otherOffice(row) && (

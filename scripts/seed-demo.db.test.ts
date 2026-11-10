@@ -47,14 +47,7 @@ afterAll(() => db.$disconnect());
 
 // Adding or removing a few hundred cases takes seconds, more on a CI runner than vitest's default 5.
 describe("demo data", { timeout: 120_000 }, () => {
-  let countersBefore: string[] = [];
-  const counters = async () =>
-    (await db.caseNumberCounter.findMany({ orderBy: [{ dsOfficeId: "asc" }, { year: "asc" }] })).map(
-      (c) => `${c.dsOfficeId}:${c.year}:${c.last}`,
-    );
-
   it("adds cases to each office with an officer, each one with its history told by real accounts", async () => {
-    countersBefore = await counters();
     const now = new Date();
     const today = colomboDay(now);
 
@@ -73,7 +66,7 @@ describe("demo data", { timeout: 120_000 }, () => {
     });
     expect(cases).toHaveLength(15);
     expect(new Set(cases.map((c) => c.status))).toEqual(
-      new Set(["DRAFT", "SUBMITTED", "RETURNED", "VERIFIED", "IN_PROGRESS", "COMPLETED", "REJECTED", "STOPPED"]),
+      new Set(["AWAITING_ALLOCATION", "ALLOCATION_RECEIVED", "IN_PROGRESS", "COMPLETED"]),
     );
 
     const viewer = {
@@ -83,7 +76,7 @@ describe("demo data", { timeout: 120_000 }, () => {
       provinceId: null,
       dsOfficeId: null,
     } as const;
-    // Other test files add Head Office officers too, and each case takes one of them at random.
+    // Other test files add Ministry officers too, and each case takes one of them at random.
     const headOffice = new Set(
       (await db.user.findMany({ where: { role: "MINISTRY_OFFICER", banned: false }, select: { id: true } })).map(
         (u) => u.id,
@@ -92,33 +85,29 @@ describe("demo data", { timeout: 120_000 }, () => {
     expect(headOffice).toContain(HEAD_OFFICE);
     for (const c of cases) {
       expect(c.createdById).toBe(OFFICER);
-      // A draft may still have an empty address (CASE-4); see `maybe` in seed-load.ts.
-      if (c.status !== "DRAFT" || c.address !== null) expect(c.address).toMatch(/^අංක \d+, /);
-      for (const d of c.decisions) {
-        if (d.type === "SUBMIT") expect(d.byId).toBe(OFFICER);
-        else expect(headOffice).toContain(d.byId);
-      }
+      expect(c.address).toMatch(/^අංක \d+, /);
+      // Nobody checks, sends back, rejects or stops a case any more (change 0006).
+      expect(c.decisions).toHaveLength(0);
 
       // HIS-2: the history reads as if the case had been entered on the screens.
       const history = (await caseHistory(db, viewer, c.id, "si"))!.toReversed();
       expect(history[0]).toMatchObject({ action: "case_created", actor: { role: "DS_OFFICER" } });
+      // CASE-12: entered with its Application Number, as saveCase logs it.
+      expect(history[0].after.applicationNumber).toBe(c.applicationNumber);
       for (const [index, entry] of history.entries()) {
         if (index > 0) expect(entry.at.getTime()).toBeGreaterThanOrEqual(history[index - 1].at.getTime());
         expect(entry.at.getTime()).toBeLessThanOrEqual(now.getTime());
       }
       const actions = history.map((e) => e.action);
-      expect(actions.includes("case_submitted")).toBe(c.status !== "DRAFT");
-      const submitted = history.find((e) => e.action === "case_submitted");
-      if (submitted) expect(submitted.after.caseNumber).toBe(c.applicationNumber);
       expect(actions.filter((a) => a === "stage_updated")).toHaveLength(c.stageUpdates.length);
       expect(actions.filter((a) => a === "case_completed")).toHaveLength(c.status === "COMPLETED" ? 1 : 0);
       if (c.status === "COMPLETED") expect(history.at(-1)).toMatchObject({ action: "case_completed", actor: null });
 
       if (c.release) {
-        // REL-2: the case's letter is for its district, dated on or after its verification.
+        // REL-2: the case's letter is for its district, dated on or after the day it was entered.
         const letter = c.release.letter;
         expect(letter.districtId).toBe(office.districtId);
-        expect(dateToDay(letter.letterDate) >= colomboDay(c.verifiedAt!)).toBe(true);
+        expect(dateToDay(letter.letterDate) >= colomboDay(c.createdAt)).toBe(true);
         expect(dateToDay(letter.letterDate) <= today).toBe(true);
         const released = history.find((e) => e.action === "case_released")!;
         expect(released.after).toMatchObject({ letterId: letter.id, letterNumber: letter.letterNumber });
@@ -154,14 +143,14 @@ describe("demo data", { timeout: 120_000 }, () => {
     expect(await db.case.count({ where: { ...demoCases, dsOfficeId: officeId } })).toBe(15);
   });
 
-  it("removes them again and gives back the case numbers, keeping their audit records", async () => {
+  it("removes them again with their letters and District releases, keeping their audit records", async () => {
     const ids = (await db.case.findMany({ where: demoCases, select: { id: true } })).map((c) => c.id);
     expect(await removeDemoData(db)).toBe(ids.length);
 
     expect(await db.case.count({ where: demoCases })).toBe(0);
     expect(await db.notification.count({ where: { caseId: { in: ids } } })).toBe(0);
     expect(await db.releaseLetter.count({ where: { id: { startsWith: DEMO_ID_PREFIX } } })).toBe(0);
-    expect(await counters()).toEqual(countersBefore);
+    expect(await db.dsRelease.count({ where: { id: { startsWith: DEMO_ID_PREFIX } } })).toBe(0);
     // HIS-3: the audit log is never cleaned up.
     expect(await db.auditLog.count({ where: { caseId: { in: ids } } })).toBeGreaterThan(0);
   });

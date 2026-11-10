@@ -157,21 +157,21 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   const row = ds.getByRole("row", { name: new RegExp(name) });
   await expect(row).toContainText("4 / 4");
   await expect(row).toContainText("නිමයි");
-  await expect(ds.getByRole("region", { name: "මුදල්" })).toContainText("අමාත්‍යංශයෙන් ලැබුණු");
+  await expect(ds.getByRole("region", { name: "මුදල්" })).toContainText("දිස්ත්‍රික් ලේකම් කාර්යාලයෙන් ලැබුණු");
   await ds.goto("/ds/notifications");
   await expect(ds.getByRole("button", { name: new RegExp(`^${name} නිම කර ඇත`) })).toBeVisible();
 
   await ho.context().close();
 });
 
-test("AC-14, INS-6: Head Office undoes a payment, stops the case with its balance, and reopens it", async ({
+test("INS-6: the Ministry undoes a payment, with a reason, and the DS can pay it again", async ({
   page: ds,
   browser,
 }) => {
   test.slow();
   await signInAs(ds, "ds0101", /\/ds$/);
   const ho = await openAs(browser, "ho0001");
-  const { url, name, number } = await releasedCase(ds, ho, "නැවතීම");
+  const { url } = await releasedCase(ds, ho, "අවලංගු");
   await ds.goto(url);
   await startPayment(ds, "පළමු වාරිකය");
   await markPaid(ds, "පළමු වාරිකය");
@@ -189,41 +189,11 @@ test("AC-14, INS-6: Head Office undoes a payment, stops the case with its balanc
   await expect(money(ho).getByText(PROCESSING, { exact: true })).toBeVisible();
   await expect(ho.getByRole("region", { name: HISTORY })).toContainText("හේතුව: ගෙවූ දිනය වැරදියි.");
 
-  // AC-14: stopping needs a reason and shows the balance the office holds.
-  await ho.getByRole("button", { name: "ව්‍යාපෘතිය නවත්වන්න" }).click();
-  const stop = ho.getByRole("dialog", { name: "ව්‍යාපෘතිය නවත්වන්නද?" });
-  await expect(stop).toContainText(`${name} (${number}). ප්‍රා.ලේ. කාර්යාලය සතුව තවම රු. 2,000,000 ඉතිරිව ඇත.`);
-  await stop.getByRole("button", { name: "ව්‍යාපෘතිය නවත්වන්න" }).click();
-  await expect(ho.locator("#stop-reason-error")).toHaveText("හේතුව ඇතුළත් කරන්න.");
-  await stop.getByLabel("නවත්වන හේතුව *").fill("ප්‍රතිලාභියා වෙනත් ප්‍රදේශයකට ගොස් ඇත.");
-  await stop.getByRole("button", { name: "ව්‍යාපෘතිය නවත්වන්න" }).click();
-  await expect(ho).toHaveURL(`${hoUrl}?notice=stopped`);
-  const banner = ho.getByRole("region", { name: `මෙම ව්‍යාපෘතිය ${SHOWN_TODAY} දින නවතා ඇත` });
-  await expect(banner).toContainText("හේතුව: ප්‍රතිලාභියා වෙනත් ප්‍රදේශයකට ගොස් ඇත.");
-  await expect(banner).toContainText("ප්‍රා.ලේ. කාර්යාලය සතුව රු. 2,000,000 ඉතිරිව ඇත.");
-  await expect(ho.getByText("නවතා ඇත", { exact: true })).toBeVisible();
-
-  // The office sees why, and can change nothing while it is stopped.
-  await ds.goto(url);
-  await expect(ds.getByRole("region", { name: `මෙම ව්‍යාපෘතිය ${SHOWN_TODAY} දින නවතා ඇත` })).toBeVisible();
-  await expect(money(ds).getByRole("button")).toHaveCount(0);
-  await expect(ds.getByRole("button", { name: UPDATE_STAGES })).toBeHidden();
-  await expect(ds.getByRole("button", { name: "නැවත ආරම්භ කරන්න" })).toBeHidden();
-
-  // CLS-3: reopening needs a reason and goes back to in progress.
-  await banner.getByRole("button", { name: "නැවත ආරම්භ කරන්න" }).click();
-  const reopen = ho.getByRole("dialog", { name: "ව්‍යාපෘතිය නැවත ආරම්භ කරන්නද?" });
-  await expect(reopen).toContainText("“වැඩ සිදුවෙමින්” තත්ත්වයට යයි");
-  await reopen.getByLabel("නැවත ආරම්භ කිරීමට හේතුව *").fill("ප්‍රතිලාභියා ආපසු පැමිණ ඇත.");
-  await reopen.getByRole("button", { name: "ඔව්, නැවත ආරම්භ කරන්න" }).click();
-  await expect(ho).toHaveURL(`${hoUrl}?notice=reopened`);
-  await expect(ho.getByText("වැඩ සිදුවෙමින්", { exact: true })).toBeVisible();
+  // Nobody stops a case any more (change 0006).
+  await expect(ho.getByRole("button", { name: "ව්‍යාපෘතිය නවත්වන්න" })).toHaveCount(0);
 
   await ds.goto(url);
   await expect(money(ds).getByRole("button", { name: PAY })).toBeVisible();
-  await ds.goto("/ds/notifications");
-  await expect(ds.getByRole("button", { name: new RegExp(`^${name} නවතා ඇත`) })).toBeVisible();
-  await expect(ds.getByRole("button", { name: new RegExp(`^${name} නැවත ආරම්භ කර ඇත`) })).toBeVisible();
 
   await ho.context().close();
 });

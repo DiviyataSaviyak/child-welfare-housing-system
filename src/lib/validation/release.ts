@@ -8,7 +8,7 @@ export type ReleaseErrorKey =
   | "dateRequired"
   | "dateInvalid"
   | "dateInFuture"
-  | "dateBeforeVerified"
+  | "dateBeforeEntered"
   | "dateAfterInstallment"
   | "untilRequired"
   | "untilInvalid"
@@ -30,8 +30,8 @@ export type ReleaseValues = {
 };
 
 /**
- * The days a letter's date must fall between (REL-2): from the latest verification of its cases to
- * today, in Colombo. With no verification date there is no earliest day.
+ * The days a letter's date must fall between (REL-2): from the latest day one of its cases was entered to
+ * today, in Colombo. With no case there is no earliest day.
  */
 export type ReleaseDateLimits = { earliest: string | null; today: string };
 
@@ -51,7 +51,7 @@ const schema = ({ earliest, today }: ReleaseDateLimits) =>
       letterNumber: z.string().trim().min(1, { error: "numberRequired" }).max(50, { error: "numberTooLong" }),
       letterDate: day("dateRequired", "dateInvalid")
         .refine((value) => value <= today, { error: "dateInFuture" })
-        .refine((value) => earliest === null || value >= earliest, { error: "dateBeforeVerified" }),
+        .refine((value) => earliest === null || value >= earliest, { error: "dateBeforeEntered" }),
       validUntil: day("untilRequired", "untilInvalid"),
       note: z
         .string()

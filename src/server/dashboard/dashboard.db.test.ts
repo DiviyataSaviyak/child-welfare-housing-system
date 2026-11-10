@@ -6,9 +6,9 @@ import type { Prisma } from "@/generated/prisma/client";
 import { daysBetween } from "@/lib/dates";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { STALE_DAYS } from "../cases/queries";
-import { queueCounts } from "../cases/queues";
 import { districtsWithOffices, type DistrictOptions } from "../lists/queries";
 import type { Viewer } from "../permissions";
+import { awaitingAllocation } from "../releases/queries";
 import { dashboard, type DashboardFilter, type Figures, noFigures, STALE_SHOWN, tableRows } from "./queries";
 
 const db = createTestClient();
@@ -62,13 +62,12 @@ const caseWhere = (filter: DashboardFilter): Prisma.CaseWhereInput => ({
 
 /** DSH-1's figures summed by the database itself, without the dashboard's code (AC-17). */
 async function direct(where: Prisma.CaseWhereInput): Promise<Figures> {
-  const sent: Prisma.CaseWhereInput = { AND: [where, { status: { not: "DRAFT" } }] };
   const [cases, inProgress, completed, released, paid] = await Promise.all([
-    db.case.count({ where: sent }),
+    db.case.count({ where }),
     db.case.count({ where: { AND: [where, { status: "IN_PROGRESS" }] } }),
     db.case.count({ where: { AND: [where, { status: "COMPLETED" }] } }),
-    db.release.aggregate({ where: { case: sent }, _sum: { amount: true } }),
-    db.installment.aggregate({ where: { status: "RELEASED", case: sent }, _sum: { amount: true } }),
+    db.release.aggregate({ where: { case: where }, _sum: { amount: true } }),
+    db.installment.aggregate({ where: { status: "RELEASED", case: where }, _sum: { amount: true } }),
   ]);
   return { cases, inProgress, completed, released: released._sum.amount ?? 0, paidOut: paid._sum.amount ?? 0 };
 }
@@ -176,7 +175,7 @@ describe("Head Office dashboard (DSH-1)", () => {
     for (const filter of filters) {
       const started = performance.now();
       const list = await districtsWithOffices(db, "si");
-      const [data] = await Promise.all([dashboard(db, ho, filter, "si"), queueCounts(db, ho)]);
+      const [data] = await Promise.all([dashboard(db, ho, filter, "si"), awaitingAllocation(db, ho)]);
       tableRows(list, data.byOffice, filter.districtId);
       expect(performance.now() - started, JSON.stringify(filter)).toBeLessThan(2_000);
     }

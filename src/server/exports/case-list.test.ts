@@ -24,9 +24,8 @@ const released: ExportRow = {
   mobile2: null,
   districtName: "කොළඹ",
   officeName: "හෝමාගම",
-  submittedAt: new Date("2026-02-10T04:00:00Z"),
   // 01:30 on 2 March in Colombo, still 1 March in UTC.
-  verifiedAt: new Date("2026-03-01T20:00:00Z"),
+  createdAt: new Date("2026-03-01T20:00:00Z"),
   completedAt: null,
   updatedAt: new Date("2026-04-05T06:00:00Z"),
   remark: null,
@@ -40,17 +39,15 @@ const released: ExportRow = {
   progress: ["2026-03-20", null, null, null],
 };
 
-const draft: ExportRow = {
+const waiting: ExportRow = {
   ...released,
-  applicationNumber: null,
+  applicationNumber: "HMG/2026/17",
   category: "CARE_LEAVER",
-  kind: null,
-  status: "DRAFT",
+  kind: "RENOVATION",
+  status: "AWAITING_ALLOCATION",
   childName: null,
   nic: "198800012345",
   mobile1: "0112345678",
-  submittedAt: null,
-  verifiedAt: null,
   release: null,
   installments: [null, null, null, null],
   progress: [null, null, null, null],
@@ -85,7 +82,7 @@ const BUILDING_AT = AFTER_BALANCE + MONEY.length + 1;
 
 describe("the case list's Excel file (EXP-1)", () => {
   it("has a Sinhala sheet name and headers, one row per case, and a two-row header that stays in view", async () => {
-    const sheet = await reopen([released, draft]);
+    const sheet = await reopen([released, waiting]);
     expect(sheet.name).toBe("ප්‍රතිලාභීන්");
     const inOrder = (money: string[], building: string[]) => [
       ...COLUMNS.slice(0, AFTER_RELEASED),
@@ -126,7 +123,7 @@ describe("the case list's Excel file (EXP-1)", () => {
   });
 
   it("writes a short dated note, as the old sheet did: when each installment was paid or is expected, and when each stage was finished", async () => {
-    const sheet = await reopen([released, draft]);
+    const sheet = await reopen([released, waiting]);
     const row = sheet.getRow(3);
     const [money, building] = [MONEY_AT, BUILDING_AT];
     expect([0, 1, 2, 3].map((i) => row.getCell(money + i).value)).toEqual([
@@ -150,7 +147,7 @@ describe("the case list's Excel file (EXP-1)", () => {
   });
 
   it("writes the list's words, keeps NICs and phone numbers as text, and dates as Colombo days", async () => {
-    const sheet = await reopen([released, draft]);
+    const sheet = await reopen([released, waiting]);
     const cell = byHeader(sheet, 3);
     expect(cell("number").value).toBe("HMG-2026-001");
     expect(cell("category").value).toBe("අවදානම් දරුවන්");
@@ -160,8 +157,8 @@ describe("the case list's Excel file (EXP-1)", () => {
     expect(cell("mobile1").value).toBe("0771234567");
     expect(cell("mobile2").value).toBeNull();
 
-    expect(cell("verifiedOn").value).toEqual(new Date("2026-03-02T00:00:00Z"));
-    expect(cell("verifiedOn").numFmt).toBe("yyyy.mm.dd");
+    expect(cell("enteredOn").value).toEqual(new Date("2026-03-02T00:00:00Z"));
+    expect(cell("enteredOn").numFmt).toBe("yyyy.mm.dd");
     expect(cell("releasedOn").value).toEqual(new Date("2026-03-10T00:00:00Z"));
 
     expect(cell("released").value).toBe(2_000_000);
@@ -172,23 +169,14 @@ describe("the case list's Excel file (EXP-1)", () => {
     const second = byHeader(sheet, 4);
     expect(second("nic").value).toBe("198800012345");
     expect(second("mobile1").value).toBe("0112345678");
-    expect(second("status").value).toBe("තවම යවා නැත");
+    expect(second("number").value).toBe("HMG/2026/17");
+    expect(second("status").value).toBe("ප්‍රතිපාදන මුදා හැරීමට ඇත");
   });
 
   it("leaves the money, stage and date columns empty for a case that hasn't got that far", async () => {
-    const sheet = await reopen([draft]);
+    const sheet = await reopen([waiting]);
     const cell = byHeader(sheet, 3);
-    for (const key of [
-      "number",
-      "kind",
-      "submittedOn",
-      "verifiedOn",
-      "releasedOn",
-      "released",
-      "paidOut",
-      "balance",
-      "completedOn",
-    ] as const)
+    for (const key of ["releasedOn", "released", "paidOut", "balance", "completedOn"] as const)
       expect(cell(key).value, key).toBeNull();
   });
 

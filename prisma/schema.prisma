@@ -32,14 +32,6 @@ enum CaseStatus {
   ALLOCATION_RECEIVED
   IN_PROGRESS
   COMPLETED
-  /// Version 1's statuses, below. No case holds one after the migration. They stay only while the code for
-  /// drafts, the check, stopping and version 1's letter is still there, and go with it (change 0006, task 5).
-  DRAFT
-  SUBMITTED
-  RETURNED
-  VERIFIED
-  REJECTED
-  STOPPED
 }
 
 enum DecisionType {
@@ -345,11 +337,11 @@ model UnknownSignInName {
 model Case {
   id                   String         @id
   /// The Application Number (ඉල්ලුම් අංකය) the DS types from the paper application, kept as typed without
-  /// spaces at either end (CASE-12). The migration made each case number one. Empty only on a draft.
-  applicationNumber    String?        @map("application_number")
+  /// spaces at either end (CASE-12). Version 1's case numbers became Application Numbers.
+  applicationNumber    String         @map("application_number")
   /// The Application Number in capitals without spaces (`applicationKey` in src/server/cases/numbers.ts):
   /// unique within the DS office of residence.
-  applicationKey       String?        @map("application_key")
+  applicationKey       String         @map("application_key")
   /// The DS office of residence: it enters the case, and edits it while it awaits its allocation.
   dsOfficeId           Int            @map("ds_office_id")
   dsOffice             DsOffice       @relation("CaseResidence", fields: [dsOfficeId], references: [id])
@@ -357,10 +349,10 @@ model Case {
   /// unless the form says otherwise. The money, the installments and the stages follow it.
   buildDsOfficeId      Int            @map("build_ds_office_id")
   buildDsOffice        DsOffice       @relation("CaseBuilt", fields: [buildDsOfficeId], references: [id])
-  /// Category and kind may be empty only while the case is a draft (CASE-4).
-  category             Category?
-  kind                 Kind?
-  status               CaseStatus     @default(DRAFT)
+  category             Category
+  kind                 Kind
+  /// A new case is saved straight into AWAITING_ALLOCATION (CASE-5).
+  status               CaseStatus     @default(AWAITING_ALLOCATION)
   /// The care leaver, or the guardian of a child at risk.
   name                 String?
   /// Only for children at risk.
@@ -379,18 +371,10 @@ model Case {
   createdBy            User           @relation(fields: [createdById], references: [id])
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
-  /// The latest submit. The check queue lists the oldest first (CHK-1).
-  submittedAt          DateTime?      @map("submitted_at")
-  /// When Head Office verified it. The release queue lists the oldest first (REL-1).
-  verifiedAt           DateTime?      @map("verified_at")
   /// When the system found it finished (CLS-1).
   completedAt          DateTime?      @map("completed_at")
-  /// While the case is stopped: the status it goes back to when it is reopened (CLS-3).
-  statusBeforeStop     CaseStatus?    @map("status_before_stop")
-  /// Head Office asked the DS office for another name in this case's place when it rejected or stopped
-  /// it (CASE-11). Only a rejected or stopped case has it (a database check); reopening clears it.
-  anotherNameRequested Boolean        @default(false) @map("another_name_requested")
-  /// The rejected or stopped case this one was entered in place of (CASE-11). A case is replaced once.
+  /// The case this one was entered in place of. Version 1's CASE-11 made these links; change 0006 removed
+  /// it, and change 0008's amendments take its place. A case is replaced once.
   replacesCaseId       String?        @unique @map("replaces_case_id")
   replaces             Case?          @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
   replacedBy           Case?          @relation("Replacement")
@@ -406,26 +390,13 @@ model Case {
   @@unique([dsOfficeId, applicationKey])
   @@index([dsOfficeId, status])
   @@index([buildDsOfficeId, status])
-  @@index([status, submittedAt])
-  @@index([status, verifiedAt])
   @@index([nicKey])
   @@index([updatedAt])
   @@map("case")
 }
 
-/// The last case number given in each DS office and year (version 1's CASE-5). Taking the next number locks
-/// the row, so two submits at the same moment take turns and never get the same number. It goes with the
-/// drafts (change 0006, task 4), since the DS types the Application Number.
-model CaseNumberCounter {
-  dsOfficeId Int @map("ds_office_id")
-  year       Int
-  last       Int
-
-  @@id([dsOfficeId, year])
-  @@map("case_number_counter")
-}
-
-/// A step in a case's life, with the reason when one is needed (CHK-3, CLS-2, CLS-3).
+/// Version 1's decisions on a case (its CHK-3, CLS-2, CLS-3), kept for the cases that have them. Change 0006
+/// removed the check and stopping, so nothing writes one any more; the replaced case's note reads them.
 model Decision {
   id     String       @id
   caseId String       @map("case_id")

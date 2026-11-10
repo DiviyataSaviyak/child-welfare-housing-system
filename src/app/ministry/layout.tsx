@@ -1,16 +1,16 @@
 import { AppShell } from "@/components/shell/app-shell";
-import { waitingNow } from "@/server/cases/queues";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
+import { awaitingAllocation } from "@/server/releases/queries";
 
 /**
- * The menu shows how many cases wait for a check or a release (NTF-1). A layout isn't rendered again
- * on a client-side move: the actions that change a queue refresh it with revalidatePath, and the menu
- * reads the count again from /ho/waiting after every move, so it agrees with the page beside it.
+ * The menu shows how many cases await the Ministry's allocation (NTF-1, REL-1). A layout isn't rendered
+ * again on a client-side move: the actions that change the count refresh it with revalidatePath, and the
+ * menu reads the count again from /ministry/waiting after every move, so it agrees with the page beside it.
  */
 export default async function HoLayout({ children }: { children: React.ReactNode }) {
   const context = await requireRole("MINISTRY_OFFICER");
-  const waiting = await waitingNow(db, context);
+  const waiting = await awaitingAllocation(db, context);
   return (
     <AppShell
       area="ministry"
@@ -18,12 +18,7 @@ export default async function HoLayout({ children }: { children: React.ReactNode
       nav={[
         { href: "/ministry", labelKey: "ministryDashboard", exact: true },
         { href: "/ministry/cases", labelKey: "ministryCases" },
-        {
-          href: "/ministry/check",
-          labelKey: "ministryCheck",
-          alsoActive: ["/ministry/release"],
-          count: { ...waiting, source: "/ministry/waiting" },
-        },
+        { href: "/ministry/release", labelKey: "ministryRelease", count: { ...waiting, source: "/ministry/waiting" } },
       ]}
     >
       {children}

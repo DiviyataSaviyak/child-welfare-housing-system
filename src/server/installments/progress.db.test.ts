@@ -6,14 +6,12 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import { seed } from "../../../prisma/seed-data";
-import { asSubmittedV1, createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
+import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
 import { type Actor, saveCase, type SaveCaseInput } from "../cases/commands";
-import { decideCase } from "../cases/decide";
 import { getCase, listCases, officeMoney, todoItems } from "../cases/queries";
-import { reopenCase, stopCase } from "../cases/stop";
 import { readStoredFile } from "../files/storage";
 import { fileForViewer, uploadPhoto } from "../files/uploads";
 import { caseHistory } from "../history/queries";
@@ -66,8 +64,8 @@ const values = (overrides: Partial<CaseValues> = {}): CaseValues => ({
 const load = (id: string) => db.case.findUniqueOrThrow({ where: { id } });
 
 /**
- * A case of dsA's office with its Rs. 2,000,000 released 50 days ago: submitted, verified (its
- * verification moved back 60 days so the release can be earlier than today) and released.
+ * A case of dsA's office with its Rs. 2,000,000 released 50 days ago: saved (its entry moved back 60 days
+ * so the release can be earlier than today) and released.
  */
 async function running(overrides: Partial<CaseValues> = {}) {
   const input: SaveCaseInput = {
@@ -80,17 +78,8 @@ async function running(overrides: Partial<CaseValues> = {}) {
   };
   const saved = await saveCase(db, dsA, input);
   if (!saved.ok) throw new Error(saved.error);
-  await asSubmittedV1(db, saved.value.id, dsA.userId);
-  const sent = await load(saved.value.id);
-  const verified = await decideCase(db, ho, {
-    caseId: sent.id,
-    version: sent.version,
-    decision: "verify",
-    reason: null,
-  });
-  if (!verified.ok) throw new Error(verified.error);
-  await db.case.update({ where: { id: sent.id }, data: { verifiedAt: colomboStartOf(daysAgo(60)) } });
-  const ready = await load(sent.id);
+  await db.case.update({ where: { id: saved.value.id }, data: { createdAt: colomboStartOf(daysAgo(60)) } });
+  const ready = await load(saved.value.id);
   const { districtId } = await db.dsOffice.findUniqueOrThrow({ where: { id: ready.dsOfficeId } });
   const release = await recordLetter(db, ho, {
     districtId,
@@ -523,85 +512,7 @@ describe("completing a case (CLS-1, AC-13)", () => {
   });
 });
 
-describe("stopping and reopening (CLS-2, CLS-3, AC-14)", () => {
-  it("needs a reason, blocks every change while stopped, and reopens to the status before", async () => {
-    const c = await running();
-    await payNext(c.id, 1, daysAgo(30));
-    const stopAs = async (actor: Actor, reason: string) =>
-      stopCase(db, actor, { caseId: c.id, version: await version(c.id), reason });
-
-    expect(await stopAs(dsA, "ඉඩම පිළිබඳ ගැටලුවක්")).toEqual({ ok: false, error: "roleNotAllowed" });
-    expect(await stopAs(ho, "")).toEqual({ ok: false, error: "reasonRequired" });
-    expect(await stopAs(ho, "නැත")).toEqual({ ok: false, error: "reasonTooShort" });
-    expect(await stopAs(ho, "ඉඩම පිළිබඳ ගැටලුවක්")).toEqual({ ok: true, value: "STOPPED" });
-
-    const stopped = await load(c.id);
-    expect(stopped).toMatchObject({ status: "STOPPED", statusBeforeStop: "IN_PROGRESS" });
-    const details = await getCase(db, dsA, c.id, "si");
-    expect(details?.stop).toMatchObject({ reason: "ඉඩම පිළිබඳ ගැටලුවක්", statusBefore: "IN_PROGRESS" });
-    const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_stopped" } });
-    expect(audit.after).toMatchObject({ reason: "ඉඩම පිළිබඳ ගැටලුවක්", balance: 1_500_000 });
-    expect(await db.notification.count({ where: { caseId: c.id, type: "STOPPED" } })).toBe(1);
-
-    // No installment, stage or detail change while stopped (INS-5, STG-5, CASE-9).
-    expect(await start(dsA, c.id, stopped.version, 2)).toMatchObject({ ok: false, error: "caseNotRunning" });
-    expect(await stage(c.id, stopped.version, null)).toMatchObject({ ok: false, error: "caseNotRunning" });
-    const edit = await saveCase(db, ho, {
-      id: c.id,
-      version: stopped.version,
-      dsOfficeId: null,
-      buildDsOfficeId: null,
-      values: values({ address: "නව ලිපිනය" }),
-      documentIds: [],
-    });
-    expect(edit).toEqual({ ok: false, error: "notEditable" });
-    expect(await stopAs(ho, "නැවත නවත්වන්න")).toEqual({ ok: false, error: "notAllowedNow" });
-
-    const reopen = async (actor: Actor, reason: string) =>
-      reopenCase(db, actor, { caseId: c.id, version: await version(c.id), reason });
-    expect(await reopen(dsA, "ගැටලුව විසඳුණා")).toEqual({ ok: false, error: "roleNotAllowed" });
-    expect(await reopen(ho, " ")).toEqual({ ok: false, error: "reasonRequired" });
-    expect(await reopen(ho, "ගැටලුව විසඳුණා")).toEqual({ ok: true, value: "IN_PROGRESS" });
-    expect(await load(c.id)).toMatchObject({ status: "IN_PROGRESS", statusBeforeStop: null });
-    expect(await db.notification.count({ where: { caseId: c.id, type: "REOPENED" } })).toBe(1);
-    expect(await start(dsA, c.id, await version(c.id), 2, daysAgo(1))).toMatchObject({ ok: true });
-  });
-
-  it("reopens a case stopped before its release as verified, and refuses cases that can't stop", async () => {
-    const saved = await saveCase(db, dsA, {
-      id: randomUUID(),
-      version: null,
-      dsOfficeId: null,
-      buildDsOfficeId: null,
-      values: values(),
-      documentIds: [],
-    });
-    if (!saved.ok) throw new Error(saved.error);
-    const id = saved.value.id;
-    expect(
-      await stopCase(db, ho, { caseId: id, version: await version(id), reason: "ප්‍රතිපාදන බලාපොරොත්තුවෙන්" }),
-    ).toEqual({
-      ok: false,
-      error: "notAllowedNow",
-    });
-    await asSubmittedV1(db, id, dsA.userId);
-    expect(await stopCase(db, ho, { caseId: id, version: await version(id), reason: "යවා ඇති තත්ත්වයේ" })).toEqual({
-      ok: false,
-      error: "notAllowedNow",
-    });
-    const sent = await load(id);
-    await decideCase(db, ho, { caseId: id, version: sent.version, decision: "verify", reason: null });
-    expect(
-      await stopCase(db, ho, { caseId: id, version: await version(id), reason: "ප්‍රතිලාභියා පදිංචිය වෙනස් කළා" }),
-    ).toMatchObject({ ok: true });
-    expect(await reopenCase(db, ho, { caseId: id, version: await version(id), reason: "නැවත සොයා ගත්තා" })).toEqual({
-      ok: true,
-      value: "VERIFIED",
-    });
-  });
-});
-
-describe("Head Office's edits to a running case (CASE-9)", () => {
+describe("the Ministry's edits to a running case (CASE-9)", () => {
   it("can change the kind of help only until a stage is recorded", async () => {
     const c = await running();
     const details = { ...values(), nic: (await load(c.id)).nic };
@@ -647,7 +558,6 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
       "installment_started",
       "stage_updated",
       "case_released",
-      "case_verified",
       "case_created",
     ]);
     expect(history?.[0]).toMatchObject({ actor: null });

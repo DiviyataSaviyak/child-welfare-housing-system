@@ -1,8 +1,8 @@
 /**
  * Made-up cases for load tests (PRF-1, PRF-3, PRF-4): 5,000 by default, spread over every active DS
- * office, at every point of a case's life. There are drafts, cases waiting for a check or a release,
- * cases being built with their installments and stages (some with no update for 30 days or more),
- * and completed, rejected and stopped cases.
+ * office, at every point of a case's life. There are cases awaiting their allocation, cases whose
+ * allocation was received, cases being built with their installments and stages (some with no update for
+ * 30 days or more), and completed cases.
  *
  *   npm run db:seed-load                   adds 5,000 cases
  *   npm run db:seed-load -- --count 500    adds 500
@@ -11,8 +11,8 @@
  *
  * Every name, NIC and phone number is made up (SEC-11). It runs on development, test and staging
  * databases only, never in production.
- * - The cases' ids start with "load-", which is how --remove finds them. They take their case numbers
- *   from each office's counter, as real submits do; --remove gives back the numbers no other case holds.
+ * - The cases' ids start with "load-", which is how --remove finds them. Each gets an Application Number in
+ *   version 1's form ({DS code}-{year}-{NNN}), after the highest one its office already has (CASE-12).
  * - They belong to one disabled account without a username, which can't sign in and isn't listed on
  *   the admin's users screen.
  * - No audit records are written, because the audit log can never be cleaned up (HIS-3). So a
@@ -25,7 +25,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import type { Prisma, PrismaClient } from "../src/generated/prisma/client";
-import type { CaseStatus, Category, DecisionType, Kind, NotificationType } from "../src/generated/prisma/enums";
+import type { CaseStatus, Category, Kind, NotificationType } from "../src/generated/prisma/enums";
 import { addDays, colomboDay, colomboStartOf, colomboYear, dayToDate } from "../src/lib/dates";
 import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "../src/lib/money";
 import { NAMES, type Names } from "../src/lib/names";
@@ -61,13 +61,6 @@ export function loadDataAllowed(appEnv = process.env.APP_ENV ?? "development"): 
 // --- Made-up text (the people are in made-up.ts) ---------------------------------------------------
 
 const REMARKS = ["ඉඩම පවුලට අයත්ය.", "පවුලේ සාමාජිකයින් පස් දෙනෙකි.", "ළඟම පාසල කි.මී. දෙකක් දුරින්."];
-const SEND_BACK_REASONS = [
-  "ලිපිනය සම්පූර්ණ නැත. කරුණාකර නිවැරදි කර නැවත යොමු කරන්න.",
-  "ජා.හැ.අංකය පරීක්ෂා කර නැවත යොමු කරන්න.",
-  "දුරකථන අංකය වැරදියි.",
-];
-const REJECT_REASONS = ["මෙම පවුලට දැනටමත් නිවාස ආධාර ලැබී ඇත.", "වැඩසටහනේ සුදුසුකම් සපුරා නැත."];
-const STOP_REASONS = ["ප්‍රතිලාභියා වෙනත් ප්‍රදේශයකට පදිංචියට ගොස් ඇත.", "ඉඩමේ අයිතිය පිළිබඳ ගැටලුවක් ඇත."];
 const VISIT_NOTES = [
   "වැඩ හොඳින් සිදු වේ.",
   "ද්‍රව්‍ය ලැබීම ප්‍රමාදයි.",
@@ -78,24 +71,26 @@ const PURPOSES = ["ගොඩනැගිලි ද්‍රව්‍ය", "ව�
 
 // --- Shares ---------------------------------------------------------------------------------------
 
+/**
+ * Where a made-up case is in its life. Until change 0006's task 10, version 1's letter stands for both the
+ * Ministry's allocation and the District's release, as `recordLetter` does, so no case waits at the
+ * district.
+ */
+export type Path = Exclude<CaseStatus, "ALLOCATED_TO_DISTRICT">;
+
 /** How the cases spread over the statuses, roughly as in a programme's second year. */
-const STATUS_SHARES: Share<CaseStatus> = [
-  ["DRAFT", 3],
-  ["SUBMITTED", 8],
-  ["RETURNED", 3],
-  ["VERIFIED", 6],
-  ["IN_PROGRESS", 55],
+const STATUS_SHARES: Share<Path> = [
+  ["AWAITING_ALLOCATION", 20],
+  ["ALLOCATION_RECEIVED", 8],
+  ["IN_PROGRESS", 54],
   ["COMPLETED", 18],
-  ["REJECTED", 3],
-  ["STOPPED", 4],
 ];
-/** Installments paid on a case still being built. */
+/** Installments paid on a case still being built: at least the first (INS-5). */
 const PAID_SHARES: Share<number> = [
-  [0, 15],
-  [1, 30],
-  [2, 25],
-  [3, 20],
-  [4, 10],
+  [1, 35],
+  [2, 30],
+  [3, 23],
+  [4, 12],
 ];
 /** Visits with only a note on a released case. */
 const NOTE_SHARES: Share<number> = [
@@ -109,7 +104,7 @@ const NOTE_SHARES: Share<number> = [
 /** A DS office that gets made-up cases. */
 export type Office = { id: number; code: string; nameSi: string; districtId: number; districtSi: string };
 
-/** The made-up person on a case (SEC-11). A draft may lose some of these (CASE-4). */
+/** The made-up person on a case (SEC-11). */
 export type Person = {
   name: string;
   /** Only used for a child at risk. */
@@ -134,13 +129,13 @@ export type Cast = {
    * gets its notices (NTF-1).
    */
   officers: (office: Office) => string[];
-  /** Who takes Head Office's steps on a case: checking, releasing and stopping. */
+  /** Who records the Ministry's letters. */
   headOffice: (r: Random) => string;
-  person: (r: Random, office: Office, category: Category | null) => Person;
+  person: (r: Random, office: Office, category: Category) => Person;
   /** How many days ago a case on its way to `path` was entered; at least `minAge`. */
-  age: (r: Random, path: CaseStatus, minAge: number) => number;
-  /** The day a case verified on `verifiedDay` is released: after it, but never after `today` (REL-2). */
-  releaseDay: (r: Random, verifiedDay: string, office: Office, today: string) => string;
+  age: (r: Random, path: Path, minAge: number) => number;
+  /** The day a case entered on `enteredDay` is released: after it, but never after `today` (REL-2). */
+  releaseDay: (r: Random, enteredDay: string, office: Office, today: string) => string;
 };
 
 export type Context = {
@@ -157,7 +152,7 @@ type Json = Prisma.InputJsonValue | null;
 
 /**
  * One step of a case's history, as the screens would have written it to the audit log (HIS-1). The
- * writer fills in what is known only then: the case number of a submit, the letter of a release.
+ * writer fills in what is known only then: the Application Number, the letter of a release.
  */
 type Step = {
   at: Date;
@@ -172,10 +167,12 @@ type Step = {
 /** A release before its allocation letter is known: the cases released on the same day in a district share one. */
 type PlannedRelease = Omit<Prisma.ReleaseCreateManyInput, "letterId"> & { districtId: number; day: string };
 
+/** A case before its Application Number is known; the writer gives it one. */
+type PlannedCase = Omit<Prisma.CaseCreateManyInput, "applicationNumber" | "applicationKey">;
+
 export type Planned = {
   office: Office;
-  case: Prisma.CaseCreateManyInput;
-  decisions: Prisma.DecisionCreateManyInput[];
+  case: PlannedCase;
   release: PlannedRelease | null;
   installments: Prisma.InstallmentCreateManyInput[];
   stageUpdates: Prisma.StageUpdateCreateManyInput[];
@@ -208,7 +205,7 @@ function interleave<T>(r: Random, chains: T[][]): T[] {
  * One case and everything that hangs off it, with a story that follows the application spec's Case
  * statuses and transitions.
  */
-export function planCase(ctx: Context, office: Office, status: CaseStatus): Planned {
+export function planCase(ctx: Context, office: Office, path: Path): Planned {
   const { r, today, cast } = ctx;
   const upToToday = (day: string) => (day > today ? today : day);
   // A moment during office hours on `day`, after `after`, and never after now.
@@ -222,32 +219,26 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
   const officers = cast.officers(office);
   const officer = officers[0]!;
   const headOffice = cast.headOffice(r);
-  const draft = status === "DRAFT";
-  // A draft may still have empty fields (CASE-4).
-  const maybe = <T>(value: T) => (draft && r.chance(0.2) ? null : value);
-  const category = maybe<Category>(r.chance(1 / 3) ? "CARE_LEAVER" : "CHILD_AT_RISK");
+  const category: Category = r.chance(1 / 3) ? "CARE_LEAVER" : "CHILD_AT_RISK";
   const kind: Kind = r.chance(0.8) ? "NEW_HOUSE" : "RENOVATION";
   const person = cast.person(r, office, category);
-  const nic = maybe(person.nic);
+  const nic = person.nic;
   const fields = {
     dsOfficeId: office.id,
     category,
-    kind: maybe(kind),
+    kind,
     name: person.name,
     childName: category === "CHILD_AT_RISK" ? person.childName : null,
     nic,
-    address: maybe(person.address),
+    address: person.address,
     gnDivision: person.gnDivision,
-    mobile1: maybe(person.mobile1),
+    mobile1: person.mobile1,
     mobile2: person.mobile2,
     remark: person.remark,
   };
 
-  // A stopped case was verified or being built when it stopped (CLS-3).
-  const stoppedFrom: CaseStatus | null = status === "STOPPED" ? (r.chance(0.6) ? "IN_PROGRESS" : "VERIFIED") : null;
-  const path = stoppedFrom ?? status;
-  const released = path === "IN_PROGRESS" || path === "COMPLETED";
-  const minAge = path === "COMPLETED" ? 150 : released ? 45 : path === "VERIFIED" ? 10 : 0;
+  const released = path !== "AWAITING_ALLOCATION";
+  const minAge = path === "COMPLETED" ? 150 : path === "IN_PROGRESS" ? 45 : released ? 10 : 0;
 
   const createdDay = addDays(today, -cast.age(r, path, minAge));
   const createdAt = moment(createdDay, null);
@@ -281,10 +272,6 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
     extra: Record<string, Json> = {},
   ) => ({ at, actorId, action, before: { status: from }, after: { status: to, ...extra } });
 
-  const decisions: Prisma.DecisionCreateManyInput[] = [];
-  const decide = (type: DecisionType, at: Date, reason: string | null = null) =>
-    decisions.push({ id: randomUUID(), caseId: id, type, reason, byId: type === "SUBMIT" ? officer : headOffice, at });
-
   record({
     at: createdAt,
     actorId: officer,
@@ -292,213 +279,181 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
     after: { ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)), documentsAdded: [] },
   });
 
-  let submittedAt: Date | null = null;
-  let verifiedAt: Date | null = null;
   let completedAt: Date | null = null;
   let release: PlannedRelease | null = null;
   const installments: Prisma.InstallmentCreateManyInput[] = [];
   const stageUpdates: Prisma.StageUpdateCreateManyInput[] = [];
   let steps = 0;
 
-  if (draft) {
-    last = moment(upToToday(addDays(createdDay, r.int(0, 10))), createdAt);
-  } else {
-    const submittedDay = upToToday(addDays(createdDay, r.int(0, 7)));
-    submittedAt = last = moment(submittedDay, last);
-    decide("SUBMIT", submittedAt);
-    record(move(submittedAt, officer, "case_submitted", "DRAFT", "SUBMITTED"));
+  if (released) {
+    // REL-2: on or after the day it was entered, never in the future.
+    const releasedDay = cast.releaseDay(r, createdDay, office, today);
+    const releaseAt = (last = moment(releasedDay, last));
+    release = {
+      id: randomUUID(),
+      caseId: id,
+      releasedOn: dayToDate(releasedDay),
+      // Version 1's letter stands for the District's release too, on the same day (see Path).
+      dsReleasedOn: dayToDate(releasedDay),
+      amount: RELEASE_AMOUNT,
+      byId: headOffice,
+      at: releaseAt,
+      districtId: office.districtId,
+      day: releasedDay,
+    };
+    // The writer adds the allocation letter's details. Version 1's letter moves the case on as `releaseV1`
+    // does; one with nothing paid has its allocation received, as the migration left such cases.
+    const releasedTo = path === "ALLOCATION_RECEIVED" ? path : "IN_PROGRESS";
+    record(
+      move(releaseAt, headOffice, "case_released", "AWAITING_ALLOCATION", releasedTo, { amount: RELEASE_AMOUNT }),
+      "RELEASED",
+    );
 
-    if (path === "RETURNED" || path === "REJECTED") {
-      last = moment(upToToday(addDays(submittedDay, r.int(1, 20))), last);
-      if (path === "RETURNED") {
-        const reason = r.pick(SEND_BACK_REASONS);
-        decide("SEND_BACK", last, reason);
-        record(move(last, headOffice, "case_sent_back", "SUBMITTED", "RETURNED", { reason }), "SENT_BACK");
-      } else {
-        const reason = r.pick(REJECT_REASONS);
-        decide("REJECT", last, reason);
-        record(move(last, headOffice, "case_rejected", "SUBMITTED", "REJECTED", { reason }), "REJECTED");
+    const stages = ctx.stages[kind];
+    let paid: number;
+    let reached: number;
+    if (path === "COMPLETED") {
+      paid = INSTALLMENT_COUNT;
+      reached = stages.length;
+    } else if (path === "ALLOCATION_RECEIVED") {
+      // Nothing paid, and so no stage recorded (STG-5) until change 0006's task 8 allows it.
+      paid = 0;
+      reached = 0;
+    } else {
+      paid = r.weighted(PAID_SHARES);
+      reached = r.int(0, stages.length);
+      // Both finished would have completed it (CLS-1).
+      if (paid === INSTALLMENT_COUNT && reached === stages.length) {
+        if (stages.length > 0) reached -= 1;
+        else paid -= 1;
       }
     }
+    const processing = path !== "COMPLETED" && paid < INSTALLMENT_COUNT && r.chance(0.5);
 
-    if (path === "VERIFIED" || released) {
-      const verifiedDay = upToToday(addDays(submittedDay, r.int(2, 30)));
-      verifiedAt = last = moment(verifiedDay, last);
-      decide("VERIFY", verifiedAt);
-      record(move(verifiedAt, headOffice, "case_verified", "SUBMITTED", "VERIFIED"), "VERIFIED");
+    // INS-2: each payment after the one before, and a payment starts only once the one before is paid.
+    const events = interleave<Event>(r, [
+      [...Array<Event>(paid).fill("pay"), ...(processing ? (["start"] as const) : [])],
+      Array<Event>(reached).fill("stage"),
+      Array<Event>(path === "ALLOCATION_RECEIVED" ? 0 : r.weighted(NOTE_SHARES)).fill("note"),
+    ]);
+    if (path === "COMPLETED") {
+      // Nothing is recorded after completion (STG-5), so the visits come before the last step.
+      const lastStep = events.findLastIndex((e) => e !== "note");
+      events.splice(lastStep, 0, ...events.splice(lastStep + 1));
+    }
 
-      if (released) {
-        // REL-2: on or after the verification day, never in the future.
-        const releasedDay = cast.releaseDay(r, verifiedDay, office, today);
-        const releaseAt = (last = moment(releasedDay, last));
-        release = {
+    const lastDay =
+      path === "COMPLETED"
+        ? upToToday(addDays(releasedDay, r.int(90, 360)))
+        : latestDay(releasedDay, addDays(today, -(r.chance(STALE_SHARE) ? r.int(30, 180) : r.int(0, 29))));
+    const span = dayDiff(releasedDay, lastDay);
+    const days = events.map(() => addDays(releasedDay, r.int(0, span))).sort();
+    if (days.length > 0) days[days.length - 1] = lastDay;
+
+    const payments: { day: string; at: Date }[] = [];
+    let start: { day: string; at: Date } | null = null;
+    let stagesReached = 0;
+    let current: { id: number } | null = null;
+    for (const [index, event] of events.entries()) {
+      const day = days[index];
+      last = moment(day, last);
+      if (event === "pay") payments.push({ day, at: last });
+      else if (event === "start") start = { day, at: last };
+      else {
+        const stage = event === "stage" ? stages[stagesReached++] : null;
+        const note = event === "note" || r.chance(0.4) ? r.pick(VISIT_NOTES) : null;
+        const update = {
           id: randomUUID(),
           caseId: id,
-          releasedOn: dayToDate(releasedDay),
-          amount: RELEASE_AMOUNT,
-          byId: headOffice,
-          at: releaseAt,
-          districtId: office.districtId,
-          day: releasedDay,
+          stageId: stage?.id ?? null,
+          visitedOn: dayToDate(day),
+          note,
+          byId: officer,
+          at: last,
         };
-        // The writer adds the allocation letter's details.
-        record(
-          move(releaseAt, headOffice, "case_released", "VERIFIED", "IN_PROGRESS", { amount: RELEASE_AMOUNT }),
-          "RELEASED",
-        );
-
-        const stages = ctx.stages[kind];
-        let paid: number;
-        let reached: number;
-        if (path === "COMPLETED") {
-          paid = INSTALLMENT_COUNT;
-          reached = stages.length;
-        } else {
-          paid = r.weighted(PAID_SHARES);
-          reached = r.int(0, stages.length);
-          // Both finished would have completed it (CLS-1).
-          if (paid === INSTALLMENT_COUNT && reached === stages.length) {
-            if (stages.length > 0) reached -= 1;
-            else paid -= 1;
-          }
-        }
-        const processing = path !== "COMPLETED" && paid < INSTALLMENT_COUNT && r.chance(0.5);
-
-        // INS-2: each payment after the one before, and a payment starts only once the one before is paid.
-        const events = interleave<Event>(r, [
-          [...Array<Event>(paid).fill("pay"), ...(processing ? (["start"] as const) : [])],
-          Array<Event>(reached).fill("stage"),
-          Array<Event>(r.weighted(NOTE_SHARES)).fill("note"),
-        ]);
-        if (path === "COMPLETED") {
-          // Nothing is recorded after completion (STG-5), so the visits come before the last step.
-          const lastStep = events.findLastIndex((e) => e !== "note");
-          events.splice(lastStep, 0, ...events.splice(lastStep + 1));
-        }
-
-        const lastDay =
-          path === "COMPLETED"
-            ? upToToday(addDays(releasedDay, r.int(90, 360)))
-            : stoppedFrom
-              ? upToToday(addDays(releasedDay, r.int(0, 200)))
-              : latestDay(releasedDay, addDays(today, -(r.chance(STALE_SHARE) ? r.int(30, 180) : r.int(0, 29))));
-        const span = dayDiff(releasedDay, lastDay);
-        const days = events.map(() => addDays(releasedDay, r.int(0, span))).sort();
-        if (days.length > 0) days[days.length - 1] = lastDay;
-
-        const payments: { day: string; at: Date }[] = [];
-        let start: { day: string; at: Date } | null = null;
-        let stagesReached = 0;
-        let current: { id: number } | null = null;
-        for (const [index, event] of events.entries()) {
-          const day = days[index];
-          last = moment(day, last);
-          if (event === "pay") payments.push({ day, at: last });
-          else if (event === "start") start = { day, at: last };
-          else {
-            const stage = event === "stage" ? stages[stagesReached++] : null;
-            const note = event === "note" || r.chance(0.4) ? r.pick(VISIT_NOTES) : null;
-            const update = {
-              id: randomUUID(),
-              caseId: id,
-              stageId: stage?.id ?? null,
-              visitedOn: dayToDate(day),
-              note,
-              byId: officer,
-              at: last,
-            };
-            stageUpdates.push(update);
-            // As src/server/stages/commands.ts records it.
-            record({
-              at: last,
-              actorId: officer,
-              action: "stage_updated",
-              entityType: "stage_update",
-              entityId: update.id,
-              before: { stageId: current?.id ?? null },
-              after: {
-                stageIds: stage ? [stage.id] : [],
-                stages: stage ? [stage.name] : [],
-                stageNames: stage ? [stage.names] : [],
-                visitedOn: day,
-                note,
-                photos: [],
-              },
-            });
-            if (stage) current = stage;
-          }
-        }
-        steps = events.length;
-
-        // As src/server/installments/commands.ts records them.
-        const recordStart = (at: Date, installmentId: string, number: number, expectedOn: string, purpose: Json) =>
-          record({
-            at,
-            actorId: officer,
-            action: "installment_started",
-            entityType: "installment",
-            entityId: installmentId,
-            before: { number, status: "NOT_STARTED" },
-            after: { number, status: "PROCESSING", expectedOn, purpose, note: null },
-          });
-        for (let number = 1; number <= INSTALLMENT_COUNT; number++) {
-          const payment = payments[number - 1];
-          const base = { id: randomUUID(), caseId: id, number, amount: INSTALLMENT_AMOUNT };
-          const purpose = r.chance(0.3) ? r.pick(PURPOSES) : null;
-          if (payment) {
-            // Started a few days before it was paid, and after the one before was paid (INS-2).
-            const after = number === 1 ? releaseAt : payments[number - 2].at;
-            const startedAt = new Date(
-              Math.max((after.getTime() + payment.at.getTime()) / 2, payment.at.getTime() - r.int(2, 14) * DAY),
-            );
-            // INS-3: expected on or after the release.
-            const expectedOn = latestDay(colomboDay(startedAt), addDays(payment.day, -r.int(0, 7)));
-            installments.push({
-              ...base,
-              status: "RELEASED",
-              expectedOn: dayToDate(expectedOn),
-              releasedOn: dayToDate(payment.day),
-              purpose,
-              updatedAt: payment.at,
-            });
-            recordStart(startedAt, base.id, number, expectedOn, purpose);
-            record({
-              at: payment.at,
-              actorId: officer,
-              action: "installment_paid",
-              entityType: "installment",
-              entityId: base.id,
-              before: { number, status: "PROCESSING", note: null },
-              after: { number, status: "RELEASED", releasedOn: payment.day, note: null },
-            });
-          } else if (start && number === paid + 1) {
-            // Some have passed already, so the to-do panel has overdue payments (HOME-3).
-            const expectedOn = addDays(start.day, r.int(3, 45));
-            installments.push({
-              ...base,
-              status: "PROCESSING",
-              expectedOn: dayToDate(expectedOn),
-              purpose,
-              updatedAt: start.at,
-            });
-            recordStart(start.at, base.id, number, expectedOn, purpose);
-          } else {
-            installments.push({ ...base, status: "NOT_STARTED", updatedAt: releaseAt });
-          }
-        }
-        if (path === "COMPLETED") {
-          completedAt = last;
-          // The system finishes it in the same step (CLS-1), so the history names no one.
-          record(move(last, null, "case_completed", "IN_PROGRESS", "COMPLETED"), "COMPLETED");
-        }
+        stageUpdates.push(update);
+        // As src/server/stages/commands.ts records it.
+        record({
+          at: last,
+          actorId: officer,
+          action: "stage_updated",
+          entityType: "stage_update",
+          entityId: update.id,
+          before: { stageId: current?.id ?? null },
+          after: {
+            stageIds: stage ? [stage.id] : [],
+            stages: stage ? [stage.name] : [],
+            stageNames: stage ? [stage.names] : [],
+            visitedOn: day,
+            note,
+            photos: [],
+          },
+        });
+        if (stage) current = stage;
       }
     }
+    steps = events.length;
 
-    if (stoppedFrom) {
-      last = moment(upToToday(addDays(colomboDay(last), r.int(1, 60))), last);
-      const reason = r.pick(STOP_REASONS);
-      decide("STOP", last, reason);
-      record(move(last, headOffice, "case_stopped", stoppedFrom, "STOPPED", { reason }), "STOPPED");
+    // As src/server/installments/commands.ts records them.
+    const recordStart = (at: Date, installmentId: string, number: number, expectedOn: string, purpose: Json) =>
+      record({
+        at,
+        actorId: officer,
+        action: "installment_started",
+        entityType: "installment",
+        entityId: installmentId,
+        before: { number, status: "NOT_STARTED" },
+        after: { number, status: "PROCESSING", expectedOn, purpose, note: null },
+      });
+    for (let number = 1; number <= INSTALLMENT_COUNT; number++) {
+      const payment = payments[number - 1];
+      const base = { id: randomUUID(), caseId: id, number, amount: INSTALLMENT_AMOUNT };
+      const purpose = r.chance(0.3) ? r.pick(PURPOSES) : null;
+      if (payment) {
+        // Started a few days before it was paid, and after the one before was paid (INS-2).
+        const after = number === 1 ? releaseAt : payments[number - 2].at;
+        const startedAt = new Date(
+          Math.max((after.getTime() + payment.at.getTime()) / 2, payment.at.getTime() - r.int(2, 14) * DAY),
+        );
+        // INS-3: expected on or after the release.
+        const expectedOn = latestDay(colomboDay(startedAt), addDays(payment.day, -r.int(0, 7)));
+        installments.push({
+          ...base,
+          status: "RELEASED",
+          expectedOn: dayToDate(expectedOn),
+          releasedOn: dayToDate(payment.day),
+          purpose,
+          updatedAt: payment.at,
+        });
+        recordStart(startedAt, base.id, number, expectedOn, purpose);
+        record({
+          at: payment.at,
+          actorId: officer,
+          action: "installment_paid",
+          entityType: "installment",
+          entityId: base.id,
+          before: { number, status: "PROCESSING", note: null },
+          after: { number, status: "RELEASED", releasedOn: payment.day, note: null },
+        });
+      } else if (start && number === paid + 1) {
+        // Some have passed already, so the to-do panel has overdue payments (HOME-3).
+        const expectedOn = addDays(start.day, r.int(3, 45));
+        installments.push({
+          ...base,
+          status: "PROCESSING",
+          expectedOn: dayToDate(expectedOn),
+          purpose,
+          updatedAt: start.at,
+        });
+        recordStart(start.at, base.id, number, expectedOn, purpose);
+      } else {
+        installments.push({ ...base, status: "NOT_STARTED", updatedAt: releaseAt });
+      }
+    }
+    if (path === "COMPLETED") {
+      completedAt = last;
+      // The system finishes it in the same step (CLS-1), so the history names no one.
+      record(move(last, null, "case_completed", "IN_PROGRESS", "COMPLETED"), "COMPLETED");
     }
   }
 
@@ -508,20 +463,16 @@ export function planCase(ctx: Context, office: Office, status: CaseStatus): Plan
       id,
       ...fields,
       // The 12-digit form, so old and new numbers match (CASE-6).
-      nicKey: nic && nicKey(nic),
+      nicKey: nicKey(nic),
       // Built in the DS of residence (CASE-13), as every case was before change 0006.
       buildDsOfficeId: office.id,
-      status,
+      status: path,
       createdById: officer,
       createdAt,
       updatedAt: last,
-      submittedAt,
-      verifiedAt,
       completedAt,
-      statusBeforeStop: stoppedFrom,
-      version: 1 + decisions.length + steps,
+      version: 1 + (release ? 1 : 0) + steps,
     },
-    decisions,
     release,
     installments,
     stageUpdates,
@@ -571,7 +522,11 @@ export type WriteOptions = {
   prepare?: (tx: Prisma.TransactionClient) => Promise<void>;
 };
 
-/** Writes the planned cases in one transaction, with their case numbers and allocation letters. */
+/**
+ * Writes the planned cases in one transaction, with their Application Numbers and allocation letters. Each
+ * letter also stands for the District's release to each DS office of its cases, as version 1's letter does
+ * until change 0006's tasks 6 and 7 (`recordLetter`).
+ */
 export async function writePlanned(
   db: PrismaClient,
   r: Random,
@@ -581,6 +536,7 @@ export async function writePlanned(
   // REL-2: one allocation letter for the cases of a district released on the same day.
   const letters = new Map<string, Prisma.ReleaseLetterCreateManyInput>();
   const onLetter = new Map<string, Planned[]>();
+  const dsReleases = new Map<string, Prisma.DsReleaseCreateManyInput>();
   const releases: Prisma.ReleaseCreateManyInput[] = [];
   for (const p of planned) {
     if (!p.release) continue;
@@ -601,7 +557,21 @@ export async function writePlanned(
       onLetter.set(key, []);
     }
     onLetter.get(key)!.push(p);
-    releases.push({ ...row, letterId: letter.id });
+    const dsKey = `${letter.id}:${p.office.id}`;
+    let dsRelease = dsReleases.get(dsKey);
+    if (!dsRelease) {
+      dsRelease = {
+        id: `${idPrefix}${randomUUID()}`,
+        districtId,
+        dsOfficeId: p.office.id,
+        referenceNumber: letter.letterNumber,
+        releasedOn: letter.letterDate,
+        byId: letter.byId,
+        at: letter.at,
+      };
+      dsReleases.set(dsKey, dsRelease);
+    }
+    releases.push({ ...row, letterId: letter.id, dsReleaseId: dsRelease.id });
   }
   // The release's history names its letter, as recordLetter writes it (src/server/releases/commands.ts).
   for (const [key, cases] of onLetter) {
@@ -619,11 +589,10 @@ export async function writePlanned(
     }
   }
 
-  // CASE-5: numbers in the order of submitting, within each office and year.
-  const groups = new Map<string, { office: Office; year: number; cases: Prisma.CaseCreateManyInput[] }>();
+  // CASE-12: numbers in the order of entering, within each office and year.
+  const groups = new Map<string, { office: Office; year: number; cases: PlannedCase[] }>();
   for (const { office, case: c } of planned) {
-    if (!c.submittedAt) continue;
-    const year = colomboYear(new Date(c.submittedAt));
+    const year = colomboYear(new Date(c.createdAt!));
     const key = `${office.id}:${year}`;
     const group = groups.get(key) ?? { office, year, cases: [] };
     group.cases.push(c);
@@ -633,24 +602,24 @@ export async function writePlanned(
   await db.$transaction(
     async (tx) => {
       await prepare?.(tx);
-      for (const { office, year, cases } of groups.values()) {
-        cases.sort((a, b) => new Date(a.submittedAt!).getTime() - new Date(b.submittedAt!).getTime());
-        // Takes a block of numbers in one statement, so a real submit at the same moment can't take one of them.
-        const counter = await tx.caseNumberCounter.upsert({
-          where: { dsOfficeId_year: { dsOfficeId: office.id, year } },
-          create: { dsOfficeId: office.id, year, last: cases.length },
-          update: { last: { increment: cases.length } },
-          select: { last: true },
+      const cases: Prisma.CaseCreateManyInput[] = [];
+      for (const { office, year, cases: group } of groups.values()) {
+        group.sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
+        // After the highest number of this form the office already has, so none is taken twice (CASE-12).
+        const prefix = formatCaseNumber(office.code, year, 0).slice(0, -3);
+        const taken = await tx.case.findMany({
+          where: { dsOfficeId: office.id, applicationNumber: { startsWith: prefix } },
+          select: { applicationNumber: true },
         });
-        const first = counter.last - cases.length + 1;
-        cases.forEach((c, index) => {
-          c.applicationNumber = formatCaseNumber(office.code, year, first + index);
-          c.applicationKey = applicationKey(c.applicationNumber);
+        const highest = Math.max(0, ...taken.map((c) => Number(c.applicationNumber.slice(prefix.length)) || 0));
+        group.forEach((c, index) => {
+          const applicationNumber = formatCaseNumber(office.code, year, highest + index + 1);
+          cases.push({ ...c, applicationNumber, applicationKey: applicationKey(applicationNumber) });
         });
       }
-      for (const rows of chunks(planned.map((p) => p.case))) await tx.case.createMany({ data: rows });
-      for (const rows of chunks(planned.flatMap((p) => p.decisions))) await tx.decision.createMany({ data: rows });
+      for (const rows of chunks(cases)) await tx.case.createMany({ data: rows });
       for (const rows of chunks([...letters.values()])) await tx.releaseLetter.createMany({ data: rows });
+      for (const rows of chunks([...dsReleases.values()])) await tx.dsRelease.createMany({ data: rows });
       for (const rows of chunks(releases)) await tx.release.createMany({ data: rows });
       for (const rows of chunks(planned.flatMap((p) => p.installments)))
         await tx.installment.createMany({ data: rows });
@@ -658,11 +627,13 @@ export async function writePlanned(
         await tx.stageUpdate.createMany({ data: rows });
 
       if (!history) return;
+      // CASE-12: a case is entered with its Application Number, as saveCase logs it.
+      const numbers = new Map(cases.map((c) => [c.id, c.applicationNumber]));
       // In the order things happened, so steps at the same moment keep their order in the history.
       const audit = planned
         .flatMap((p) =>
           p.history.map((step) => {
-            if (step.action === "case_submitted") step.after.caseNumber = p.case.applicationNumber ?? null;
+            if (step.action === "case_created") step.after.applicationNumber = numbers.get(p.case.id) ?? null;
             return { ...step, caseId: p.case.id };
           }),
         )
@@ -681,10 +652,9 @@ export async function writePlanned(
 
 /**
  * Removes every case whose id starts with `idPrefix`, with everything that hangs off it, including
- * anything people added to one while trying the system. Each case-number counter the cases took
- * numbers from goes back to where it stood before them, unless a later case holds a higher number.
- * Audit records stay, because the audit log can never be cleaned up (HIS-3). Returns how many cases
- * were removed.
+ * anything people added to one while trying the system, and the letters and District releases left with
+ * no case. Audit records stay, because the audit log can never be cleaned up (HIS-3). Returns how many
+ * cases were removed.
  */
 export async function removeMadeUp(
   db: PrismaClient,
@@ -697,46 +667,23 @@ export async function removeMadeUp(
 
   const removed = await db.$transaction(
     async (tx) => {
-      // The counters the cases took numbers from, with the lowest number each one gave them.
-      const used = new Map<string, { dsOfficeId: number; year: number; prefix: string; lowest: number }>();
-      for (const { dsOfficeId, applicationNumber } of await tx.case.findMany({
-        where: { id: { startsWith: idPrefix }, applicationNumber: { not: null } },
-        select: { dsOfficeId: true, applicationNumber: true },
-      })) {
-        const prefix = applicationNumber!.slice(0, applicationNumber!.lastIndexOf("-") + 1);
-        const year = Number(prefix.slice(-5, -1));
-        const sequence = Number(applicationNumber!.slice(prefix.length));
-        const key = `${dsOfficeId}:${year}`;
-        if (sequence < (used.get(key)?.lowest ?? Infinity))
-          used.set(key, { dsOfficeId, year, prefix, lowest: sequence });
-      }
-
       await tx.storedFile.deleteMany({ where: theirs });
       await tx.notification.deleteMany({ where: theirs });
       await tx.installment.deleteMany({ where: theirs });
       await tx.release.deleteMany({ where: theirs });
-      // Their letters, and any letter someone recorded only for these cases, with its scan.
-      const emptyLetter = { letter: { releases: { none: {} } } };
+      // Their letters and District releases, and any someone recorded only for these cases, with its scan.
+      const emptyLetter: Prisma.StoredFileWhereInput = {
+        OR: [{ letter: { releases: { none: {} } } }, { dsRelease: { releases: { none: {} } } }],
+      };
       letterScans.push(
         ...(await tx.storedFile.findMany({ where: emptyLetter, select: { storedName: true, thumbName: true } })),
       );
       await tx.storedFile.deleteMany({ where: emptyLetter });
       await tx.releaseLetter.deleteMany({ where: { releases: { none: {} } } });
+      await tx.dsRelease.deleteMany({ where: { releases: { none: {} } } });
       await tx.stageUpdate.deleteMany({ where: theirs });
       await tx.decision.deleteMany({ where: theirs });
       const cases = await tx.case.deleteMany({ where: { id: { startsWith: idPrefix } } });
-
-      for (const { dsOfficeId, year, prefix, lowest } of used.values()) {
-        const left = await tx.case.findMany({
-          where: { dsOfficeId, applicationNumber: { startsWith: prefix } },
-          select: { applicationNumber: true },
-        });
-        // Numbers below theirs were real ones, so they are never given out again (CASE-5).
-        const last = Math.max(lowest - 1, ...left.map((c) => Number(c.applicationNumber!.slice(prefix.length))));
-        const where = { dsOfficeId_year: { dsOfficeId, year } };
-        if (last > 0) await tx.caseNumberCounter.update({ where, data: { last } });
-        else await tx.caseNumberCounter.delete({ where });
-      }
       await finish?.(tx);
       return cases.count;
     },
@@ -768,8 +715,8 @@ const LOAD_CAST: Cast = {
     };
   },
   age: (r, _path, minAge) => r.int(minAge, MAX_AGE_DAYS),
-  releaseDay: (r, verifiedDay, _office, today) => {
-    const day = addDays(verifiedDay, r.int(1, 30));
+  releaseDay: (r, enteredDay, _office, today) => {
+    const day = addDays(enteredDay, r.int(1, 30));
     return day > today ? today : day;
   },
 };

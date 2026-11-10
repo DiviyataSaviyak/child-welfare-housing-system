@@ -1,18 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import {
-  CaseColumns,
-  CaseDetailsSection,
-  CaseNotes,
-  caseSubtitle,
-  ReplacementNotes,
-} from "@/components/cases/case-view";
+import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
-import { CompletedBanner, StoppedBanner } from "@/components/progress/case-banners";
+import { CompletedBanner } from "@/components/progress/case-banners";
 import { CaseHistory } from "@/components/progress/case-history";
 import { InstallmentAction } from "@/components/progress/installment-action";
 import { ReasonAction } from "@/components/progress/reason-action";
@@ -78,7 +72,7 @@ export default async function DsCasePage({
       texts={{
         button: t("deleteCase.button"),
         title: t("deleteCase.title"),
-        text: t("deleteCase.text", { number: details.applicationNumber ?? t("noNumber") }),
+        text: t("deleteCase.text", { number: details.applicationNumber }),
         reason: t("deleteCase.reason"),
         reasonHelp: t("deleteCase.reasonHelp"),
         confirm: t("deleteCase.confirm"),
@@ -151,8 +145,6 @@ export default async function DsCasePage({
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
-      <CaseNotes details={details} audience="ds" />
-      <StoppedBanner details={details} />
       <ReplacementNotes details={details} audience="ds" />
       <CompletedBanner details={details} />
       <CaseColumns

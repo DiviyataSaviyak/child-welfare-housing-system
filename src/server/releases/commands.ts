@@ -43,14 +43,16 @@ export type LetterInput = {
 };
 
 const refused = (error: ReleaseCommandError) => ({ ok: false as const, error, errors: {} });
-const verifiedDay = (verifiedAt: Date | null) => verifiedAt && colomboDay(verifiedAt);
 
 /**
  * REL-2, REL-3: records one allocation letter to a District Secretary, releasing Rs. 2,000,000 for each
- * verified case ticked on it, all of them in that district. In one transaction the letter is saved with
- * its scan, and each case moves to IN_PROGRESS with its release and four NOT_STARTED installments of
- * Rs. 500,000, and its DS office's officers are notified (transitions.ts). The amounts are never typed
- * in. If any case can't be released, nothing is.
+ * case awaiting its allocation ticked on it, all of them built in that district. In one transaction the
+ * letter is saved with its scan, and each case moves to IN_PROGRESS with its release and four NOT_STARTED
+ * installments of Rs. 500,000, and its DS offices' officers are notified (transitions.ts). The amounts are
+ * never typed in. If any case can't be released, nothing is.
+ *
+ * This is version 1's letter, which released to the DS at once; change 0006's task 6 makes it the
+ * Ministry's allocation to the district, and its task 7 adds the District's release.
  */
 export async function recordLetter(db: PrismaClient, actor: Actor, input: LetterInput): Promise<LetterResult> {
   const ids = [...new Set(input.cases.map((c) => c.id))].sort();
@@ -66,7 +68,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
         status: true,
         dsOfficeId: true,
         version: true,
-        verifiedAt: true,
+        createdAt: true,
         ...CASE_PLACES,
       },
     }),
@@ -81,7 +83,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
   }
 
   const now = new Date();
-  const limits = { earliest: latestDay(found.map((c) => verifiedDay(c.verifiedAt))), today: colomboDay(now) };
+  const limits = { earliest: latestDay(found.map((c) => colomboDay(c.createdAt))), today: colomboDay(now) };
   const parsed = parseReleaseForm((field) => input.form[field], limits);
   if (!parsed.ok) return { ok: false, error: null, errors: parsed.errors };
   const shown = new Map(input.cases.map((c) => [c.id, c.version]));
@@ -228,7 +230,7 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
                     select: {
                       id: true,
                       version: true,
-                      verifiedAt: true,
+                      createdAt: true,
                       installments: { select: { expectedOn: true, releasedOn: true } },
                     },
                   },
@@ -247,7 +249,7 @@ export async function correctRelease(db: PrismaClient, actor: Actor, input: Rele
   const cases = current.releases.map((release) => release.case);
 
   const limits = {
-    earliest: latestDay(cases.map((c) => verifiedDay(c.verifiedAt))),
+    earliest: latestDay(cases.map((c) => colomboDay(c.createdAt))),
     today: colomboDay(new Date()),
   };
   const parsed = parseReleaseForm((field) => input.form[field], limits);

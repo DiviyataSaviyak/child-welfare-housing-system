@@ -55,7 +55,7 @@ export default async function DsNotificationsPage() {
                     </span>
                     <span className="text-[15px] text-muted-foreground">
                       {t("detail", {
-                        number: item.applicationNumber ?? tc("noNumber"),
+                        number: item.applicationNumber,
                         date: formatDate(item.createdAt),
                       })}
                     </span>

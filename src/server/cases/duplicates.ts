@@ -11,9 +11,8 @@ import { caseScope, type Viewer } from "../permissions";
  * - and only the Application Number and DS office of a case elsewhere, since another DS may use the
  *   same number (CASE-12);
  * - the Ministry sees all three.
- * The number can be empty only on a case left over from version 1's drafts, which the migration deleted.
  */
-export type NicMatch = { applicationNumber: string | null; name: string | null; officeName: string | null };
+export type NicMatch = { applicationNumber: string; name: string | null; officeName: string | null };
 
 /** The other cases that share a NIC key (CASE-6). There are no drafts, so every case counts. */
 function matchWhere(key: string, exceptCaseId: string | null): Prisma.CaseWhereInput {
@@ -52,17 +51,20 @@ export async function findNicMatches(
   });
 }
 
-/** A matching case as Head Office's check view shows it: everything, with a link (CHK-2). */
+/** A matching case as the Ministry's case page shows it: everything, with a link (CASE-6). */
 export type DuplicateCase = {
   id: string;
-  applicationNumber: string | null;
+  applicationNumber: string;
   status: CaseStatus;
   name: string | null;
   childName: string | null;
   officeName: string;
 };
 
-/** CHK-2: every other case with the same NIC as a case Head Office is checking, in full. */
+/**
+ * CASE-6: every other case with the same NIC as a case awaiting the Ministry's allocation, in full, for the
+ * Ministry's case page. Nobody checks a case first any more (change 0006).
+ */
 export async function duplicatesInFull(
   db: PrismaClient,
   viewer: Viewer,
@@ -88,8 +90,9 @@ export async function duplicatesInFull(
 }
 
 /**
- * CHK-1: which of these cases share their NIC with another case, for the flag in the check queue.
- * One query for the whole page of cases.
+ * CASE-6: which of these cases share their NIC with another case, for the flag on each row of the
+ * Ministry's letter form (REL-2, change 0006's task 6), as version 1's check queue showed it. One query for
+ * all the cases.
  */
 export async function duplicateFlags(
   db: PrismaClient,

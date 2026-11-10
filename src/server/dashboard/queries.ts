@@ -24,7 +24,7 @@ export type Figures = {
 
 export type StaleCase = {
   id: string;
-  applicationNumber: string | null;
+  applicationNumber: string;
   name: string | null;
   childName: string | null;
   officeName: string;
@@ -74,7 +74,6 @@ export async function dashboard(
   const where: Prisma.CaseWhereInput = {
     // AND, not a spread: a chosen district must narrow the viewer's area, never replace it.
     AND: [scope, filter.districtId ? { buildDsOffice: { districtId: filter.districtId } } : {}],
-    status: { not: "DRAFT" },
     ...(filter.category && { category: filter.category }),
     ...(filter.kind && { kind: filter.kind }),
   };

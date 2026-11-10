@@ -3,12 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ProgressState } from "@/components/progress/types";
-import { reopenCase, stopCase } from "@/server/cases/stop";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { undoInstallmentPayment } from "@/server/installments/commands";
 
-/** Head Office's actions on a running case: stop and reopen (CLS-2, CLS-3), and undo a payment (INS-6). */
+/** The Ministry's action on a running case: undo a payment (INS-6). */
 
 const read = (form: FormData, field: string) => {
   const value = form.get(field);
@@ -26,25 +25,6 @@ function target(form: FormData): { caseId: string; version: number; reason: stri
 function done(caseId: string, notice: string): never {
   revalidatePath("/ministry", "layout");
   redirect(`/ministry/cases/${caseId}?notice=${notice}`);
-}
-
-export async function stopAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
-  const actor = await requireRole("MINISTRY_OFFICER");
-  const chosen = target(form);
-  if (!chosen) return { error: "notFound", errors: {} };
-  const askAnotherName = read(form, "anotherName") === "1";
-  const result = await stopCase(db, actor, { ...chosen, askAnotherName });
-  if (!result.ok) return { error: result.error, errors: {} };
-  done(chosen.caseId, askAnotherName ? "stoppedAskName" : "stopped");
-}
-
-export async function reopenAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
-  const actor = await requireRole("MINISTRY_OFFICER");
-  const chosen = target(form);
-  if (!chosen) return { error: "notFound", errors: {} };
-  const result = await reopenCase(db, actor, chosen);
-  if (!result.ok) return { error: result.error, errors: {} };
-  done(chosen.caseId, "reopened");
 }
 
 export async function undoInstallmentAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {

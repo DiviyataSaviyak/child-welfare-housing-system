@@ -42,7 +42,7 @@ export default async function MinistryEditCasePage({ params }: { params: Promise
         title={t("form.editTitle")}
         subtitle={
           <span className="flex items-center gap-3">
-            {details.applicationNumber ?? t("noNumber")}
+            {details.applicationNumber}
             <StatusChip status={details.status} />
           </span>
         }

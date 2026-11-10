@@ -1,51 +1,42 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import {
-  CaseColumns,
-  CaseDetailsSection,
-  CaseNotes,
-  caseSubtitle,
-  ReplacementNotes,
-} from "@/components/cases/case-view";
+import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
-import { CompletedBanner, StoppedBanner } from "@/components/progress/case-banners";
+import { CompletedBanner } from "@/components/progress/case-banners";
 import { CaseHistory } from "@/components/progress/case-history";
 import { ReasonAction } from "@/components/progress/reason-action";
 import { StageSection } from "@/components/progress/stage-section";
 import { CorrectRelease } from "@/components/review/correct-release";
-import { DecisionPanel } from "@/components/review/decision-panel";
 import { DuplicateCases } from "@/components/review/duplicate-cases";
 import { ReviewNotice } from "@/components/review/review-notice";
 import { colomboDay } from "@/lib/dates";
-import { balance, formatRupees } from "@/lib/money";
 import { duplicatesInFull } from "@/server/cases/duplicates";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
 import { canDeleteCase, canEditDetails } from "@/server/cases/rules";
-import { statusToReopen } from "@/server/cases/stop";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { caseHistory } from "@/server/history/queries";
 import { lastPaid } from "@/server/installments/rules";
 import { getStageProgress } from "@/server/stages/queries";
-import { correctReleaseAction, decideAction } from "../../check/actions";
+import { correctReleaseAction } from "../../release/actions";
 import { deleteCaseAction } from "../actions";
-import { reopenAction, stopAction, undoInstallmentAction } from "./actions";
+import { undoInstallmentAction } from "./actions";
 
-/** What a stop, reopen or undo leaves on the page, by its key under "progress.notices". */
-const NOTICES = ["stopped", "stoppedAskName", "reopened", "undone"] as const;
+/** What an undone payment leaves on the page, by its key under "progress.notices". */
+const NOTICES = ["undone"] as const;
 const isNotice = (value: unknown): value is (typeof NOTICES)[number] =>
   typeof value === "string" && (NOTICES as readonly string[]).includes(value);
 
 /**
- * Head Office's case page (UI-7). A submitted case can be decided here as in the check view (CHK-2,
- * CHK-3); a verified one leads to its district's allocation letter (REL-2), and the letter of a
- * recorded release can be corrected (REL-4). A running case
- * shows its installments, stages with photos (STG-6) and history (HIS-2); Head Office can stop and
- * reopen it (CLS-2, CLS-3) and undo the last payment (INS-6).
+ * The Ministry's case page (UI-7). A case awaiting its allocation shows the other cases with its NIC
+ * (CASE-6) and leads to its district's allocation letter (REL-2); the letter of a recorded release can be
+ * corrected (REL-4). A running case shows its installments, stages with photos (STG-6) and history
+ * (HIS-2), and the Ministry can undo the last payment (INS-6). Nobody checks, stops or reopens a case any
+ * more (change 0006).
  */
 export default async function HoCasePage({
   params,
@@ -60,33 +51,29 @@ export default async function HoCasePage({
   const details = await getCase(db, viewer, id, locale);
   if (!details) notFound();
 
-  const [t, tr, tp, history, progress, subtitle] = await Promise.all([
+  const awaiting = details.status === "AWAITING_ALLOCATION";
+  const [t, tr, tp, history, progress, subtitle, duplicates] = await Promise.all([
     getTranslations("cases"),
     getTranslations("review"),
     getTranslations("progress"),
     caseHistory(db, viewer, details.id, locale),
     details.release ? getStageProgress(db, details.id, details.kind, locale) : Promise.resolve(null),
     caseSubtitle(details, "ministry"),
+    // Nobody checks a case before the Ministry allocates it, so its NIC matches show here (CASE-6).
+    awaiting
+      ? duplicatesInFull(db, viewer, { caseId: details.id, nic: details.nic, dsOfficeId: details.dsOfficeId }, locale)
+      : Promise.resolve([]),
   ]);
   const notice = (await searchParams).notice;
   const justCreated = notice === "created";
   const name = caseName(t, details.name, details.childName);
-  const number = details.applicationNumber ?? t("noNumber");
+  const number = details.applicationNumber;
   const now = new Date();
-  const duplicates =
-    details.status === "SUBMITTED"
-      ? await duplicatesInFull(
-          db,
-          viewer,
-          { caseId: details.id, nic: details.nic, dsOfficeId: details.dsOfficeId },
-          locale,
-        )
-      : [];
   const hidden = { caseId: details.id, version: String(details.version) };
   const reasonTexts = {
-    reasonHelp: tp("stop.reasonHelp"),
-    cancel: tp("stop.cancel"),
-    working: tp("stop.working"),
+    reasonHelp: tp("reasonPopup.reasonHelp"),
+    cancel: tp("reasonPopup.cancel"),
+    working: tp("reasonPopup.working"),
   };
 
   // CASE-8: a case awaiting its allocation can be deleted, with a reason.
@@ -106,55 +93,6 @@ export default async function HoCasePage({
         confirm: t("deleteCase.confirm"),
         cancel: t("deleteCase.cancel"),
         working: t("deleteCase.working"),
-      }}
-    />
-  );
-
-  const canStop = details.status === "VERIFIED" || details.status === "IN_PROGRESS";
-  const stop = canStop && (
-    <ReasonAction
-      key={`stop-${details.version}`}
-      id="stop"
-      look="danger"
-      hidden={hidden}
-      action={stopAction}
-      ask={{ label: tp("stop.askName"), help: tp("stop.askNameHelp"), confirm: tp("stop.confirmAsk") }}
-      texts={{
-        ...reasonTexts,
-        button: tp("stop.button"),
-        title: tp("stop.title"),
-        text: details.release
-          ? tp("stop.text", {
-              name,
-              number,
-              balance: formatRupees(balance(details.release, details.installments), locale),
-            })
-          : tp("stop.textNoRelease", { name, number }),
-        reason: tp("stop.reason"),
-        confirm: tp("stop.confirm"),
-      }}
-    />
-  );
-  const reopen = details.status === "STOPPED" && (
-    <ReasonAction
-      key={`reopen-${details.version}`}
-      id="reopen"
-      look="plain"
-      hidden={hidden}
-      action={reopenAction}
-      texts={{
-        ...reasonTexts,
-        button: tp("stop.reopen"),
-        title: tp("stop.reopenTitle"),
-        text: tp("stop.reopenText", {
-          name,
-          number,
-          status: t(
-            `status.${statusToReopen({ statusBeforeStop: details.stop?.statusBefore ?? null, hasRelease: details.release !== null })}`,
-          ),
-        }),
-        reason: tp("stop.reopenReason"),
-        confirm: tp("stop.reopenConfirm"),
       }}
     />
   );
@@ -193,7 +131,6 @@ export default async function HoCasePage({
         aside={
           <div className="flex items-center gap-3.5">
             <StatusChip status={details.status} />
-            {stop}
             {remove}
           </div>
         }
@@ -214,28 +151,14 @@ export default async function HoCasePage({
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
-      <ReviewNotice notice={notice} details={details} />
-      <CaseNotes details={details} audience="ministry" />
-      <StoppedBanner details={details} reopen={reopen} />
+      <ReviewNotice notice={notice} />
       <ReplacementNotes details={details} audience="ministry" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={
           <>
             {duplicates.length > 0 && <DuplicateCases matches={duplicates} />}
-            {details.status === "SUBMITTED" && (
-              <div className="rounded-xl border bg-card px-6 pb-5 [&>section]:border-t-0">
-                <DecisionPanel
-                  key={details.version}
-                  caseId={details.id}
-                  version={details.version}
-                  from="case"
-                  caseLabel={{ name, number }}
-                  action={decideAction}
-                />
-              </div>
-            )}
-            {details.status === "VERIFIED" && (
+            {awaiting && (
               <section
                 aria-labelledby="release-title"
                 className="flex flex-col gap-3 rounded-xl border bg-card px-6 py-5"
@@ -243,9 +166,10 @@ export default async function HoCasePage({
                 <h2 id="release-title" className="text-xl font-bold">
                   {tr("letters.caseTitle")}
                 </h2>
-                <p>{tr("letters.caseText", { district: details.districtName })}</p>
+                {/* CASE-13: the letter goes to the district where it is built. */}
+                <p>{tr("letters.caseText", { district: details.buildDistrictName })}</p>
                 <Link
-                  href={`/ministry/release?districtId=${details.districtId}`}
+                  href={`/ministry/release?districtId=${details.buildDistrictId}`}
                   className="flex h-12 items-center self-start rounded-lg bg-primary px-5.5 text-[17px] font-bold text-primary-foreground"
                 >
                   {tr("letters.caseGo")}
@@ -263,7 +187,7 @@ export default async function HoCasePage({
                     key={details.version}
                     caseId={details.id}
                     version={details.version}
-                    limits={{ earliest: details.release.letter.latestVerification, today: colomboDay(now) }}
+                    limits={{ earliest: details.release.letter.latestEntered, today: colomboDay(now) }}
                     current={{
                       letterNumber: details.release.letter.letterNumber,
                       letterDate: details.release.letter.letterDate,

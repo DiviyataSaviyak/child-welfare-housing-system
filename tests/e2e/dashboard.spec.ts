@@ -8,7 +8,9 @@ const ALL_DISTRICTS = "සියලු දිස්ත්‍රික්ක ප�
 
 // The figures themselves are checked against the database in src/server/dashboard/dashboard.db.test.ts
 // (AC-17): other tests add cases at the same time, so the numbers on screen keep changing here.
-test("Head Office's dashboard: totals, a district's DS offices, filters and the queues (DSH-1)", async ({ page }) => {
+test("the Ministry's dashboard: totals, a district's DS offices, filters and the waiting count (DSH-1)", async ({
+  page,
+}) => {
   await signInAs(page, "ho0001", /\/ministry$/);
 
   for (const label of ["මුළු ප්‍රතිලාභීන්", "වැඩ සිදුවෙමින්", "නිම කළ", "නිදහස් කළ මුදල (රු.)"])
@@ -38,11 +40,9 @@ test("Head Office's dashboard: totals, a district's DS offices, filters and the 
   await page.getByRole("link", { name: "පෙරහන් ඉවත් කරන්න" }).click();
   await expect(page).toHaveURL(/\/ministry$/);
 
-  // The waiting counts lead to Head Office's two queues.
+  // The waiting count leads to the allocation letters; there is no check queue (change 0006).
   const waiting = page.getByRole("region", { name: "ඔබේ ක්‍රියාව අවශ්‍යයි" });
+  await expect(waiting.getByRole("link", { name: /^පරීක්ෂා කිරීමට/ })).toHaveCount(0);
   await waiting.getByRole("link", { name: /^ප්‍රතිපාදන මුදා හැරීමට/ }).click();
   await expect(page).toHaveURL(/\/ministry\/release$/);
-  await page.goBack();
-  await waiting.getByRole("link", { name: /^පරීක්ෂා කිරීමට/ }).click();
-  await expect(page).toHaveURL(/\/ministry\/check$/);
 });

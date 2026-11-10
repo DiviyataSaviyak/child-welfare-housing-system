@@ -221,7 +221,6 @@ describe("saving a new case (CASE-5, CASE-12, AC-50)", () => {
       version: 1,
       dsOfficeId: dsA.dsOfficeId,
       buildDsOfficeId: dsA.dsOfficeId,
-      submittedAt: null,
     });
     expect(await db.decision.count({ where: { caseId: input.id } })).toBe(0);
     const actions = await db.auditLog.findMany({ where: { caseId: input.id }, orderBy: { id: "asc" } });

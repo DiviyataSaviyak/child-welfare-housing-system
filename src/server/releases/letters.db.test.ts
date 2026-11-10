@@ -1,19 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
-import { asSubmittedV1, createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
+import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
 import { colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { defaultValidUntil, type ReleaseField } from "@/lib/validation/release";
 import { fileForViewer, uploadLetterScan } from "../files/uploads";
 import { listNotifications, unreadCount, unreadNow } from "../notifications/queries";
 import { openNotification } from "../notifications/commands";
-import { correctRelease, type LetterInput, recordLetter } from "../releases/commands";
-import { casesForLetter, districtsWaiting, getLetter, recentLetters } from "../releases/queries";
-import { type Actor, saveCase, type SaveCaseInput } from "./commands";
-import { decideCase } from "./decide";
-import { getCase } from "./queries";
-import { listQueue, queueByOffice, queueCounts, waitingNow } from "./queues";
+import { correctRelease, type LetterInput, recordLetter } from "./commands";
+import { awaitingAllocation, casesForLetter, districtsWaiting, getLetter, recentLetters } from "./queries";
+import { type Actor, saveCase, type SaveCaseInput } from "../cases/commands";
+import { getCase } from "../cases/queries";
 
 const db = createTestClient();
 
@@ -57,19 +55,11 @@ const input = (nic: string, overrides: Partial<SaveCaseInput> = {}): SaveCaseInp
 
 const load = (id: string) => db.case.findUniqueOrThrow({ where: { id } });
 
-/** A case as version 1's submit left it (the bridge until change 0006's task 5 removes the check). */
-async function submitted(nic: string, actor = dsA, overrides: Partial<SaveCaseInput> = {}) {
+/** A saved case: it awaits its allocation at once, with nobody checking it (CASE-5, change 0006). */
+async function awaiting(nic: string, actor = dsA, overrides: Partial<SaveCaseInput> = {}) {
   const result = await saveCase(db, actor, input(nic, overrides));
   if (!result.ok) throw new Error(result.error);
-  await asSubmittedV1(db, result.value.id, actor.userId);
   return load(result.value.id);
-}
-
-async function verified(nic: string) {
-  const sent = await submitted(nic);
-  const result = await decideCase(db, ho, { caseId: sent.id, version: sent.version, decision: "verify", reason: null });
-  if (!result.ok) throw new Error(result.error);
-  return load(sent.id);
 }
 
 const today = () => colomboDay(new Date());
@@ -98,10 +88,10 @@ async function letter(cases: Ticked[], overrides: Partial<Record<ReleaseField, s
   };
 }
 
-/** Verified, then released together on one letter. */
+/** Saved, then released together on one letter. */
 async function released(...nics: string[]) {
   const ready = [];
-  for (const nic of nics) ready.push(await verified(nic));
+  for (const nic of nics) ready.push(await awaiting(nic));
   const result = await recordLetter(db, ho, await letter(ready));
   if (!result.ok) throw new Error(String(result.error ?? JSON.stringify(result.errors)));
   return Promise.all(ready.map((c) => load(c.id)));
@@ -152,217 +142,11 @@ afterAll(async () => {
   await db.$disconnect();
 });
 
-describe("checking a case (CHK-3)", () => {
-  it("verifies it, records the decision and tells the office's officer", async () => {
-    const sent = await submitted("200200000001");
-    const result = await decideCase(db, ho, {
-      caseId: sent.id,
-      version: sent.version,
-      decision: "verify",
-      reason: null,
-    });
-
-    expect(result).toEqual({ ok: true, value: "VERIFIED" });
-    const after = await load(sent.id);
-    expect(after.status).toBe("VERIFIED");
-    expect(after.verifiedAt).not.toBeNull();
-    expect(await db.decision.count({ where: { caseId: sent.id, type: "VERIFY", byId: ho.userId } })).toBe(1);
-    const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: sent.id, action: "case_verified" } });
-    expect(audit).toMatchObject({ actorId: ho.userId, before: { status: "SUBMITTED" }, after: { status: "VERIFIED" } });
-    const notices = await db.notification.findMany({ where: { caseId: sent.id } });
-    expect(notices.map((n) => [n.userId, n.type])).toEqual([[dsA.userId, "VERIFIED"]]);
-  });
-
-  it("needs a reason of 5 to 1,000 characters to send back or reject, and shows it to the office (AC-9)", async () => {
-    const sent = await submitted("200200000002");
-    const decide = (decision: "sendBack" | "reject", reason: string | null) =>
-      decideCase(db, ho, { caseId: sent.id, version: sent.version, decision, reason });
-
-    expect(await decide("sendBack", null)).toEqual({ ok: false, error: "reasonRequired" });
-    expect(await decide("sendBack", "  ")).toEqual({ ok: false, error: "reasonRequired" });
-    expect(await decide("reject", "නැත")).toEqual({ ok: false, error: "reasonTooShort" });
-    expect(await decide("reject", "x".repeat(1001))).toEqual({ ok: false, error: "reasonTooLong" });
-    expect((await load(sent.id)).status).toBe("SUBMITTED");
-
-    expect(await decide("sendBack", " ලිපිනය සම්පූර්ණ නැත. ")).toEqual({ ok: true, value: "RETURNED" });
-    expect((await getCase(db, dsA, sent.id, "si"))?.returnReason).toBe("ලිපිනය සම්පූර්ණ නැත.");
-    expect(await db.notification.count({ where: { caseId: sent.id, userId: dsA.userId, type: "SENT_BACK" } })).toBe(1);
-  });
-
-  it("rejects for good (STS-2)", async () => {
-    const sent = await submitted("200200000005");
-    await decideCase(db, ho, {
-      caseId: sent.id,
-      version: sent.version,
-      decision: "reject",
-      reason: "වෙනත් ආධාර ලැබී ඇත.",
-    });
-    const rejected = await load(sent.id);
-
-    expect(rejected.status).toBe("REJECTED");
-    expect((await getCase(db, dsA, sent.id, "si"))?.rejectReason).toBe("වෙනත් ආධාර ලැබී ඇත.");
-    expect(await db.notification.count({ where: { caseId: sent.id, userId: dsA.userId, type: "REJECTED" } })).toBe(1);
-    expect(
-      await decideCase(db, ho, { caseId: sent.id, version: rejected.version, decision: "verify", reason: null }),
-    ).toEqual({ ok: false, error: "notAllowedNow" });
-    expect(await saveCase(db, dsA, { ...input("200200000005"), id: sent.id, version: rejected.version })).toEqual({
-      ok: false,
-      error: "notEditable",
-    });
-  });
-
-  it("lets only Head Office decide, and only a submitted case (STS-1, SEC-2)", async () => {
-    const sent = await submitted("200200000006");
-    const verify = (actor: Actor, caseId = sent.id, version = sent.version) =>
-      decideCase(db, actor, { caseId, version, decision: "verify", reason: null });
-
-    expect(await verify(dsA)).toEqual({ ok: false, error: "roleNotAllowed" });
-    expect(await verify(dsB)).toEqual({ ok: false, error: "notFound" });
-    expect(await verify(admin)).toEqual({ ok: false, error: "notFound" });
-    expect(await verify(ho, randomUUID())).toEqual({ ok: false, error: "notFound" });
-
-    const draft = await saveCase(db, dsA, input("200200000007"));
-    if (!draft.ok) throw new Error(draft.error);
-    expect(await verify(ho, draft.value.id, 1)).toEqual({ ok: false, error: "notAllowedNow" });
-    expect(await db.decision.count({ where: { caseId: sent.id, type: "VERIFY" } })).toBe(0);
-  });
-
-  it("doesn't decide on details nobody has seen: the case came back changed (CASE-10)", async () => {
-    const sent = await submitted("200200000008");
-    await decideCase(db, ho, {
-      caseId: sent.id,
-      version: sent.version,
-      decision: "sendBack",
-      reason: "ලිපිනය වැරදියි.",
-    });
-    // Sent again, changed: version 1's resubmit, which no screen makes now.
-    await db.case.update({
-      where: { id: sent.id },
-      data: { status: "SUBMITTED", address: "නො. 2, නිවැරදි පාර", version: { increment: 1 } },
-    });
-
-    // The check view was opened before it was sent back: its version is old.
-    const stale = await decideCase(db, ho, {
-      caseId: sent.id,
-      version: sent.version,
-      decision: "verify",
-      reason: null,
-    });
-    expect(stale).toEqual({ ok: false, error: "conflict" });
-  });
-
-  it("lets only one of two officers verifying at the same moment succeed", async () => {
-    const sent = await submitted("200200000009");
-    const results = await Promise.all(
-      [1, 2].map(() =>
-        decideCase(db, ho, { caseId: sent.id, version: sent.version, decision: "verify", reason: null }),
-      ),
-    );
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-    expect(await db.decision.count({ where: { caseId: sent.id, type: "VERIFY" } })).toBe(1);
-    expect(await db.notification.count({ where: { caseId: sent.id } })).toBe(1);
-  });
-
-  it("tells every active officer of the office, and only them (ADM-3)", async () => {
-    const office = dsA.dsOfficeId as number;
-    const colleague = (id: string, name: string, banned: boolean) =>
-      db.user.create({
-        data: {
-          id,
-          name,
-          email: `${id}@no-email.invalid`,
-          role: "DS_OFFICER",
-          designation: "DS_CRPO",
-          dsOfficeId: office,
-          banned,
-        },
-      });
-    await colleague("review-test-ds-old", "පැරණි නිලධාරී", true);
-    await colleague("review-test-ds-a2", "දෙවන නිලධාරී", false);
-    const sent = await submitted("200200000010");
-    await decideCase(db, ho, { caseId: sent.id, version: sent.version, decision: "verify", reason: null });
-    const told = await db.notification.findMany({ where: { caseId: sent.id }, select: { userId: true } });
-    expect(told.map((n) => n.userId).sort()).toEqual([dsA.userId, "review-test-ds-a2"].sort());
-    // The later tests count the office's notices as dsA's alone.
-    await db.user.update({ where: { id: "review-test-ds-a2" }, data: { banned: true } });
-  });
-});
-
-describe("the queues (CHK-1, REL-1)", () => {
-  it("lists submitted cases oldest first, flagging a NIC that another case has", async () => {
-    const older = await submitted("200200000020");
-    const twin = await submitted("200200000021");
-    await submitted("200200000021", dsB);
-    const { rows } = await listQueue(db, ho, "check", 1, "si");
-
-    const ids = rows.map((row) => row.id);
-    expect(ids.indexOf(older.id)).toBeLessThan(ids.indexOf(twin.id));
-    const since = rows.map((row) => row.waitingSince?.getTime() ?? 0);
-    expect(since).toEqual([...since].sort((a, b) => a - b));
-    expect(rows.find((row) => row.id === older.id)?.duplicate).toBe(false);
-    expect(rows.find((row) => row.id === twin.id)?.duplicate).toBe(true);
-  });
-
-  it("lists verified cases oldest verification first", async () => {
-    const first = await verified("200200000022");
-    const second = await verified("200200000023");
-    const ids = (await listQueue(db, ho, "release", 1, "si")).rows.map((row) => row.id);
-    expect(ids.indexOf(first.id)).toBeLessThan(ids.indexOf(second.id));
-  });
-
-  it("narrows a queue to a district or one DS office, and counts each office's cases (CHK-4)", async () => {
-    const atA = await submitted("200200000024");
-    const atB = await submitted("200200000025", dsB);
-    const officeA = dsA.dsOfficeId ?? 0;
-    const { districtId } = await db.dsOffice.findUniqueOrThrow({
-      where: { id: officeA },
-      select: { districtId: true },
-    });
-
-    const office = await listQueue(db, ho, "check", 1, "si", { districtId, dsOfficeId: officeA });
-    expect(office.rows.map((row) => row.id)).toContain(atA.id);
-    expect(office.rows.map((row) => row.id)).not.toContain(atB.id);
-    expect(office.total).toBe(await db.case.count({ where: { status: "SUBMITTED", dsOfficeId: officeA } }));
-
-    const district = await listQueue(db, ho, "check", 1, "si", { districtId });
-    expect(district.total).toBe(await db.case.count({ where: { status: "SUBMITTED", dsOffice: { districtId } } }));
-    expect(district.rows.map((row) => row.id)).toContain(atA.id);
-
-    // An office in another district finds nothing there.
-    const elsewhere = await db.dsOffice.findFirstOrThrow({ where: { districtId: { not: districtId } } });
-    expect((await listQueue(db, ho, "check", 1, "si", { districtId, dsOfficeId: elsewhere.id })).total).toBe(0);
-
-    const counts = await queueByOffice(db, ho, "check");
-    expect(counts.get(officeA)).toBe(office.total);
-    expect([...counts.values()].reduce((sum, n) => sum + n, 0)).toBe((await queueCounts(db, ho)).check);
-    for (const actor of [dsA, admin]) {
-      expect((await queueByOffice(db, actor, "check")).size).toBe(0);
-      expect((await listQueue(db, actor, "check", 1, "si", { districtId })).total).toBe(0);
-    }
-  });
-
-  it("counts both queues for Head Office only", async () => {
-    const before = Date.now();
-    const counts = await queueCounts(db, ho);
-    expect(counts.check).toBe(await db.case.count({ where: { status: "SUBMITTED" } }));
-    expect(counts.release).toBe(await db.case.count({ where: { status: "VERIFIED" } }));
-    // The menu's reading: both together, and when they were read (NTF-1).
-    const menu = await waitingNow(db, ho);
-    expect(menu.count).toBe(counts.check + counts.release);
-    expect(menu.at).toBeGreaterThanOrEqual(before);
-    for (const actor of [dsA, admin]) {
-      expect(await queueCounts(db, actor)).toEqual({ check: 0, release: 0 });
-      expect((await waitingNow(db, actor)).count).toBe(0);
-      expect(await listQueue(db, actor, "check", 1, "si")).toEqual({ rows: [], total: 0 });
-    }
-  });
-});
-
 describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
   it("releases every case ticked on the district's letter: four installments each, and each office told", async () => {
-    const first = await verified("200200000030");
-    const second = await verified("200200000035");
-    const left = await verified("200200000036");
+    const first = await awaiting("200200000030");
+    const second = await awaiting("200200000035");
+    const left = await awaiting("200200000036");
     const input = await letter([first, second], { letterNumber: " MWCA/3/8/16/02-2026 ", note: "පළමු ලිපිය" });
     const result = await recordLetter(db, ho, input);
 
@@ -398,7 +182,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       });
     }
     // The case left off the letter still waits for one.
-    expect((await load(left.id)).status).toBe("VERIFIED");
+    expect((await load(left.id)).status).toBe("AWAITING_ALLOCATION");
     expect(await db.auditLog.count({ where: { entityId: letterId, action: "letter_recorded" } })).toBe(1);
 
     const details = await getCase(db, dsA, first.id, "si");
@@ -413,15 +197,18 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     expect(await getLetter(db, dsA, letterId, "si")).toBeNull();
   });
 
-  it("lists the districts waiting for a letter and each one's verified cases, for Head Office only", async () => {
-    const first = await verified("200200000022");
-    const second = await verified("200200000023");
+  it("lists the districts waiting for a letter and each one's cases awaiting it, for the Ministry only", async () => {
+    const first = await awaiting("200200000022");
+    const second = await awaiting("200200000023");
     const districtId = await districtOf(first.dsOfficeId);
 
     const waiting = await districtsWaiting(db, ho, "si");
     const here = waiting.find((d) => d.id === districtId);
-    expect(here?.count).toBe(await db.case.count({ where: { status: "VERIFIED", dsOffice: { districtId } } }));
-    expect(waiting.reduce((sum, d) => sum + d.count, 0)).toBe((await queueCounts(db, ho)).release);
+    expect(here?.count).toBe(
+      await db.case.count({ where: { status: "AWAITING_ALLOCATION", buildDsOffice: { districtId } } }),
+    );
+    // NTF-1: the menu counts the same cases.
+    expect(waiting.reduce((sum, d) => sum + d.count, 0)).toBe((await awaitingAllocation(db, ho)).count);
     const counts = waiting.map((d) => d.count);
     expect(counts).toEqual([...counts].sort((a, b) => b - a));
 
@@ -431,14 +218,15 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       expect(await districtsWaiting(db, actor, "si")).toEqual([]);
       expect(await casesForLetter(db, actor, districtId, "si")).toEqual([]);
       expect(await recentLetters(db, actor, "si")).toEqual([]);
+      expect((await awaitingAllocation(db, actor)).count).toBe(0);
     }
   });
 
-  it("refuses a missing number, a future date, a date before a verification and an end before the date", async () => {
-    const early = await verified("200200000031");
-    const late = await verified("200200000037");
-    await db.case.update({ where: { id: early.id }, data: { verifiedAt: new Date(Date.now() - 10 * DAY) } });
-    await db.case.update({ where: { id: late.id }, data: { verifiedAt: new Date(Date.now() - 3 * DAY) } });
+  it("refuses a missing number, a future date, a date before a case was entered and an end before the date", async () => {
+    const early = await awaiting("200200000031");
+    const late = await awaiting("200200000037");
+    await db.case.update({ where: { id: early.id }, data: { createdAt: new Date(Date.now() - 10 * DAY) } });
+    await db.case.update({ where: { id: late.id }, data: { createdAt: new Date(Date.now() - 3 * DAY) } });
     const refused = async (overrides: Partial<Record<ReleaseField, string>>) => {
       const result = await recordLetter(db, ho, await letter([early, late], overrides));
       return result.ok ? null : result.errors;
@@ -448,14 +236,14 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
     expect(await refused({ letterDate: colomboDay(new Date(Date.now() + DAY)) })).toEqual({
       letterDate: "dateInFuture",
     });
-    // The later of the two verifications is the earliest the letter can be dated.
-    expect(await refused({ letterDate: daysAgo(5) })).toEqual({ letterDate: "dateBeforeVerified" });
+    // The later of the two cases is the earliest the letter can be dated (REL-2).
+    expect(await refused({ letterDate: daysAgo(5) })).toEqual({ letterDate: "dateBeforeEntered" });
     expect(await refused({ letterDate: daysAgo(3), validUntil: daysAgo(4) })).toEqual({
       validUntil: "untilBeforeDate",
     });
     expect(await refused({ letterDate: "2026-02-30" })).toEqual({ letterDate: "dateInvalid" });
     for (const c of [early, late]) {
-      expect((await load(c.id)).status).toBe("VERIFIED");
+      expect((await load(c.id)).status).toBe("AWAITING_ALLOCATION");
       expect(await db.installment.count({ where: { caseId: c.id } })).toBe(0);
     }
     expect(await recordLetter(db, ho, await letter([early, late], { letterDate: daysAgo(3) }))).toMatchObject({
@@ -464,12 +252,12 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
   });
 
   it("releases all or nothing, and refuses no case, another district, a DS officer, an admin and an old form", async () => {
-    const sent = await submitted("200200000032");
-    const ready = await verified("200200000033");
+    const [running] = await released("200200000032");
+    const ready = await awaiting("200200000033");
     const record = async (actor: Actor, cases: Ticked[]) => recordLetter(db, actor, await letter(cases));
 
-    expect(await record(ho, [ready, sent])).toEqual({ ok: false, error: "notAllowedNow", errors: {} });
-    expect((await load(ready.id)).status).toBe("VERIFIED");
+    expect(await record(ho, [ready, running])).toEqual({ ok: false, error: "notAllowedNow", errors: {} });
+    expect((await load(ready.id)).status).toBe("AWAITING_ALLOCATION");
     expect(await recordLetter(db, ho, { ...(await letter([ready])), cases: [] })).toEqual({
       ok: false,
       error: "noCases",
@@ -480,9 +268,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       where: { active: true, districtId: { not: await districtOf(ready.dsOfficeId) } },
       select: { id: true },
     });
-    const sentThere = await submitted("200200000038", ho, { dsOfficeId: elsewhere.id });
-    await decideCase(db, ho, { caseId: sentThere.id, version: sentThere.version, decision: "verify", reason: null });
-    const there = await load(sentThere.id);
+    const there = await awaiting("200200000038", ho, { dsOfficeId: elsewhere.id });
     const both = [ready, there].map(({ id, version }) => ({ id, version }));
     expect(await recordLetter(db, ho, { ...(await letter([ready])), cases: both })).toEqual({
       ok: false,
@@ -506,7 +292,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
   });
 
   it("keeps the officer's own scan with the letter, which only the letter's offices may open", async () => {
-    const ready = await verified("200200000039");
+    const ready = await awaiting("200200000039");
     const pdf = { name: "ලිපිය.pdf", bytes: new TextEncoder().encode("%PDF-1.4\n% test letter\n") };
     expect(await uploadLetterScan(db, dsA, pdf)).toEqual({ ok: false, error: "notAllowed" });
     const scan = await uploadLetterScan(db, ho, pdf);
@@ -534,7 +320,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
       error: "scanUnavailable",
       errors: {},
     });
-    expect((await load(ready.id)).status).toBe("VERIFIED");
+    expect((await load(ready.id)).status).toBe("AWAITING_ALLOCATION");
 
     const result = await recordLetter(db, ho, { ...(await letter([ready])), scanId: scan.value.id });
     expect(result).toMatchObject({ ok: true });
@@ -553,7 +339,7 @@ describe("releasing by allocation letter (REL-1 to REL-3, AC-10)", () => {
   it("can't hold any other amount, or a letter valid before its date, even when written directly to the database", async () => {
     const [running] = await released("200200000034");
     const { letterId } = await db.release.findUniqueOrThrow({ where: { caseId: running.id } });
-    const ready = await verified("200200000043");
+    const ready = await awaiting("200200000043");
     await expect(
       db.release.create({
         data: {
@@ -618,12 +404,12 @@ describe("correcting a release's letter (REL-4)", () => {
     });
   });
 
-  it("can't move the date past an installment of any case on it, or before a verification; only Head Office corrects", async () => {
+  it("can't move the date past an installment of any case on it, or before a case was entered; only the Ministry corrects", async () => {
     const [running, other] = await released("200200000041", "200200000045");
-    // Both verified 10 days ago; the other case's first installment expected 5 days ago (Phase 6 records those).
+    // Both entered 10 days ago; the other case's first installment expected 5 days ago (Phase 6 records those).
     await db.case.updateMany({
       where: { id: { in: [running.id, other.id] } },
-      data: { verifiedAt: new Date(Date.now() - 10 * DAY) },
+      data: { createdAt: new Date(Date.now() - 10 * DAY) },
     });
     await db.installment.updateMany({
       where: { caseId: other.id, number: 1 },
@@ -641,7 +427,7 @@ describe("correcting a release's letter (REL-4)", () => {
     expect(await correct(ho, daysAgo(11))).toEqual({
       ok: false,
       error: null,
-      errors: { letterDate: "dateBeforeVerified" },
+      errors: { letterDate: "dateBeforeEntered" },
     });
     expect(await correct(ho, daysAgo(6))).toEqual({ ok: true });
     for (const c of [running, other]) {
@@ -650,7 +436,7 @@ describe("correcting a release's letter (REL-4)", () => {
       );
     }
 
-    const notYet = await verified("200200000042");
+    const notYet = await awaiting("200200000042");
     expect(await correctRelease(db, ho, { caseId: notYet.id, version: notYet.version, form: letterForm() })).toEqual({
       ok: false,
       error: "noRelease",
@@ -661,14 +447,12 @@ describe("correcting a release's letter (REL-4)", () => {
 
 describe("notifications (NTF-1)", () => {
   it("shows the office's officer their notices, newest first, and opening one marks it read", async () => {
-    const ready = await verified("200200000060");
+    const ready = await awaiting("200200000060");
     await recordLetter(db, ho, await letter([ready]));
 
+    // Saving tells nobody; the letter tells the office (NTF-1).
     const mine = (await listNotifications(db, dsA)).filter((n) => n.caseId === ready.id);
-    expect(mine.map((n) => [n.type, n.read])).toEqual([
-      ["RELEASED", false],
-      ["VERIFIED", false],
-    ]);
+    expect(mine.map((n) => [n.type, n.read])).toEqual([["RELEASED", false]]);
     const before = await unreadCount(db, dsA);
     expect((await unreadNow(db, dsA)).count).toBe(before);
     expect(await openNotification(db, dsA, mine[0]!.id)).toEqual({ caseId: ready.id });
@@ -679,7 +463,7 @@ describe("notifications (NTF-1)", () => {
   });
 
   it("keeps them from everyone else, and from the officer once moved to another office (PRM-3)", async () => {
-    const ready = await verified("200200000061");
+    const [ready] = await released("200200000061");
     const notice = await db.notification.findFirstOrThrow({ where: { caseId: ready.id, userId: dsA.userId } });
 
     expect(await openNotification(db, dsB, notice.id)).toBeNull();

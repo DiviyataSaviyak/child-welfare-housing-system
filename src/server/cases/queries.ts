@@ -16,14 +16,13 @@ import {
 } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 import { applicationKey } from "./numbers";
-import { REQUEST_SELECT, type ReplacementRequest, toRequest } from "./replacements";
 
 export type CaseDetails = {
   id: string;
-  applicationNumber: string | null;
+  applicationNumber: string;
   status: CaseStatus;
-  category: Category | null;
-  kind: Kind | null;
+  category: Category;
+  kind: Kind;
   name: string | null;
   childName: string | null;
   nic: string | null;
@@ -45,22 +44,15 @@ export type CaseDetails = {
   version: number;
   /** When the DS entered it: the allocation screen orders by it (REL-1). */
   createdAt: Date;
-  submittedAt: Date | null;
-  verifiedAt: Date | null;
   /** When the system found it finished (CLS-1). */
   completedAt: Date | null;
   updatedAt: Date;
-  /** Head Office's reason, while the case is sent back (CASE-7). */
-  returnReason: string | null;
-  /** Head Office's reason for rejecting it (CHK-3). */
-  rejectReason: string | null;
-  /** While the case is stopped: when, why, and the status it goes back to when reopened (CLS-2, CLS-3). */
-  stop: { at: Date; reason: string | null; statusBefore: CaseStatus | null } | null;
-  /** Head Office asked for another name in this case's place when it rejected or stopped it (CASE-11). */
-  anotherNameRequested: boolean;
-  /** The case this one was entered in place of, with Head Office's decision on it (CASE-11). */
-  replaces: ReplacementRequest | null;
-  /** The case entered in this one's place (CASE-11). */
+  /**
+   * The case this one was entered in place of, with version 1's decision that closed it. Version 1's
+   * CASE-11 made these links; change 0006 removed it, and the case pages still show them.
+   */
+  replaces: ReplacedCase | null;
+  /** The case entered in this one's place. */
   replacedBy: CaseLink | null;
   documents: { id: string; name: string }[];
   /** The Rs. 2,000,000 release, once recorded (REL-2). */
@@ -78,11 +70,17 @@ export type CaseDetails = {
 /** Another case named on this one's page, with a link to it. */
 export type CaseLink = {
   id: string;
-  applicationNumber: string | null;
+  applicationNumber: string;
   name: string | null;
   childName: string | null;
-  status: CaseStatus;
 };
+
+/** A replaced case, with version 1's rejection or stop that asked for another name, if it still has one. */
+export type ReplacedCase = CaseLink & {
+  decision: { type: "REJECT" | "STOP"; at: Date; reason: string | null } | null;
+};
+
+const LINK_SELECT = { id: true, applicationNumber: true, name: true, childName: true } as const;
 
 export type ReleaseDetails = {
   /** "YYYY-MM-DD": the letter's date. */
@@ -102,8 +100,8 @@ export type ReleaseDetails = {
     districtName: string;
     /** How many cases the letter released. */
     cases: number;
-    /** "YYYY-MM-DD": the latest verification of its cases, the earliest the letter can be dated (REL-4). */
-    latestVerification: string | null;
+    /** "YYYY-MM-DD": the latest day one of its cases was entered, the earliest the letter can be dated (REL-4). */
+    latestEntered: string | null;
     /** The scanned letter, if one was added. */
     scanId: string | null;
   };
@@ -151,22 +149,20 @@ export async function getCase(
       buildDsOfficeId: true,
       version: true,
       createdAt: true,
-      submittedAt: true,
-      verifiedAt: true,
       completedAt: true,
-      statusBeforeStop: true,
-      anotherNameRequested: true,
-      replaces: { select: { ...REQUEST_SELECT, ...CASE_PLACES } },
-      replacedBy: {
+      replaces: {
         select: {
-          id: true,
-          applicationNumber: true,
-          name: true,
-          childName: true,
-          status: true,
+          ...LINK_SELECT,
           ...CASE_PLACES,
+          decisions: {
+            where: { type: { in: ["REJECT", "STOP"] } },
+            orderBy: { at: "desc" },
+            take: 1,
+            select: { type: true, reason: true, at: true },
+          },
         },
       },
+      replacedBy: { select: { ...LINK_SELECT, ...CASE_PLACES } },
       updatedAt: true,
       buildDsOffice: {
         select: { ...OFFICE_PLACE.select, ...NAMES, district: { select: { id: true, provinceId: true, ...NAMES } } },
@@ -185,12 +181,6 @@ export async function getCase(
         orderBy: { uploadedAt: "asc" },
         select: { id: true, originalName: true },
       },
-      decisions: {
-        where: { type: { in: ["SEND_BACK", "REJECT", "STOP"] } },
-        orderBy: { at: "desc" },
-        take: 1,
-        select: { type: true, reason: true, at: true },
-      },
       release: {
         select: {
           releasedOn: true,
@@ -205,7 +195,7 @@ export async function getCase(
               validUntil: true,
               note: true,
               district: { select: NAMES },
-              releases: { select: { case: { select: { verifiedAt: true } } } },
+              releases: { select: { case: { select: { createdAt: true } } } },
               files: { where: { kind: "LETTER", removedAt: null }, take: 1, select: { id: true } },
             },
           },
@@ -226,22 +216,9 @@ export async function getCase(
     },
   });
   if (!found || !canSeeCase(viewer, found)) return null;
-  const {
-    dsOffice,
-    buildDsOffice,
-    files,
-    decisions,
-    release,
-    installments,
-    statusBeforeStop,
-    replaces,
-    replacedBy,
-    ...fields
-  } = found;
+  const { dsOffice, buildDsOffice, files, release, installments, replaces, replacedBy, ...fields } = found;
   const places = { dsOffice, buildDsOffice };
   const actsOn = { edit: canActOn(viewer, places, "edit"), progress: canActOn(viewer, places, "installment") };
-  const latest = decisions[0];
-  const stopped = found.status === "STOPPED" && latest?.type === "STOP";
   return {
     ...fields,
     officeName: localName(dsOffice, locale),
@@ -251,28 +228,9 @@ export async function getCase(
     buildOfficeName: localName(buildDsOffice, locale),
     buildDistrictId: buildDsOffice.district.id,
     buildDistrictName: localName(buildDsOffice.district, locale),
-    returnReason: found.status === "RETURNED" && latest?.type === "SEND_BACK" ? latest.reason : null,
-    rejectReason: found.status === "REJECTED" && latest?.type === "REJECT" ? latest.reason : null,
-    stop:
-      found.status === "STOPPED"
-        ? {
-            at: stopped ? latest.at : fields.updatedAt,
-            reason: stopped ? latest.reason : null,
-            statusBefore: statusBeforeStop,
-          }
-        : null,
-    // Both cases are always of one office (CASE-11); the check keeps it that way for the viewer.
-    replaces: replaces && canSeeCase(viewer, replaces) ? toRequest(replaces) : null,
-    replacedBy:
-      replacedBy && canSeeCase(viewer, replacedBy)
-        ? {
-            id: replacedBy.id,
-            applicationNumber: replacedBy.applicationNumber,
-            name: replacedBy.name,
-            childName: replacedBy.childName,
-            status: replacedBy.status,
-          }
-        : null,
+    // Both cases were always of one office; the check keeps it that way for the viewer.
+    replaces: replaces && canSeeCase(viewer, replaces) ? toReplaced(replaces) : null,
+    replacedBy: replacedBy && canSeeCase(viewer, replacedBy) ? toLink(replacedBy) : null,
     documents: files.map((f) => ({ id: f.id, name: f.originalName })),
     release: release && {
       releasedOn: dateToDay(release.releasedOn),
@@ -287,9 +245,7 @@ export async function getCase(
         note: release.letter.note,
         districtName: localName(release.letter.district, locale),
         cases: release.letter.releases.length,
-        latestVerification: latestDay(
-          release.letter.releases.map((r) => r.case.verifiedAt && colomboDay(r.case.verifiedAt)),
-        ),
+        latestEntered: latestDay(release.letter.releases.map((r) => colomboDay(r.case.createdAt))),
         scanId: release.letter.files[0]?.id ?? null,
       },
     },
@@ -299,6 +255,26 @@ export async function getCase(
       releasedOn: i.releasedOn && dateToDay(i.releasedOn),
     })),
     actsOn,
+  };
+}
+
+const toLink = ({ id, applicationNumber, name, childName }: CaseLink): CaseLink => ({
+  id,
+  applicationNumber,
+  name,
+  childName,
+});
+
+function toReplaced(
+  found: CaseLink & { decisions: { type: string; reason: string | null; at: Date }[] },
+): ReplacedCase {
+  const decision = found.decisions[0];
+  return {
+    ...toLink(found),
+    decision:
+      decision && (decision.type === "REJECT" || decision.type === "STOP")
+        ? { type: decision.type, at: decision.at, reason: decision.reason }
+        : null,
   };
 }
 
@@ -318,10 +294,10 @@ export const PAGE_SIZE = 50;
 
 export type CaseRow = {
   id: string;
-  applicationNumber: string | null;
+  applicationNumber: string;
   status: CaseStatus;
-  category: Category | null;
-  kind: Kind | null;
+  category: Category;
+  kind: Kind;
   name: string | null;
   childName: string | null;
   /** The DS office of residence, which entered it. */
@@ -332,7 +308,6 @@ export type CaseRow = {
   buildDsOfficeId: number;
   buildOfficeName: string;
   createdAt: Date;
-  submittedAt: Date | null;
   updatedAt: Date;
   /** Installments paid (HOME-1); null before the release makes them. */
   paid: number | null;
@@ -409,7 +384,6 @@ export async function listCases(
         dsOfficeId: true,
         buildDsOfficeId: true,
         createdAt: true,
-        submittedAt: true,
         updatedAt: true,
         dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
         buildDsOffice: { select: NAMES },

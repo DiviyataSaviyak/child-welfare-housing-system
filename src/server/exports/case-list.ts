@@ -20,9 +20,9 @@ export type ListFilter = Omit<CaseFilter, "page">;
 export type ListName = "ho_cases" | "ds_cases" | "oversight_cases";
 
 export type ExportRow = {
-  applicationNumber: string | null;
-  category: Category | null;
-  kind: Kind | null;
+  applicationNumber: string;
+  category: Category;
+  kind: Kind;
   status: CaseStatus;
   name: string | null;
   childName: string | null;
@@ -33,8 +33,8 @@ export type ExportRow = {
   mobile2: string | null;
   districtName: string;
   officeName: string;
-  submittedAt: Date | null;
-  verifiedAt: Date | null;
+  /** When the DS entered it (EXP-1). */
+  createdAt: Date;
   completedAt: Date | null;
   updatedAt: Date;
   remark: string | null;
@@ -100,8 +100,7 @@ export async function caseListRows(
         mobile1: true,
         mobile2: true,
         remark: true,
-        submittedAt: true,
-        verifiedAt: true,
+        createdAt: true,
         completedAt: true,
         updatedAt: true,
         dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
@@ -118,7 +117,6 @@ export async function caseListRows(
   ]);
 
   const byKind = new Map(KINDS.map((kind) => [kind, progressStages(stages.filter((stage) => stage.kind === kind))]));
-  const noStages = progressStages<(typeof stages)[number]>([]);
 
   return found.map(({ dsOffice, release, installments, stageUpdates, ...row }) => {
     const paid = installments.filter((item) => item.status === "RELEASED");
@@ -143,7 +141,7 @@ export async function caseListRows(
             }
           : null;
       }),
-      progress: (row.kind ? byKind.get(row.kind)! : noStages).map((stage) => (stage && reached.get(stage.id)) ?? null),
+      progress: byKind.get(row.kind)!.map((stage) => (stage && reached.get(stage.id)) ?? null),
     };
   });
 }
@@ -172,8 +170,8 @@ function installmentNote(t: CasesT, item: ExportInstallment | null): string | nu
 export function caseListColumns(t: CasesT): Column<ExportRow>[] {
   return [
     { header: t("export.columns.number"), width: 16, value: (r) => r.applicationNumber },
-    { header: t("export.columns.category"), width: 16, value: (r) => r.category && t(`category.${r.category}`) },
-    { header: t("export.columns.kind"), width: 14, value: (r) => r.kind && t(`kindShort.${r.kind}`) },
+    { header: t("export.columns.category"), width: 16, value: (r) => t(`category.${r.category}`) },
+    { header: t("export.columns.kind"), width: 14, value: (r) => t(`kindShort.${r.kind}`) },
     { header: t("export.columns.status"), width: 18, value: (r) => t(`status.${r.status}`) },
     { header: t("export.columns.name"), width: 30, value: (r) => r.name },
     { header: t("export.columns.childName"), width: 26, value: (r) => r.childName },
@@ -184,8 +182,7 @@ export function caseListColumns(t: CasesT): Column<ExportRow>[] {
     { header: t("export.columns.district"), width: 16, value: (r) => r.districtName },
     { header: t("export.columns.office"), width: 22, value: (r) => r.officeName },
     { header: t("export.columns.gnDivision"), width: 22, value: (r) => r.gnDivision },
-    { header: t("export.columns.submittedOn"), width: 14, value: (r) => day(r.submittedAt) },
-    { header: t("export.columns.verifiedOn"), width: 14, value: (r) => day(r.verifiedAt) },
+    { header: t("export.columns.enteredOn"), width: 14, value: (r) => day(r.createdAt) },
     { header: t("export.columns.releasedOn"), width: 14, value: (r) => r.release && { day: r.release.releasedOn } },
     { header: t("export.columns.released"), width: 16, amount: true, value: (r) => r.release?.amount ?? null },
     ...INSTALLMENTS.map((number): Column<ExportRow> => ({

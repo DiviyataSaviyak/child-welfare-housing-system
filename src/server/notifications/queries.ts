@@ -8,7 +8,7 @@ export type NotificationRow = {
   createdAt: Date;
   read: boolean;
   caseId: string;
-  applicationNumber: string | null;
+  applicationNumber: string;
   name: string | null;
   childName: string | null;
 };

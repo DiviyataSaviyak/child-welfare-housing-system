@@ -3,7 +3,7 @@ import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import messages from "../../../messages/si.json";
 import { seed } from "../../../prisma/seed-data";
-import { addLoadData, removeLoadData } from "../../../scripts/seed-load";
+import { addLoadData, LOAD_ID_PREFIX, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
 import { dateToDay } from "@/lib/dates";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
@@ -33,13 +33,21 @@ let district: number;
 beforeAll(async () => {
   await seed(db);
   await addLoadData(db, { count: LOAD, seed: 11 });
-  const [top] = await db.case.groupBy({
+  // The office with the most load-test cases and no other case. Other test files share the schema and set
+  // statuses directly, or give two offices the same Application Number (CASE-12), which the checks below
+  // don't expect.
+  const others = await db.case.findMany({
+    where: { NOT: { id: { startsWith: LOAD_ID_PREFIX } } },
+    select: { dsOfficeId: true, buildDsOfficeId: true },
+  });
+  const taken = new Set(others.flatMap((c) => [c.dsOfficeId, c.buildDsOfficeId]));
+  const counts = await db.case.groupBy({
     by: ["dsOfficeId"],
+    where: { id: { startsWith: LOAD_ID_PREFIX } },
     _count: { _all: true },
     orderBy: { _count: { dsOfficeId: "desc" } },
-    take: 1,
   });
-  busiestOffice = top.dsOfficeId;
+  busiestOffice = counts.find((group) => !taken.has(group.dsOfficeId))!.dsOfficeId;
   district = (await db.dsOffice.findUniqueOrThrow({ where: { id: busiestOffice }, select: { districtId: true } }))
     .districtId;
 }, 300_000);
@@ -106,7 +114,7 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       select: { id: true },
     });
     const cases = await db.case.findMany({
-      where: { dsOfficeId: busiestOffice, kind: "NEW_HOUSE", applicationNumber: { not: null } },
+      where: { dsOfficeId: busiestOffice, kind: "NEW_HOUSE" },
       select: {
         applicationNumber: true,
         installments: { select: { number: true, status: true, expectedOn: true, releasedOn: true } },
@@ -114,7 +122,7 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       },
     });
     const byNumber = new Map(cases.map((c) => [c.applicationNumber, c]));
-    for (const row of rows.filter((r) => r.applicationNumber)) {
+    for (const row of rows) {
       const found = byNumber.get(row.applicationNumber)!;
       const installments = [1, 2, 3, 4].map((n) => {
         const item = found.installments.find((i) => i.number === n);
@@ -126,13 +134,13 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
             }
           : null;
       });
-      expect(row.installments, row.applicationNumber!).toEqual(installments);
+      expect(row.installments, row.applicationNumber).toEqual(installments);
       // Other test files may have added stages to the shared schema, so the columns' stages are worked out.
       const reached = progressStages(stages).map((stage) => {
         const update = stage && found.stageUpdates.find((u) => u.stageId === stage.id);
         return update ? dateToDay(update.visitedOn) : null;
       });
-      expect(row.progress, row.applicationNumber!).toEqual(reached);
+      expect(row.progress, row.applicationNumber).toEqual(reached);
     }
     expect(rows.some((r) => r.installments[0]?.status === "RELEASED")).toBe(true);
     expect(rows.some((r) => r.installments.some((i) => i?.status === "PROCESSING"))).toBe(true);
@@ -155,10 +163,11 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
 
     // A search can't reach past the office, even with another office's number.
     const other = await db.case.findFirstOrThrow({
-      where: { dsOfficeId: { not: busiestOffice }, applicationNumber: { not: null } },
+      // A load-test case: its number carries its own office's code, so no case of this office shares it.
+      where: { dsOfficeId: { not: busiestOffice }, id: { startsWith: LOAD_ID_PREFIX } },
       select: { applicationNumber: true },
     });
-    expect(await caseListRows(db, ds, { q: other.applicationNumber! }, "si")).toEqual([]);
+    expect(await caseListRows(db, ds, { q: other.applicationNumber }, "si")).toEqual([]);
 
     const admin = {
       role: "ADMIN",

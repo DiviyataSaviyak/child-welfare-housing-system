@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { newSavedCase, openAs, randomNic, SUBMITTED } from "./case-helpers";
+import { AWAITING, newSavedCase, openAs, randomNic } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen and file text the test looks for (messages/si.json). */
@@ -22,7 +22,7 @@ async function exportList(page: Page) {
   return { fileName: download.suggestedFilename(), sheet, rows: rows.map((row) => row.slice(1, 6)) };
 }
 
-test("the DS officer and Head Office take their lists to Excel, with the screen's search and filters (EXP-1)", async ({
+test("the DS officer and the Ministry take their lists to Excel, with the screen's search and filters (EXP-1)", async ({
   page,
   browser,
 }) => {
@@ -31,7 +31,7 @@ test("the DS officer and Head Office take their lists to Excel, with the screen'
   const name = `${TEST_CASE_NAME} එක්සෙල් ${Date.now()}`;
   const nic = randomNic();
   const { number } = await newSavedCase(page, { name, nic });
-  const row = [number, "නිවාසගත", "නව නිවසක්", SUBMITTED, name];
+  const row = [number, "නිවාසගත", "නව නිවසක්", AWAITING, name];
 
   // The DS officer's own list, with the search the screen shows.
   await page.goto("/ds");
@@ -44,9 +44,9 @@ test("the DS officer and Head Office take their lists to Excel, with the screen'
   expect((own.sheet.getRow(1).values as unknown[]).slice(1, 6)).toEqual(HEADERS);
   expect(own.rows).toEqual([row]);
 
-  // Head Office's list, with its filters.
+  // The Ministry's list, with its filters.
   const ho = await openAs(browser, "ho0001");
-  await ho.goto(`/ministry/cases?q=${nic}&status=SUBMITTED`);
+  await ho.goto(`/ministry/cases?q=${nic}&status=AWAITING_ALLOCATION`);
   await expect(ho.getByText("ගැළපෙන ප්‍රතිලාභීන් 1")).toBeVisible();
   const all = await exportList(ho);
   expect(all.fileName).toMatch(FILE_NAME);

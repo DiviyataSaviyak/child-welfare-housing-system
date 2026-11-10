@@ -1,16 +1,10 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import {
-  CaseColumns,
-  CaseDetailsSection,
-  CaseNotes,
-  caseSubtitle,
-  ReplacementNotes,
-} from "@/components/cases/case-view";
+import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
-import { CompletedBanner, StoppedBanner } from "@/components/progress/case-banners";
+import { CompletedBanner } from "@/components/progress/case-banners";
 import { CaseHistory } from "@/components/progress/case-history";
 import { StageSection } from "@/components/progress/stage-section";
 import { getCase } from "@/server/cases/queries";
@@ -47,8 +41,6 @@ export default async function OversightCasePage({ params }: { params: Promise<{ 
         subtitle={subtitle}
         aside={<StatusChip status={details.status} />}
       />
-      <CaseNotes details={details} audience="oversight" />
-      <StoppedBanner details={details} />
       <ReplacementNotes details={details} audience="oversight" />
       <CompletedBanner details={details} />
       <CaseColumns

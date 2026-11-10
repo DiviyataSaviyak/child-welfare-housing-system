@@ -56,6 +56,9 @@ export type CaseValues = {
 };
 export type CaseErrors = Partial<Record<CaseField, CaseErrorKey>>;
 
+/** The values of a case that passes `missingRequired`: what is stored (CASE-2, CASE-12). */
+export type CompleteCaseValues = CaseValues & { category: CategoryValue; kind: KindValue; applicationNumber: string };
+
 /** CASE-12: the longest Application Number, as typed from the paper application. */
 export const APPLICATION_NUMBER_MAX = 30;
 
@@ -112,6 +115,11 @@ export function missingRequired(values: CaseValues): CaseErrors {
   if (atRisk && !values.childName) errors.childName = "childNameRequired";
   if (!values.name) errors.name = atRisk ? "guardianNameRequired" : "nameRequired";
   return errors;
+}
+
+/** The values, when no required field is empty; otherwise null. */
+export function completeValues(values: CaseValues): CompleteCaseValues | null {
+  return Object.keys(missingRequired(values)).length === 0 ? (values as CompleteCaseValues) : null;
 }
 
 /** Reads the case form, with every required field (CASE-5). Missing fields count as empty. */

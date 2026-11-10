@@ -194,12 +194,9 @@ const RULES: Record<string, Record<string, Rule>> = {
     deleteCaseAction: MINISTRY,
   },
   "src/app/ministry/cases/[id]/actions.ts": {
-    stopAction: MINISTRY,
-    reopenAction: MINISTRY,
     undoInstallmentAction: MINISTRY,
   },
-  "src/app/ministry/check/actions.ts": {
-    decideAction: MINISTRY,
+  "src/app/ministry/release/actions.ts": {
     recordLetterAction: MINISTRY,
     uploadLetterScanAction: MINISTRY,
     correctReleaseAction: MINISTRY,

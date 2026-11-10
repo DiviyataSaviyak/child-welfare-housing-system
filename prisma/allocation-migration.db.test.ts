@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, inject } from "vitest";
 
 const MIGRATIONS = join(process.cwd(), "prisma", "migrations");
 const THIS_ONE = "20261109120000_allocation_flow";
+/** Task 5's migration, which drops what this one kept for version 1's code. */
+const CONTRACT = "20261110090000_allocation_flow_contract";
 
 const client = new pg.Client({ connectionString: inject("testDatabaseUrl") });
 const schema = `allocation_${Date.now()}_${randomBytes(3).toString("hex")}`;
@@ -243,5 +245,65 @@ describe("the allocation flow's migration (AC-59)", () => {
         [id],
       ),
     ).rejects.toThrow(/file_scan_on_one_release/);
+  });
+});
+
+describe("dropping version 1's statuses and columns (change 0006, task 5)", () => {
+  const columns = async () =>
+    (
+      await sql(
+        `SELECT "column_name", "is_nullable" FROM information_schema.columns
+         WHERE "table_schema" = $1 AND "table_name" = 'case'`,
+        [schema],
+      )
+    ).rows as { column_name: string; is_nullable: string }[];
+
+  it("refuses while a case still has a version 1 status, and changes nothing", async () => {
+    await sql(
+      `INSERT INTO "case" ("id", "application_number", "application_key", "ds_office_id", "build_ds_office_id",
+         "category", "kind", "status", "created_by_id", "updated_at")
+       VALUES ('left-over', 'KDW/1', 'KDW/1', 1, 1, 'CARE_LEAVER', 'NEW_HOUSE', 'SUBMITTED', 'officer', now())`,
+    );
+    await expect(run(CONTRACT)).rejects.toThrow(/allocation_flow_contract/);
+    await sql("ROLLBACK");
+    expect((await columns()).map((c) => c.column_name)).toContain("verified_at");
+    await sql(`DELETE FROM "case" WHERE "id" = 'left-over'`);
+  });
+
+  it("leaves the five statuses only, and makes the number, category and kind required", async () => {
+    await run(CONTRACT);
+    const { rows } = await sql(
+      `SELECT e."enumlabel" FROM pg_enum e JOIN pg_type t ON t."oid" = e."enumtypid"
+       JOIN pg_namespace n ON n."oid" = t."typnamespace"
+       WHERE t."typname" = 'CaseStatus' AND n."nspname" = $1 ORDER BY e."enumsortorder"`,
+      [schema],
+    );
+    expect(rows.map((r) => r.enumlabel)).toEqual([
+      "AWAITING_ALLOCATION",
+      "ALLOCATED_TO_DISTRICT",
+      "ALLOCATION_RECEIVED",
+      "IN_PROGRESS",
+      "COMPLETED",
+    ]);
+    const found = await columns();
+    const names = found.map((c) => c.column_name);
+    for (const gone of ["submitted_at", "verified_at", "status_before_stop", "another_name_requested"]) {
+      expect(names).not.toContain(gone);
+    }
+    for (const required of ["application_number", "application_key", "category", "kind"]) {
+      expect(found.find((c) => c.column_name === required)?.is_nullable, required).toBe("NO");
+    }
+    const counter = await sql(`SELECT to_regclass($1) AS found`, [`"${schema}"."case_number_counter"`]);
+    expect(counter.rows[0].found).toBeNull();
+    // Every case kept its status.
+    const { rows: statuses } = await sql(
+      `SELECT "status"::text AS status, count(*)::int AS n FROM "case" GROUP BY 1 ORDER BY 1`,
+    );
+    expect(statuses).toEqual([
+      { status: "ALLOCATION_RECEIVED", n: 2 },
+      { status: "AWAITING_ALLOCATION", n: 5 },
+      { status: "COMPLETED", n: 1 },
+      { status: "IN_PROGRESS", n: 2 },
+    ]);
   });
 });

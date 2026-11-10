@@ -21,7 +21,7 @@ for (const [username, home] of [
 
 test("a DS officer gets 'not found' on Head Office and admin pages (PRM-1, ERR-2)", async ({ page }) => {
   await signInAs(page, "ds0101", /\/ds$/);
-  for (const path of ["/ministry", "/ministry/check", "/admin/users"]) {
+  for (const path of ["/ministry", "/ministry/release", "/admin/users"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(TEXT.notFound);
   }

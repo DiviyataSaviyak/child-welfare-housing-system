@@ -3,7 +3,7 @@
 import { FileText } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useActionState, useRef, useState, useTransition } from "react";
-import type { LetterState } from "@/app/ministry/check/actions";
+import type { LetterState } from "@/app/ministry/release/actions";
 import { FormError } from "@/components/forms/form-field";
 import { DOCUMENT_ACCEPT, documentProblem, SNIFF_BYTES } from "@/lib/file-types";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
@@ -17,16 +17,16 @@ import {
 import type { UploadedFile, UploadError } from "@/server/files/uploads";
 import { LetterFields, type LetterValues } from "./letter-fields";
 
-/** A verified case on the district's letter, as the server gives it. */
+/** A case awaiting its allocation on the district's letter, as the server gives it. */
 export type LetterFormCase = {
   id: string;
   version: number;
   /** The name, with the child's if any. */
   name: string;
-  /** The case number and when it was verified. */
+  /** The Application Number and when it was entered. */
   detail: string;
-  /** "YYYY-MM-DD", in Colombo. */
-  verifiedOn: string | null;
+  /** "YYYY-MM-DD", in Colombo: the day it was entered. */
+  enteredOn: string;
 };
 
 export type LetterFormGroup = { office: string; cases: LetterFormCase[] };
@@ -37,8 +37,8 @@ type Scan =
   | { state: "refused"; name: string; problem: UploadError | "fileFailed" };
 
 /**
- * REL-2, as in the prototype: one allocation letter to a District Secretary. The district's verified
- * cases are listed by DS office, all ticked to start with; the officer unticks any not named on the
+ * REL-2, as in the prototype: one allocation letter to a District Secretary. The district's cases
+ * awaiting their allocation are listed by DS office, all ticked to start with; the officer unticks any not named on the
  * letter. The total is Rs. 2,000,000 for each ticked case and is never typed in. The scan is optional
  * and uploads as soon as it is chosen. The browser runs the server's checks first, and what was typed
  * stays after a refusal (ERR-1).
@@ -79,7 +79,7 @@ export function LetterForm({
   const cases = groups.flatMap((group) => group.cases);
   const ticked = cases.filter((c) => !left.has(c.id));
   const total = formatRupees(ticked.length * RELEASE_AMOUNT, locale);
-  const limits = { earliest: latestDay(ticked.map((c) => c.verifiedOn)), today };
+  const limits = { earliest: latestDay(ticked.map((c) => c.enteredOn)), today };
 
   function toggle(id: string, on: boolean) {
     setNoCases(false);

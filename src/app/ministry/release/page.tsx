@@ -1,8 +1,8 @@
 import { requireRole } from "@/server/context";
-import { ReviewScreen, type ReviewSearchParams } from "../check/review-screen";
+import { LetterScreen, type LetterSearchParams } from "./letter-screen";
 
-/** The "to release" tab (REL-1). */
-export default async function HoReleasePage({ searchParams }: { searchParams: ReviewSearchParams }) {
+/** The allocation letters (REL-1, REL-2). */
+export default async function MinistryReleasePage({ searchParams }: { searchParams: LetterSearchParams }) {
   await requireRole("MINISTRY_OFFICER");
-  return <ReviewScreen queue="release" searchParams={searchParams} />;
+  return <LetterScreen searchParams={searchParams} />;
 }

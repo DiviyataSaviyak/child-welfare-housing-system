@@ -1,7 +1,7 @@
 /**
  * Demo cases for showing the system: cases that look like the ones an office enters by hand, in every
- * DS office that has an active officer. So each officer who signs in finds a full home page, and Head
- * Office finds full queues, allocation letters and a dashboard.
+ * DS office that has an active officer. So each officer who signs in finds a full home page, and the
+ * Ministry finds cases awaiting their allocation, allocation letters and a dashboard.
  *
  *   npm run db:seed-demo                       adds 15 cases to each office with an officer and no demo cases yet
  *   npm run db:seed-demo -- --per-office 30    adds 30
@@ -10,7 +10,7 @@
  *
  * It plans the cases as the load-test data does (scripts/seed-load.ts), with three differences:
  * - Every step is credited to a real account: the office's own officer (the first one with an account,
- *   when it has several), or a Head Office officer.
+ *   when it has several), or a Ministry officer.
  * - Every step is also written to the audit log, so each case's history reads as if it had been
  *   entered on the screens, and each of the office's officers gets the notices those steps send (the
  *   older ones read).
@@ -26,7 +26,7 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import type { PrismaClient } from "../src/generated/prisma/client";
-import type { CaseStatus, Category } from "../src/generated/prisma/enums";
+import type { Category } from "../src/generated/prisma/enums";
 import { addDays, colomboDay } from "../src/lib/dates";
 import { createPrismaClient } from "../src/server/db";
 import { generator, madeUpPhone, type Random } from "./made-up";
@@ -35,6 +35,7 @@ import {
   type Context,
   loadDataAllowed,
   type Office,
+  type Path,
   type Person,
   planCase,
   readOffices,
@@ -48,26 +49,26 @@ export const DEMO_ID_PREFIX = "demo-";
 
 const DEFAULT_PER_OFFICE = 15;
 const DAY = 24 * 60 * 60_000;
-/** Head Office sends each district's allocation letter every this many days. */
+/** The Ministry sends each district's allocation letter every this many days. */
 const LETTER_EVERY_DAYS = 14;
 
-/** Each office's cases in turn: any first few are already a mix, and 15 cover every status. */
-const STATUSES: CaseStatus[] = [
+/** Each office's cases in turn: any first few are already a mix, and 15 cover every status they can have. */
+const STATUSES: Path[] = [
   "IN_PROGRESS",
-  "SUBMITTED",
-  "VERIFIED",
+  "AWAITING_ALLOCATION",
+  "ALLOCATION_RECEIVED",
   "COMPLETED",
   "IN_PROGRESS",
-  "DRAFT",
-  "RETURNED",
+  "AWAITING_ALLOCATION",
   "IN_PROGRESS",
-  "SUBMITTED",
-  "STOPPED",
+  "AWAITING_ALLOCATION",
   "IN_PROGRESS",
-  "VERIFIED",
   "COMPLETED",
-  "REJECTED",
   "IN_PROGRESS",
+  "ALLOCATION_RECEIVED",
+  "AWAITING_ALLOCATION",
+  "IN_PROGRESS",
+  "COMPLETED",
 ];
 
 // --- Made-up people (SEC-11) ----------------------------------------------------------------------
@@ -160,7 +161,7 @@ function nicFor(r: Random, year: number, female: boolean): string {
  * is in a village of the office's area, which is also the Grama Niladhari division, as in
  * "අංක 16, පාසල් මාවත, කුරුවිට, රත්නපුර".
  */
-function demoPerson(r: Random, office: Office, category: Category | null): Person {
+function demoPerson(r: Random, office: Office, category: Category): Person {
   let name: string;
   let nic: string;
   let childName: string | null = null;
@@ -227,8 +228,7 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
       select: { id: true },
     })
   ).map((u) => u.id);
-  if (headOffice.length === 0)
-    throw new Error("There is no active Head Office officer to check and release the cases.");
+  if (headOffice.length === 0) throw new Error("There is no active Ministry officer to record the allocation letters.");
   const offices = await readOffices(db, {
     id: { in: [...officers.keys()] },
     cases: { none: { id: { startsWith: DEMO_ID_PREFIX } } },
@@ -241,12 +241,11 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
     headOffice: (r) => r.pick(headOffice),
     person: demoPerson,
     // Cases still waiting are recent; the rest go back about a year and a half.
-    age: (r, path, minAge) =>
-      r.int(minAge, Math.max(minAge, ["DRAFT", "SUBMITTED", "RETURNED", "VERIFIED"].includes(path) ? 40 : 540)),
-    // The first letter day after the verification, or today if that hasn't come yet.
-    releaseDay: (_r, verifiedDay, office, today) => {
-      const sinceEpoch = Math.round(Date.parse(verifiedDay) / DAY);
-      const day = addDays(verifiedDay, LETTER_EVERY_DAYS - ((sinceEpoch + office.districtId) % LETTER_EVERY_DAYS));
+    age: (r, path, minAge) => r.int(minAge, Math.max(minAge, path === "AWAITING_ALLOCATION" ? 40 : 540)),
+    // The first letter day after the day it was entered, or today if that hasn't come yet.
+    releaseDay: (_r, enteredDay, office, today) => {
+      const sinceEpoch = Math.round(Date.parse(enteredDay) / DAY);
+      const day = addDays(enteredDay, LETTER_EVERY_DAYS - ((sinceEpoch + office.districtId) % LETTER_EVERY_DAYS));
       return day > today ? today : day;
     },
   };

@@ -2,12 +2,12 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { DashboardScreen } from "@/components/dashboard/dashboard-screen";
 import { formatNumber } from "@/lib/money";
-import { queueCounts } from "@/server/cases/queues";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
+import { awaitingAllocation } from "@/server/releases/queries";
 
-/** DSH-1, DSH-2: Head Office's national picture, with the queues waiting for Head Office beside it. */
+/** DSH-1, DSH-2: the Ministry's national picture, with the cases awaiting its allocation beside it. */
 export default async function HoDashboardPage({
   searchParams,
 }: {
@@ -19,7 +19,7 @@ export default async function HoDashboardPage({
     getTranslations("dashboard"),
     searchParams,
     districtsWithOffices(db, locale),
-    queueCounts(db, viewer),
+    awaitingAllocation(db, viewer),
   ]);
 
   return (
@@ -34,16 +34,10 @@ export default async function HoDashboardPage({
           <h2 id="waiting-title" className="mb-1.5 text-[19px] font-bold">
             {t("waiting.title")}
           </h2>
-          {(["check", "release"] as const).map((queue) => (
-            <Link
-              key={queue}
-              href={`/ministry/${queue}`}
-              className="flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0 hover:text-primary"
-            >
-              <span className="font-semibold underline-offset-3 hover:underline">{t(`waiting.${queue}`)} →</span>
-              <span className="text-xl font-bold tabular-nums">{formatNumber(waiting[queue])}</span>
-            </Link>
-          ))}
+          <Link href="/ministry/release" className="flex items-center justify-between gap-3 py-2.5 hover:text-primary">
+            <span className="font-semibold underline-offset-3 hover:underline">{t("waiting.release")} →</span>
+            <span className="text-xl font-bold tabular-nums">{formatNumber(waiting.count)}</span>
+          </Link>
         </section>
       }
     />

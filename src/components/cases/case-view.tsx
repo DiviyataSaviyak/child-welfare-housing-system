@@ -13,14 +13,14 @@ export type Audience = "ds" | "ministry" | "oversight";
 
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 
-/** Every field of a case as label and value, for the case page and Head Office's check view (CHK-2). */
+/** Every field of a case as label and value, for the case page. */
 export function caseFieldRows(t: CasesT, details: CaseDetails): { label: string; value: string }[] {
   const atRisk = details.category === "CHILD_AT_RISK";
   const none = t("none");
   return [
-    { label: t("page.fields.number"), value: details.applicationNumber ?? t("noNumber") },
-    { label: t("page.fields.category"), value: details.category ? t(`category.${details.category}`) : none },
-    { label: t("page.fields.kind"), value: details.kind ? t(`kind.${details.kind}`) : none },
+    { label: t("page.fields.number"), value: details.applicationNumber },
+    { label: t("page.fields.category"), value: t(`category.${details.category}`) },
+    { label: t("page.fields.kind"), value: t(`kind.${details.kind}`) },
     ...(atRisk ? [{ label: t("page.fields.childName"), value: details.childName ?? none }] : []),
     { label: atRisk ? t("page.fields.guardianName") : t("page.fields.name"), value: details.name ?? none },
     { label: t("page.fields.nic"), value: details.nic ?? none },
@@ -36,66 +36,20 @@ export function caseFieldRows(t: CasesT, details: CaseDetails): { label: string;
       ? [{ label: t("page.fields.built"), value: `${details.buildOfficeName}, ${details.buildDistrictName}` }]
       : []),
     { label: t("page.fields.createdAt"), value: formatDate(details.createdAt) },
-    ...(details.submittedAt ? [{ label: t("page.fields.submittedAt"), value: formatDate(details.submittedAt) }] : []),
-    ...(details.verifiedAt ? [{ label: t("page.fields.verifiedAt"), value: formatDate(details.verifiedAt) }] : []),
   ];
 }
 
-/** A Head Office reason the DS office must read: why the case came back, or why it was rejected. */
-function ReasonBox({ id, title, reason, tone }: { id: string; title: string; reason: string; tone: "warn" | "stop" }) {
-  return (
-    <section
-      aria-labelledby={id}
-      className={`flex flex-col gap-1.5 rounded-xl border-2 px-6 py-4 ${
-        tone === "warn"
-          ? "border-[#E8B45A] bg-[#FFF4E0] text-[#6B3A04]"
-          : "border-[#E4A39B] bg-[#FDF0EE] text-[#8F1B12]"
-      }`}
-    >
-      <h2 id={id} className="text-lg font-bold">
-        {title}
-      </h2>
-      <p className="text-[17px] font-semibold whitespace-pre-line">{reason}</p>
-    </section>
-  );
-}
-
 /**
- * What the reader must see first, above the case's columns: Head Office's reason when the case was sent
- * back or rejected, and the DS office's note while Head Office has the case.
- */
-export async function CaseNotes({ details, audience }: { details: CaseDetails; audience: Audience }) {
-  const t = await getTranslations("cases");
-  const waiting = audience === "ds" && (details.status === "SUBMITTED" || details.status === "VERIFIED");
-  if (details.returnReason === null && details.rejectReason === null && !waiting) return null;
-  return (
-    <div className="flex flex-col gap-3">
-      {details.returnReason !== null && (
-        <ReasonBox id="returned-title" title={t("form.returned.title")} reason={details.returnReason} tone="warn" />
-      )}
-      {details.rejectReason !== null && (
-        <ReasonBox id="rejected-title" title={t("page.rejectedTitle")} reason={details.rejectReason} tone="stop" />
-      )}
-      {waiting && (
-        <p className="rounded-lg bg-[#E4EDF8] px-4 py-3 text-[15px] text-[#1E4E8C]">
-          {details.status === "SUBMITTED" ? t("page.waiting") : t("page.verifiedDs")}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * CASE-11, as in the prototype: a case entered in place of another names it, with Head Office's
- * decision on it; a case Head Office asked to replace says so, and names its replacement once there is
- * one. Each links to the other case on the reader's own pages.
+ * The links version 1's CASE-11 made, as in the prototype: a case entered in place of another names it,
+ * with the Ministry's decision on it; a replaced case names the case entered in its place. Each links to
+ * the other case on the reader's own pages. Change 0006 removed CASE-11; change 0008's amendments take
+ * its place.
  */
 export async function ReplacementNotes({ details, audience }: { details: CaseDetails; audience: Audience }) {
-  if (!details.replaces && !details.anotherNameRequested) return null;
+  const { replaces, replacedBy } = details;
+  if (!replaces && !replacedBy) return null;
   const t = await getTranslations("cases");
   const caseHref = (id: string) => `/${audience}/cases/${id}`;
-  const number = (applicationNumber: string | null) => applicationNumber ?? t("noNumber");
-  const { replaces, replacedBy } = details;
 
   return (
     <div className="flex flex-col gap-3">
@@ -103,52 +57,36 @@ export async function ReplacementNotes({ details, audience }: { details: CaseDet
         <ReplacementBox
           id="replaces-title"
           title={t("page.replacesTitle", {
-            number: number(replaces.applicationNumber),
+            number: replaces.applicationNumber,
             name: caseName(t, replaces.name, replaces.childName),
           })}
         >
-          {replaces.decidedAt && (
+          {replaces.decision && (
             <p>
-              {t(replaces.status === "STOPPED" ? "page.replacesStopped" : "page.replacesRejected", {
-                date: formatDate(replaces.decidedAt),
+              {t(replaces.decision.type === "STOP" ? "page.replacesStopped" : "page.replacesRejected", {
+                date: formatDate(replaces.decision.at),
               })}
             </p>
           )}
-          {replaces.reason && (
-            <p className="whitespace-pre-line">{t("page.replacesReason", { reason: replaces.reason })}</p>
+          {replaces.decision?.reason && (
+            <p className="whitespace-pre-line">{t("page.replacesReason", { reason: replaces.decision.reason })}</p>
           )}
           <Link href={caseHref(replaces.id)} className="self-start font-semibold text-primary underline">
-            {t("page.openOther", { number: number(replaces.applicationNumber) })}
+            {t("page.openOther", { number: replaces.applicationNumber })}
           </Link>
         </ReplacementBox>
       )}
-      {details.anotherNameRequested && (
-        <ReplacementBox id="asked-title" title={t("page.askedTitle")}>
-          {replacedBy ? (
-            <>
-              <p>
-                {t("page.askedDone", {
-                  number: number(replacedBy.applicationNumber),
-                  name: caseName(t, replacedBy.name, replacedBy.childName),
-                })}
-              </p>
-              <Link href={caseHref(replacedBy.id)} className="self-start font-semibold text-primary underline">
-                {t("page.openOther", { number: number(replacedBy.applicationNumber) })}
-              </Link>
-            </>
-          ) : (
-            <>
-              <p>{t("page.askedWaiting")}</p>
-              {audience === "ds" && (
-                <Link
-                  href="/ds/cases/new"
-                  className="flex h-11.5 items-center self-start rounded-lg bg-primary px-4.5 font-bold text-primary-foreground"
-                >
-                  {t("page.askedEnter")}
-                </Link>
-              )}
-            </>
-          )}
+      {replacedBy && (
+        <ReplacementBox
+          id="replaced-title"
+          title={t("page.replacedBy", {
+            number: replacedBy.applicationNumber,
+            name: caseName(t, replacedBy.name, replacedBy.childName),
+          })}
+        >
+          <Link href={caseHref(replacedBy.id)} className="self-start font-semibold text-primary underline">
+            {t("page.openOther", { number: replacedBy.applicationNumber })}
+          </Link>
         </ReplacementBox>
       )}
     </div>
@@ -212,7 +150,7 @@ export async function CaseDetailsSection({ details, editHref }: { details: CaseD
           href={editHref}
           className="mt-1 flex h-12 items-center self-start rounded-lg bg-primary px-6 text-[17px] font-semibold text-primary-foreground"
         >
-          {details.status === "RETURNED" ? t("page.fix") : t("page.edit")}
+          {t("page.edit")}
         </Link>
       )}
     </section>
@@ -227,15 +165,15 @@ export async function caseSubtitle(details: CaseDetails, audience: Audience): Pr
   const t = await getTranslations("cases");
   const elsewhere = details.buildDsOfficeId !== details.dsOfficeId;
   return [
-    details.applicationNumber ?? t("noNumber"),
+    details.applicationNumber,
     ...(audience !== "ds" ? [details.officeName] : []),
     ...(elsewhere ? [t("home.builtIn", { office: details.buildOfficeName })] : []),
-    ...(details.category ? [t(`category.${details.category}`)] : []),
-    ...(details.kind ? [t(`kind.${details.kind}`)] : []),
+    t(`category.${details.category}`),
+    t(`kind.${details.kind}`),
   ].join(" · ");
 }
 
-/** A case's documents, each opening in a new tab (CHK-2). */
+/** A case's documents, each opening in a new tab. */
 export function DocumentLinks({ documents, empty }: { documents: CaseDetails["documents"]; empty: string }) {
   if (documents.length === 0) return <p className="text-muted-foreground">{empty}</p>;
   return (

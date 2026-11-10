@@ -5,8 +5,6 @@ import { signInAs, TEST_CASE_NAME } from "./helpers";
 export const SAVE = "සුරකින්න";
 export const CONFIRM = "ඔව්, සුරකින්න";
 export const AWAITING = "ප්‍රතිපාදන මුදා හැරීමට ඇත";
-/** Version 1's status label, until change 0006's tasks 5 to 10 rewrite the tests that look for it. */
-export const SUBMITTED = "පරීක්ෂාවට යවා ඇත";
 export const YEAR = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo", year: "numeric" }).format(new Date());
 /** Today in Colombo as a date field takes it, "YYYY-MM-DD". */
 export const TODAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
@@ -75,7 +73,7 @@ export async function openAs(browser: Browser, username: string): Promise<Page> 
 }
 
 /**
- * On the release tab, with a district's allocation letter open (REL-2): ticks only the named cases,
+ * On the letters screen, with a district's allocation letter open (REL-2): ticks only the named cases,
  * then records the letter under this number, dated today. Other tests' cases may wait in the same
  * district, so every other box is unticked first.
  */
@@ -93,18 +91,15 @@ export async function recordLetterFor(ho: Page, names: string[], letterNumber: s
 }
 
 /**
- * A case of the DS officer's office that Head Office has verified from the case's own page, then
- * released today on its district's allocation letter: ready for its installments and building
- * progress (Phase 6).
+ * A case of the DS officer's office, released today on its district's allocation letter, which the
+ * Ministry opens from the case's own page: ready for its installments and building progress (Phase 6).
+ * Nobody checks it first (change 0006).
  */
 export async function releasedCase(ds: Page, ho: Page, label: string) {
   const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
   const { url, number } = await newSavedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
   await ho.goto(`/ministry/cases/${caseId}`);
-  await ho.getByRole("button", { name: "අනුමත කරන්න", exact: true }).click();
-  await ho.getByRole("dialog").getByRole("button", { name: "ඔව්, අනුමත කරන්න" }).click();
-  await expect(ho).toHaveURL(new RegExp(`/ministry/cases/${caseId}\\?notice=verified$`));
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();
   await recordLetterFor(ho, [name], `MWCA/E2E/${label}`);
   return { caseId, url, name, number };

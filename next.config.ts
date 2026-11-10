@@ -23,7 +23,12 @@ const nextConfig: NextConfig = {
   // UI-10 (change 0006): Head Office's pages moved from /ho to /ministry; old links and bookmarks still
   // arrive. Temporary (307), so browsers don't keep it for good while the change moves pages around.
   async redirects() {
-    return [{ source: "/ho/:path*", destination: "/ministry/:path*", permanent: false }];
+    return [
+      // Version 1's check screen is gone (change 0006); its old addresses lead to the allocation letters.
+      { source: "/ho/check", destination: "/ministry/release", permanent: false },
+      { source: "/ministry/check", destination: "/ministry/release", permanent: false },
+      { source: "/ho/:path*", destination: "/ministry/:path*", permanent: false },
+    ];
   },
   async headers() {
     return [
