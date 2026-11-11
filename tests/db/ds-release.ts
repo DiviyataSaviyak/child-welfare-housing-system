@@ -36,6 +36,34 @@ async function districtOfficer(db: PrismaClient, districtId: number): Promise<Ac
 }
 
 /**
+ * For the database tests, until change 0006's task 10 makes the load-test data hold them: moves `count` of
+ * the load-test cases whose allocation was received, and nothing paid, back to waiting for the District's
+ * release (`ALLOCATED_TO_DISTRICT`), as if the District hadn't released them yet. Their installments go, and
+ * a District release left with no case is removed with the load-test data. `buildDsOfficeId` takes them from
+ * one DS office. Gives the moved cases' ids.
+ */
+export async function backToTheDistrictForTests(
+  db: PrismaClient,
+  idPrefix: string,
+  count: number,
+  buildDsOfficeId?: number,
+): Promise<string[]> {
+  const cases = await db.case.findMany({
+    where: { id: { startsWith: idPrefix }, status: "ALLOCATION_RECEIVED", ...(buildDsOfficeId && { buildDsOfficeId }) },
+    orderBy: { id: "asc" },
+    take: count,
+    select: { id: true },
+  });
+  const ids = cases.map((c) => c.id);
+  await db.$transaction([
+    db.installment.deleteMany({ where: { caseId: { in: ids } } }),
+    db.release.updateMany({ where: { caseId: { in: ids } }, data: { dsReleaseId: null, dsReleasedOn: null } }),
+    db.case.updateMany({ where: { id: { in: ids } }, data: { status: "ALLOCATED_TO_DISTRICT" } }),
+  ]);
+  return ids;
+}
+
+/**
  * For the database tests: the District's release (REL-6, REL-7) of cases the Ministry allocated, through
  * `recordDsRelease`, one release for each DS office where they are built, dated the latest of their letters
  * (or `on`), by a District officer of its district. The cases are then `ALLOCATION_RECEIVED`, with four

@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { Category, Kind } from "@/generated/prisma/enums";
+import type { CaseStatus, Category, Kind } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { daysBetween } from "@/lib/dates";
 import { localName, NAMES } from "@/lib/names";
@@ -12,15 +12,42 @@ export type DashboardFilter = { districtId?: number; category?: Category; kind?:
 
 /** DSH-1's figures for a group of cases. */
 export type Figures = {
-  /** Every case except drafts. */
+  /** Every case. */
   cases: number;
+  /** The cases in each of the five statuses (STS-1), keyed as in `STATUS_FIGURE`. */
+  awaiting: number;
+  allocatedToDistrict: number;
+  received: number;
   inProgress: number;
   completed: number;
-  /** The Rs. 2,000,000 releases to DS offices (REL-2). */
-  released: number;
+  /** The Ministry's Rs. 2,000,000 allocations to the districts (REL-3), from `ALLOCATED_TO_DISTRICT` on. */
+  allocated: number;
+  /** The Districts' releases of those allocations to the DS offices (REL-7), from `ALLOCATION_RECEIVED` on. */
+  releasedToDs: number;
   /** The installments paid to beneficiaries (INS-4). */
   paidOut: number;
 };
+
+/** Which figure counts the cases in each status. */
+export const STATUS_FIGURE = {
+  AWAITING_ALLOCATION: "awaiting",
+  ALLOCATED_TO_DISTRICT: "allocatedToDistrict",
+  ALLOCATION_RECEIVED: "received",
+  IN_PROGRESS: "inProgress",
+  COMPLETED: "completed",
+} as const satisfies Record<CaseStatus, keyof Figures>;
+
+const FIGURES = [
+  "cases",
+  "awaiting",
+  "allocatedToDistrict",
+  "received",
+  "inProgress",
+  "completed",
+  "allocated",
+  "releasedToDs",
+  "paidOut",
+] as const satisfies (keyof Figures)[];
 
 export type StaleCase = {
   id: string;
@@ -44,14 +71,20 @@ export type Dashboard = {
 /** How many of the cases waiting longest for an update the dashboard lists. */
 export const STALE_SHOWN = 10;
 
-export const noFigures = (): Figures => ({ cases: 0, inProgress: 0, completed: 0, released: 0, paidOut: 0 });
+export const noFigures = (): Figures => ({
+  cases: 0,
+  awaiting: 0,
+  allocatedToDistrict: 0,
+  received: 0,
+  inProgress: 0,
+  completed: 0,
+  allocated: 0,
+  releasedToDs: 0,
+  paidOut: 0,
+});
 
 function add(into: Figures, more: Figures): Figures {
-  into.cases += more.cases;
-  into.inProgress += more.inProgress;
-  into.completed += more.completed;
-  into.released += more.released;
-  into.paidOut += more.paidOut;
+  for (const key of FIGURES) into[key] += more[key];
   return into;
 }
 
@@ -59,7 +92,8 @@ function add(into: Figures, more: Figures): Figures {
  * DSH-1: the dashboard's figures for the cases the viewer may see that match the filter. They are
  * read from the database on every call, never kept, so the page is never more than a moment old (DSH-2).
  * A case counts once, under the DS office where it is built, and in the area of that office, as its
- * money does (CASE-13).
+ * money does (CASE-13). The amounts count only the cases that have them: a case has its allocation once
+ * the Ministry's letter names it, and its release once the District releases it to the DS.
  */
 export async function dashboard(
   db: PrismaClient,
@@ -86,7 +120,7 @@ export async function dashboard(
       where: { ...where, release: { isNot: null } },
       select: {
         buildDsOfficeId: true,
-        release: { select: { amount: true } },
+        release: { select: { amount: true, dsReleaseId: true } },
         installments: { where: { status: "RELEASED" }, select: { amount: true } },
       },
     }),
@@ -115,12 +149,13 @@ export async function dashboard(
   for (const { buildDsOfficeId, status, _count } of counts) {
     const figures = office(buildDsOfficeId);
     figures.cases += _count._all;
-    if (status === "IN_PROGRESS") figures.inProgress += _count._all;
-    if (status === "COMPLETED") figures.completed += _count._all;
+    figures[STATUS_FIGURE[status]] += _count._all;
   }
   for (const { buildDsOfficeId, release, installments } of funded) {
+    if (!release) continue;
     const figures = office(buildDsOfficeId);
-    figures.released += release?.amount ?? 0;
+    figures.allocated += release.amount;
+    if (release.dsReleaseId) figures.releasedToDs += release.amount;
     for (const installment of installments) figures.paidOut += installment.amount;
   }
 

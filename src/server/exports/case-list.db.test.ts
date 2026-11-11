@@ -5,6 +5,7 @@ import messages from "../../../messages/si.json";
 import { seed } from "../../../prisma/seed-data";
 import { addLoadData, LOAD_ID_PREFIX, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
+import { backToTheDistrictForTests } from "../../../tests/db/ds-release";
 import { dateToDay } from "@/lib/dates";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { countCases, listCases, PAGE_SIZE } from "../cases/queries";
@@ -48,6 +49,8 @@ beforeAll(async () => {
     orderBy: { _count: { dsOfficeId: "desc" } },
   });
   busiestOffice = counts.find((group) => !taken.has(group.dsOfficeId))!.dsOfficeId;
+  // Until change 0006's task 10, no load-test case waits for the District's release; some of this office's must.
+  await backToTheDistrictForTests(db, LOAD_ID_PREFIX, 5, busiestOffice);
   district = (await db.dsOffice.findUniqueOrThrow({ where: { id: busiestOffice }, select: { districtId: true } }))
     .districtId;
 }, 300_000);
@@ -83,27 +86,46 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     }
   });
 
-  it("gives each released case its money from the database", async () => {
+  it("gives each case its allocation, the Ministry's letter, the District's release and its money from the database", async () => {
     const rows = (await caseListRows(db, ho, { dsOfficeId: busiestOffice }, "si"))!;
     const cases = await db.case.findMany({
       where: { dsOfficeId: busiestOffice },
       select: {
         applicationNumber: true,
-        release: { select: { amount: true } },
+        release: {
+          select: {
+            amount: true,
+            letter: { select: { letterNumber: true, letterDate: true } },
+            dsRelease: { select: { referenceNumber: true, releasedOn: true } },
+          },
+        },
         installments: { where: { status: "RELEASED" }, select: { amount: true } },
       },
     });
-    const byNumber = new Map(cases.filter((c) => c.applicationNumber).map((c) => [c.applicationNumber, c]));
-    const released = rows.filter((r) => r.release);
-    expect(released.length).toBeGreaterThan(0);
-    for (const row of released) {
-      const found = byNumber.get(row.applicationNumber)!;
-      expect(row.release!.amount).toBe(found.release!.amount);
-      expect(row.release!.paidOut).toBe(found.installments.reduce((sum, i) => sum + i.amount, 0));
+    const byNumber = new Map(cases.map((c) => [c.applicationNumber, c]));
+    for (const row of rows) {
+      const { release, installments } = byNumber.get(row.applicationNumber)!;
+      expect(row.release, row.applicationNumber).toEqual(
+        release && {
+          amount: release.amount,
+          letterNumber: release.letter.letterNumber,
+          letterDate: dateToDay(release.letter.letterDate),
+          dsRelease: release.dsRelease && {
+            referenceNumber: release.dsRelease.referenceNumber,
+            releasedOn: dateToDay(release.dsRelease.releasedOn),
+            paidOut: installments.reduce((sum, i) => sum + i.amount, 0),
+          },
+        },
+      );
     }
-    expect(rows.filter((r) => !r.release).every((r) => r.status !== "IN_PROGRESS" && r.status !== "COMPLETED")).toBe(
-      true,
-    );
+    // Every stage of the money is in the rows: none, allocated only, released to the DS, and paid.
+    expect(rows.some((r) => !r.release)).toBe(true);
+    expect(rows.some((r) => r.release && !r.release.dsRelease)).toBe(true);
+    expect(rows.some((r) => r.release?.dsRelease && r.release.dsRelease.paidOut > 0)).toBe(true);
+    for (const row of rows) {
+      if (!row.release) expect(row.status, row.applicationNumber).toBe("AWAITING_ALLOCATION");
+      else if (!row.release.dsRelease) expect(row.status, row.applicationNumber).toBe("ALLOCATED_TO_DISTRICT");
+    }
   });
 
   it("gives each case its installments and the days its new-house stages were reached", async () => {

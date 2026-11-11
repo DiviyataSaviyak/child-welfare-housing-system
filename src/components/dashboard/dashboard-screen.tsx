@@ -4,8 +4,9 @@ import { caseName } from "@/components/cases/page-header";
 import { formatDate } from "@/lib/dates";
 import { formatNumber } from "@/lib/money";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
+import { CaseStatus } from "@/generated/prisma/enums";
 import { STALE_DAYS } from "@/server/cases/queries";
-import { dashboard, type Figures, STALE_SHOWN, tableRows } from "@/server/dashboard/queries";
+import { dashboard, type Figures, STALE_SHOWN, STATUS_FIGURE, tableRows } from "@/server/dashboard/queries";
 import { db } from "@/server/db";
 import type { DistrictOptions } from "@/server/lists/queries";
 import type { Viewer } from "@/server/permissions";
@@ -14,13 +15,23 @@ const oneOf = <T extends string>(list: readonly T[], value: string): T | undefin
   list.find((item) => item === value);
 
 const selectClass = "h-11 min-w-56 rounded-lg border border-input bg-card px-3 text-base";
-const COLUMNS = ["cases", "inProgress", "completed", "released", "paidOut"] as const satisfies (keyof Figures)[];
+/** The table's columns: the cases, then the three amounts (DSH-1). */
+const COLUMNS = [
+  "cases",
+  "inProgress",
+  "completed",
+  "allocated",
+  "releasedToDs",
+  "paidOut",
+] as const satisfies (keyof Figures)[];
+const AMOUNTS = ["allocated", "releasedToDs", "paidOut"] as const satisfies (keyof Figures)[];
 
 /**
  * DSH-1, DSH-2: the dashboard for the cases a viewer may see, as in the prototype. Totals, a table by
  * district that opens into its DS offices, and the cases waiting longest for an update. The filters
- * are in the address, so a view can be bookmarked or shared. Head Office's page adds its queues
- * (`side`); the view-only area's page offers only the districts of its area (PRM-4).
+ * are in the address, so a view can be bookmarked or shared. The Ministry's page and a District officer's
+ * add the cases waiting for them (`side`, `WaitingPanel`); the view-only area's page offers only the
+ * districts of its area (PRM-4).
  */
 export async function DashboardScreen({
   path,
@@ -73,15 +84,13 @@ export async function DashboardScreen({
     t("asOf", { date: formatDate(new Date()) }),
   ].filter(Boolean);
 
-  const tiles = [
-    { label: t("tiles.cases"), value: data.totals.cases, note: t("tiles.casesNote") },
-    { label: t("tiles.inProgress"), value: data.totals.inProgress, note: t("tiles.inProgressNote") },
-    { label: t("tiles.completed"), value: data.totals.completed, note: t("tiles.completedNote") },
-    {
-      label: t("tiles.released"),
-      value: data.totals.released,
-      note: t("tiles.releasedNote", { amount: formatNumber(data.totals.paidOut) }),
-    },
+  // DSH-1: every case, then the cases in each of the five statuses, in the order a case goes through them.
+  const counts = [
+    { label: t("tiles.cases"), value: data.totals.cases },
+    ...Object.values(CaseStatus).map((status) => ({
+      label: tc(`status.${status}`),
+      value: data.totals[STATUS_FIGURE[status]],
+    })),
   ];
 
   return (
@@ -144,12 +153,24 @@ export async function DashboardScreen({
 
       <div className="flex items-start gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-5">
-          <dl aria-label={t("tiles.label")} className="grid grid-cols-4 gap-4">
-            {tiles.map((tile) => (
+          <dl aria-label={t("tiles.label")} className="grid grid-cols-3 gap-4">
+            {counts.map((tile, index) => (
               <div key={tile.label} className="flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4">
                 <dt className="font-semibold text-[#3F4843]">{tile.label}</dt>
                 <dd className="text-[26px] leading-tight font-bold tabular-nums">{formatNumber(tile.value)}</dd>
-                <dd className="text-sm text-muted-foreground">{tile.note}</dd>
+                {index === 0 && <dd className="text-sm text-muted-foreground">{t("tiles.casesNote")}</dd>}
+              </div>
+            ))}
+          </dl>
+
+          <dl aria-label={t("tiles.money")} className="grid grid-cols-3 gap-4">
+            {AMOUNTS.map((amount) => (
+              <div key={amount} className="flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4">
+                <dt className="font-semibold text-[#3F4843]">{t(`tiles.${amount}`)}</dt>
+                <dd className="text-[26px] leading-tight font-bold tabular-nums">
+                  {formatNumber(data.totals[amount])}
+                </dd>
+                <dd className="text-sm text-muted-foreground">{t(`tiles.${amount}Note`)}</dd>
               </div>
             ))}
           </dl>
@@ -301,5 +322,24 @@ function Field({ id, label, children }: { id: string; label: string; children: R
       </label>
       {children}
     </div>
+  );
+}
+
+/**
+ * DSH-1: the cases waiting for the viewer's own step, linked to the screen that takes it: the Ministry's
+ * allocation (REL-1) or a District officer's release to the DS offices (REL-5).
+ */
+export async function WaitingPanel({ href, label, count }: { href: string; label: string; count: number }) {
+  const t = await getTranslations("dashboard");
+  return (
+    <section aria-labelledby="waiting-title" className="flex flex-col rounded-xl border bg-card px-5 py-4.5">
+      <h2 id="waiting-title" className="mb-1.5 text-[19px] font-bold">
+        {t("waiting.title")}
+      </h2>
+      <Link href={href} className="flex items-center justify-between gap-3 py-2.5 hover:text-primary">
+        <span className="font-semibold underline-offset-3 hover:underline">{label} →</span>
+        <span className="text-xl font-bold tabular-nums">{formatNumber(count)}</span>
+      </Link>
+    </section>
   );
 }

@@ -340,7 +340,9 @@ export type CaseFilter = {
   statuses?: CaseStatus[];
   category?: Category;
   kind?: Kind;
+  /** Either office's district (FND-1, CASE-13). */
   districtId?: number;
+  /** The DS of residence or the DS where it is built (FND-1, CASE-13). */
   dsOfficeId?: number;
   /** 1 is the first page. */
   page?: number;
@@ -391,8 +393,13 @@ export function caseWhere(viewer: Viewer, filter: CaseFilter): Prisma.CaseWhereI
   if (filter.statuses) and.push({ status: { in: filter.statuses } });
   if (filter.category) and.push({ category: filter.category });
   if (filter.kind) and.push({ kind: filter.kind });
-  if (filter.districtId) and.push({ dsOffice: { districtId: filter.districtId } });
-  if (filter.dsOfficeId) and.push({ dsOfficeId: filter.dsOfficeId });
+  // FND-1, CASE-13: a place matches the DS of residence or the DS where it is built, as the area does (PRM-4).
+  if (filter.districtId) {
+    and.push({
+      OR: [{ dsOffice: { districtId: filter.districtId } }, { buildDsOffice: { districtId: filter.districtId } }],
+    });
+  }
+  if (filter.dsOfficeId) and.push({ OR: [{ dsOfficeId: filter.dsOfficeId }, { buildDsOfficeId: filter.dsOfficeId }] });
 
   const q = filter.q?.trim();
   if (q) {

@@ -6,8 +6,9 @@ import { caseName } from "./page-header";
 import { StatusChip } from "./status-chip";
 
 /**
- * FND-1: a page of cases with their office and district, as Head Office and the view-only area show
- * them. `href` gives each case's link on the reader's own pages.
+ * FND-1: a page of cases with their DS of residence and its district, and the DS where it is built when
+ * that is another, as the Ministry and the oversight area show them. `href` gives each case's link on the
+ * reader's own pages.
  */
 export async function CaseTable({ rows, href }: { rows: CaseRow[]; href: (row: CaseRow) => string }) {
   const t = await getTranslations("cases");
@@ -51,6 +52,12 @@ export async function CaseTable({ rows, href }: { rows: CaseRow[]; href: (row: C
               <span className="flex flex-col">
                 <span>{row.officeName}</span>
                 <span className="text-sm text-muted-foreground">{row.districtName}</span>
+                {/* CASE-13: a house built in another DS division names it, as the DS home does (HOME-1). */}
+                {row.buildDsOfficeId !== row.dsOfficeId && (
+                  <span className="text-sm text-muted-foreground">
+                    {t("home.builtIn", { office: row.buildOfficeName })}
+                  </span>
+                )}
               </span>
             </td>
             <td className="px-3 py-2.5">{row.kind ? t(`kindShort.${row.kind}`) : t("none")}</td>

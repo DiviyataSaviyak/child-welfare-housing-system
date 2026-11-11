@@ -5,14 +5,14 @@ import { seed } from "../../prisma/seed-data";
 import { createTestClient } from "../../tests/db/client";
 import { releaseToDsForTests } from "../../tests/db/ds-release";
 import messages from "../../messages/si.json";
-import { colomboDay } from "@/lib/dates";
+import { colomboDay, dateToDay } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
 import { type Designation, roleOf } from "./auth/designations";
 import { type Actor, deleteCase, saveCase } from "./cases/commands";
-import { caseWhere, getCase, officeMoney } from "./cases/queries";
+import { type CaseFilter, caseWhere, getCase, officeMoney } from "./cases/queries";
 import { dashboard } from "./dashboard/queries";
-import { exportCaseList } from "./exports/case-list";
+import { caseListRows, exportCaseList } from "./exports/case-list";
 import { fileForViewer, uploadDocument, uploadPhoto } from "./files/uploads";
 import { caseHistory } from "./history/queries";
 import { markInstallmentPaid, startInstallment } from "./installments/commands";
@@ -409,8 +409,8 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
     const money = async () => ({
       resident: (await officeMoney(db, resident))!.received,
       builder: (await officeMoney(db, builder))!.received,
-      builtDistrict: (await dashboard(db, builtWhere, {}, "si")).byOffice.get(sameProvince.id)?.released ?? 0,
-      livedDistrict: (await dashboard(db, livedWhere, {}, "si")).byOffice.get(home.id)?.released ?? 0,
+      builtDistrict: (await dashboard(db, builtWhere, {}, "si")).byOffice.get(sameProvince.id)?.releasedToDs ?? 0,
+      livedDistrict: (await dashboard(db, livedWhere, {}, "si")).byOffice.get(home.id)?.releasedToDs ?? 0,
     });
     const before = await money();
 
@@ -477,5 +477,50 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
     expect(await pay(resident, (await current()).version)).toMatchObject({ ok: false, error: "roleNotAllowed" });
     expect(await pay(builder, (await current()).version)).toEqual({ ok: true, completed: false });
     expect((await current()).status).toBe("IN_PROGRESS");
+  });
+
+  it("is found by the list's DS office and district filters of either office, and of no other (FND-1)", async () => {
+    const ministry = as("MINISTRY_SECRETARY", {});
+    const found = (filter: CaseFilter) =>
+      db.case.count({ where: { AND: [caseWhere(ministry, filter)!, { id: caseId }] } });
+    const either: CaseFilter[] = [
+      { dsOfficeId: home.id },
+      { dsOfficeId: sameProvince.id },
+      { districtId: home.districtId },
+      { districtId: sameProvince.districtId },
+      { districtId: home.districtId, dsOfficeId: sameProvince.id },
+    ];
+    for (const filter of either) expect(await found(filter), JSON.stringify(filter)).toBe(1);
+    for (const filter of [{ dsOfficeId: sameDistrict.id }, { districtId: otherProvince.districtId }])
+      expect(await found(filter), JSON.stringify(filter)).toBe(0);
+  });
+
+  it("goes to Excel under where it is built, naming the DS of residence, the Ministry's letter and the District's release (EXP-1)", async () => {
+    const rows = (await caseListRows(db, as("MINISTRY_SECRETARY", {}), { q: "S/199055556666" }, "si"))!;
+    expect(rows).toHaveLength(1);
+    const offices = await db.dsOffice.findMany({
+      where: { id: { in: [home.id, sameProvince.id] } },
+      select: { id: true, nameSi: true, district: { select: { nameSi: true } } },
+    });
+    const name = (id: number) => offices.find((o) => o.id === id)!;
+    const { release } = await db.case.findUniqueOrThrow({
+      where: { id: caseId },
+      select: { release: { select: { letter: true, dsRelease: true } } },
+    });
+    expect(rows[0]).toMatchObject({
+      districtName: name(sameProvince.id).district.nameSi,
+      officeName: name(sameProvince.id).nameSi,
+      residenceOfficeName: name(home.id).nameSi,
+      release: {
+        amount: 2_000_000,
+        letterNumber: release!.letter.letterNumber,
+        letterDate: dateToDay(release!.letter.letterDate),
+        dsRelease: {
+          referenceNumber: release!.dsRelease!.referenceNumber,
+          releasedOn: dateToDay(release!.dsRelease!.releasedOn),
+          paidOut: 500_000,
+        },
+      },
+    });
   });
 });

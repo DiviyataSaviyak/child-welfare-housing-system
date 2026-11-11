@@ -8,7 +8,7 @@ export type CellValue = string | number | { day: string } | null;
 export type Column<Row> = {
   header: string;
   /**
-   * A header over this column and its neighbours with the same group, as the Head Office progress
+   * A header over this column and its neighbours with the same group, as the Ministry's progress
    * report's "financial progress" stands over its four installments. The column's own header goes
    * in a second row.
    */

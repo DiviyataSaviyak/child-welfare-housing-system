@@ -6,7 +6,7 @@ import { signInAs, TEST_CASE_NAME } from "./helpers";
 /** Screen and file text the test looks for (messages/si.json). */
 const EXPORT = "එක්සෙල් ගොනුවක් ලෙස බාගන්න";
 const FILE_NAME = /^දිවියට සවියක් ලැයිස්තුව \d{4}-\d{2}-\d{2}\.xlsx$/;
-const HEADERS = ["ලියාපදිංචි අංකය", "කාණ්ඩය", "ආධාරය", "තත්ත්වය", "නම (අවදානම් දරුවන් සඳහා භාරකරුගේ නම)"];
+const HEADERS = ["ඉල්ලුම් අංකය", "කාණ්ඩය", "ආධාරය", "තත්ත්වය", "නම (අවදානම් දරුවන් සඳහා භාරකරුගේ නම)"];
 
 /** Clicks the export button and opens the file it downloads. */
 async function exportList(page: Page) {

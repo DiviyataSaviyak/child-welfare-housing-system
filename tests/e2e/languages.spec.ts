@@ -83,7 +83,7 @@ test("the Ministry works in English, and its Excel file comes in English", async
   await workbook.xlsx.readFile(await download.path());
   const sheet = workbook.worksheets[0];
   expect(sheet.name).toBe("Beneficiaries");
-  expect(sheet.getRow(1).getCell(1).value).toBe("Registration number");
+  expect(sheet.getRow(1).getCell(1).value).toBe("Application Number");
   expect((sheet.getRow(3).values as unknown[]).slice(2, 6)).toEqual([
     "Care leaver",
     "New house",
