@@ -55,7 +55,8 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   test.setTimeout(240_000);
   await signInAs(ds, "ds0101", /\/ds$/);
   const ho = await openAs(browser, "ho0001");
-  const { url, name } = await releasedCase(ds, ho, "ප්‍රගතිය");
+  const district = await openAs(browser, "dt0103");
+  const { url, name } = await releasedCase(ds, ho, district, "ප්‍රගතිය");
   await ds.goto(url);
 
   // AC-11: only the first installment has a button; the others wait for the one before.
@@ -171,7 +172,8 @@ test("INS-6: the Ministry undoes a payment, with a reason, and the DS can pay it
   test.slow();
   await signInAs(ds, "ds0101", /\/ds$/);
   const ho = await openAs(browser, "ho0001");
-  const { url } = await releasedCase(ds, ho, "අවලංගු");
+  const district = await openAs(browser, "dt0103");
+  const { url } = await releasedCase(ds, ho, district, "අවලංගු");
   await ds.goto(url);
   await startPayment(ds, "පළමු වාරිකය");
   await markPaid(ds, "පළමු වාරිකය");

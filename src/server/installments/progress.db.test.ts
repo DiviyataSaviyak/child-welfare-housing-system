@@ -89,7 +89,8 @@ async function running(overrides: Partial<CaseValues> = {}) {
     scanId: null,
   });
   if (!release.ok) throw new Error(String(release.error ?? JSON.stringify(release.errors)));
-  // Until change 0006's task 7, the District's release is written directly, on the letter's day.
+  // The District's release, on the letter's day; until change 0006's task 8 the case is then moved on to
+  // in progress directly.
   await releaseToDsForTests(db, [ready.id]);
   return load(ready.id);
 }
@@ -560,12 +561,16 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
       "installment_paid",
       "installment_started",
       "stage_updated",
+      "case_ds_released",
       "case_allocated",
       "case_created",
     ]);
     expect(history?.[0]).toMatchObject({ actor: null });
     expect(history?.[1]).toMatchObject({ actor: { name: "ප්‍රා. පරීක්ෂණ", role: "DS_OFFICER" }, after: { number: 4 } });
     expect(history?.find((e) => e.action === "case_allocated")).toMatchObject({ actor: { role: "MINISTRY_OFFICER" } });
+    expect(history?.find((e) => e.action === "case_ds_released")).toMatchObject({
+      actor: { role: "DISTRICT_OFFICER" },
+    });
     expect(history?.every((e) => e.at instanceof Date)).toBe(true);
 
     expect(await caseHistory(db, dsB, c.id, "si")).toBeNull();

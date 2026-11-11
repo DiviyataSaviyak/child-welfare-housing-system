@@ -4,7 +4,7 @@ import { dateToDay } from "@/lib/dates";
 import { localName, NAMES, nameField, type Names } from "@/lib/names";
 import type { Category, Kind } from "@/generated/prisma/enums";
 import { type DuplicateCase, duplicatesOf } from "../cases/duplicates";
-import { officeFilter, type Viewer } from "../permissions";
+import { caseScope, officeFilter, type Viewer } from "../permissions";
 
 /** A district with cases awaiting their allocation letter (REL-1). */
 export type WaitingDistrict = {
@@ -199,6 +199,215 @@ export async function getLetter(
   if (viewer.role !== "MINISTRY_OFFICER" || !officeFilter(viewer)) return null;
   const found = await db.releaseLetter.findUnique({ where: { id }, select: LETTER_SELECT });
   return found && summary(locale)(found);
+}
+
+/**
+ * The district whose releases a District officer records (REL-9), from the account, never from the address;
+ * null for anyone else.
+ */
+function releasingDistrict(viewer: Viewer): number | null {
+  const scope = caseScope(viewer);
+  return viewer.role === "DISTRICT_OFFICER" && scope.kind === "district" ? scope.districtId : null;
+}
+
+/** The cases of the district awaiting its release: allocated to it, and built in it (CASE-13). */
+const waitingInDistrict = (districtId: number) =>
+  ({ buildDsOffice: { districtId }, status: "ALLOCATED_TO_DISTRICT" }) as const;
+
+/** A DS office of the district with cases waiting for the District's release (REL-5). */
+export type WaitingOffice = {
+  id: number;
+  name: string;
+  /** Cases waiting. */
+  count: number;
+  /** "YYYY-MM-DD": the date of the oldest Ministry letter among them. */
+  oldestLetter: string | null;
+};
+
+/**
+ * REL-5: the DS offices of the District officer's district whose cases the Ministry allocated wait for the
+ * District's release, by the DS where each is built (CASE-13): the most cases first, then the longest
+ * waiting. Anyone else gets none.
+ */
+export async function dsOfficesWaiting(db: PrismaClient, viewer: Viewer, locale: Locale): Promise<WaitingOffice[]> {
+  const districtId = releasingDistrict(viewer);
+  if (districtId === null) return [];
+  const found = await db.case.findMany({
+    where: waitingInDistrict(districtId),
+    select: { buildDsOffice: { select: { id: true, ...NAMES } }, release: { select: { releasedOn: true } } },
+  });
+  const offices = new Map<number, WaitingOffice>();
+  for (const c of found) {
+    const office = offices.get(c.buildDsOffice.id) ?? {
+      id: c.buildDsOffice.id,
+      name: localName(c.buildDsOffice, locale),
+      count: 0,
+      oldestLetter: null,
+    };
+    office.count += 1;
+    const letterDay = c.release ? dateToDay(c.release.releasedOn) : null;
+    if (letterDay && (!office.oldestLetter || letterDay < office.oldestLetter)) office.oldestLetter = letterDay;
+    offices.set(office.id, office);
+  }
+  return [...offices.values()].sort(
+    (a, b) =>
+      b.count - a.count ||
+      (a.oldestLetter ?? "").localeCompare(b.oldestLetter ?? "") ||
+      a.name.localeCompare(b.name, locale),
+  );
+}
+
+/** A case the Ministry allocated that can go on the District's release to its DS office (REL-6). */
+export type DsReleaseCase = {
+  id: string;
+  version: number;
+  applicationNumber: string;
+  name: string | null;
+  childName: string | null;
+  category: Category;
+  kind: Kind;
+  /** The DS office of residence, when it is another one (CASE-13). */
+  residenceName: string | null;
+  /** The Ministry's letter that allocated it. */
+  letterNumber: string;
+  /** "YYYY-MM-DD" */
+  letterDate: string;
+};
+
+/** The DS office a District release goes to, when it is in the District officer's district. */
+export type ReleasingOffice = { id: number; name: string; districtName: string };
+
+/**
+ * REL-6: one DS office of the District officer's district, with its cases waiting for the District's
+ * release, the oldest letter first. Null for an office of another district or anyone else (PRM-1).
+ */
+export async function casesForDsRelease(
+  db: PrismaClient,
+  viewer: Viewer,
+  dsOfficeId: number,
+  locale: Locale,
+): Promise<{ office: ReleasingOffice; cases: DsReleaseCase[] } | null> {
+  const districtId = releasingDistrict(viewer);
+  if (districtId === null) return null;
+  const office = await db.dsOffice.findFirst({
+    where: { id: dsOfficeId, districtId },
+    select: { id: true, ...NAMES, district: { select: NAMES } },
+  });
+  if (!office) return null;
+  const found = await db.case.findMany({
+    where: { ...waitingInDistrict(districtId), buildDsOfficeId: dsOfficeId },
+    orderBy: [{ release: { releasedOn: "asc" } }, { createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      version: true,
+      applicationNumber: true,
+      name: true,
+      childName: true,
+      category: true,
+      kind: true,
+      dsOfficeId: true,
+      dsOffice: { select: NAMES },
+      release: { select: { letter: { select: { letterNumber: true, letterDate: true } } } },
+    },
+  });
+  return {
+    office: { id: office.id, name: localName(office, locale), districtName: localName(office.district, locale) },
+    cases: found.flatMap((c) =>
+      c.release
+        ? [
+            {
+              id: c.id,
+              version: c.version,
+              applicationNumber: c.applicationNumber,
+              name: c.name,
+              childName: c.childName,
+              category: c.category,
+              kind: c.kind,
+              residenceName: c.dsOfficeId === dsOfficeId ? null : localName(c.dsOffice, locale),
+              letterNumber: c.release.letter.letterNumber,
+              letterDate: dateToDay(c.release.letter.letterDate),
+            },
+          ]
+        : [],
+    ),
+  };
+}
+
+/** A District release as its screen and notice show it. */
+export type DsReleaseSummary = {
+  id: string;
+  officeName: string;
+  referenceNumber: string;
+  /** "YYYY-MM-DD" */
+  releasedOn: string;
+  /** The cases it released. */
+  count: number;
+};
+
+const DS_RELEASE_SELECT = {
+  id: true,
+  referenceNumber: true,
+  releasedOn: true,
+  dsOffice: { select: NAMES },
+  _count: { select: { releases: true } },
+} as const;
+
+const dsSummary =
+  (locale: Locale) =>
+  (found: {
+    id: string;
+    referenceNumber: string;
+    releasedOn: Date;
+    dsOffice: Names;
+    _count: { releases: number };
+  }): DsReleaseSummary => ({
+    id: found.id,
+    officeName: localName(found.dsOffice, locale),
+    referenceNumber: found.referenceNumber,
+    releasedOn: dateToDay(found.releasedOn),
+    count: found._count.releases,
+  });
+
+/** REL-5: the releases the District officer's district recorded last, newest first. */
+export async function recentDsReleases(
+  db: PrismaClient,
+  viewer: Viewer,
+  locale: Locale,
+  take = 10,
+): Promise<DsReleaseSummary[]> {
+  const districtId = releasingDistrict(viewer);
+  if (districtId === null) return [];
+  const found = await db.dsRelease.findMany({
+    where: { districtId },
+    orderBy: [{ at: "desc" }, { id: "asc" }],
+    take,
+    select: DS_RELEASE_SELECT,
+  });
+  return found.map(dsSummary(locale));
+}
+
+/** One of the district's releases, for the notice after it is recorded; null for anything else. */
+export async function getDsRelease(
+  db: PrismaClient,
+  viewer: Viewer,
+  id: string,
+  locale: Locale,
+): Promise<DsReleaseSummary | null> {
+  const districtId = releasingDistrict(viewer);
+  if (districtId === null) return null;
+  const found = await db.dsRelease.findFirst({ where: { id, districtId }, select: DS_RELEASE_SELECT });
+  return found && dsSummary(locale)(found);
+}
+
+/**
+ * NTF-1, REL-5: how many of the district's cases wait for the District officer's release, for the menu,
+ * with when they were counted (src/components/shell/live-count.ts). Anyone else gets 0.
+ */
+export async function awaitingDsRelease(db: PrismaClient, viewer: Viewer): Promise<{ count: number; at: number }> {
+  const at = Date.now();
+  const districtId = releasingDistrict(viewer);
+  if (districtId === null) return { count: 0, at };
+  return { count: await db.case.count({ where: waitingInDistrict(districtId) }), at };
 }
 
 /**

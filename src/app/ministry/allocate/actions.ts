@@ -8,6 +8,7 @@ import { db } from "@/server/db";
 import { uploadLetterScan } from "@/server/files/uploads";
 import { correctRelease, MAX_LETTER_CASES, recordLetter, type ReleaseCommandError } from "@/server/releases/commands";
 import { positive } from "@/components/cases/list-filters";
+import { tickedCases } from "@/lib/validation/ticked-cases";
 
 /** The Ministry's letter actions (REL-2 to REL-4). Each checks the role first. */
 
@@ -30,19 +31,6 @@ function target(form: FormData): { caseId: string; version: number } | null {
 const releaseForm = (form: FormData) =>
   Object.fromEntries(RELEASE_FIELDS.map((field) => [field, read(form, field)])) as Record<ReleaseField, string>;
 
-/** The letter's cases as the form sends them, "<case id>:<version>"; null if any is malformed. */
-function letterCases(form: FormData): { id: string; version: number }[] | null {
-  const sent = form.getAll("case");
-  if (sent.length > MAX_LETTER_CASES) return null;
-  const cases: { id: string; version: number }[] = [];
-  for (const value of sent) {
-    const [id, version, extra] = typeof value === "string" ? value.split(":") : [];
-    if (!id || id.length > 64 || extra !== undefined || !/^\d+$/.test(version ?? "")) return null;
-    cases.push({ id, version: Number(version) });
-  }
-  return cases;
-}
-
 /**
  * REL-2, REL-3: records a district's allocation letter, which allocates every case ticked on it to the
  * district. The page then shows the letter's notice by its id, never by names (SEC-8), and stays on the
@@ -51,7 +39,7 @@ function letterCases(form: FormData): { id: string; version: number }[] | null {
 export async function recordLetterAction(_previous: LetterState, form: FormData): Promise<LetterState> {
   const actor = await requireRole("MINISTRY_OFFICER");
   const districtId = positive(read(form, "districtId"));
-  const cases = letterCases(form);
+  const cases = tickedCases(form.getAll("case"), MAX_LETTER_CASES);
   if (!districtId || !cases) return { error: "notFound", errors: {} };
 
   const scanId = read(form, "scanId");

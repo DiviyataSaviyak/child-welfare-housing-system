@@ -18,33 +18,46 @@ const STATUS_TEXT: Record<InstallmentStatus, string> = {
   RELEASED: "text-primary",
 };
 
+/** A scanned letter's link, opening in a new tab. */
+async function ScanLink({ id }: { id: string }) {
+  const t = await getTranslations("cases");
+  return (
+    <a href={`/files/${id}`} target="_blank" rel="noopener" className="shrink-0 font-semibold text-primary underline">
+      {t("money.letterScan")} <span className="font-normal">{t("money.opensInNewTab")}</span>
+    </a>
+  );
+}
+
 /**
- * "මූල්‍ය ප්‍රගතිය" as in the prototype: the Rs. 2,000,000 released through the District Secretary by
- * an allocation letter, what has been paid to the beneficiary, what the office still holds, the letter
- * itself, and the four installments (REL-3, INS-1). While the Ministry's allocation waits for the
- * District's release (`ALLOCATED_TO_DISTRICT`, no installments yet), it shows only the letter and says
- * so (change 0006). Head Office reads it as released to the District
- * Secretary (and so does the view-only area), the DS office as received through them. `correction` is Head Office's button to correct
- * the letter (REL-4). `actions` gives each installment's button, if any: the DS office's next step
- * (INS-3, INS-4) or Head Office's undo (INS-6).
+ * "මූල්‍ය ප්‍රගතිය" as in the prototype: the Rs. 2,000,000 the Ministry allocated to the district by an
+ * allocation letter and the District released to the DS office, what has been paid to the beneficiary, what
+ * the office still holds, the Ministry's letter and the District's release under it, and the four
+ * installments (REL-3, REL-7, INS-1). While the Ministry's allocation waits for the District's release
+ * (`ALLOCATED_TO_DISTRICT`, no installments yet), it shows only the letter and says so (change 0006). The
+ * Ministry and the view-only area read the money as released to the District Secretary, the DS office as
+ * received from the District Secretariat. `correction` is the Ministry's button to correct the letter
+ * (REL-4), `dsCorrection` the District officer's to correct its release (REL-8). `actions` gives each
+ * installment's button, if any: the DS office's next step (INS-3, INS-4) or the Ministry's undo (INS-6).
  */
 export async function MoneySection({
   audience,
   release,
   installments,
   correction,
+  dsCorrection,
   actions,
 }: {
   audience: Audience;
   release: ReleaseDetails;
   installments: InstallmentDetails[];
   correction?: React.ReactNode;
+  dsCorrection?: React.ReactNode;
   actions?: (item: InstallmentDetails) => React.ReactNode;
 }) {
   const [t, tp, locale] = await Promise.all([getTranslations("cases"), getTranslations("progress"), getLocale()]);
   const paid = installments.filter((i) => i.status === "RELEASED");
   const paidAmount = paidOut(installments);
-  const { letter } = release;
+  const { letter, dsRelease } = release;
   const waiting = installments.length === 0;
   const tiles = [
     audience !== "ds"
@@ -56,7 +69,12 @@ export async function MoneySection({
       : {
           label: t("money.received"),
           amount: release.amount,
-          detail: t("money.receivedDetail", { number: letter.letterNumber }),
+          detail: dsRelease
+            ? t("money.receivedDetail", {
+                date: formatDate(dsRelease.releasedOn),
+                reference: dsRelease.referenceNumber,
+              })
+            : "",
         },
     { label: t("money.paid"), amount: paidAmount, detail: t("money.count", { count: paid.length }) },
     {
@@ -108,17 +126,35 @@ export async function MoneySection({
                 until: formatDate(letter.validUntil),
               })}
         </p>
-        {letter.scanId && (
-          <a
-            href={`/files/${letter.scanId}`}
-            target="_blank"
-            rel="noopener"
-            className="shrink-0 font-semibold text-primary underline"
-          >
-            {t("money.letterScan")} <span className="font-normal">{t("money.opensInNewTab")}</span>
-          </a>
-        )}
+        {letter.scanId && <ScanLink id={letter.scanId} />}
       </div>
+
+      {dsRelease && (
+        <div className="flex flex-col gap-1.5 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
+          <div className="flex items-center gap-3">
+            <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
+            <p className="flex-1">
+              <strong className="text-foreground">
+                {t("money.dsReleaseName", { reference: dsRelease.referenceNumber })}
+              </strong>{" "}
+              {t("money.dsReleaseText", {
+                date: formatDate(dsRelease.releasedOn),
+                district: dsRelease.districtName,
+                office: dsRelease.officeName,
+                count: dsRelease.cases,
+              })}
+            </p>
+            {dsRelease.scanId && <ScanLink id={dsRelease.scanId} />}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 pl-8.5">
+            <div className="flex flex-col gap-0.5">
+              {dsRelease.note && <p className="whitespace-pre-line">{t("money.note", { note: dsRelease.note })}</p>}
+              <p>{t("money.recordedBy", { name: dsRelease.byName, date: formatDate(dsRelease.at) })}</p>
+            </div>
+            {dsCorrection}
+          </div>
+        </div>
+      )}
 
       {!waiting && (
         <table className="w-full border-collapse text-left">

@@ -48,6 +48,8 @@ export const SAMPLE_USERS: SampleUser[] = [
   { username: "ds0104", name: "", designation: "DS_ACCOUNTANT", officeCode: "KDW" },
   { username: "dt0101", name: "කේ. බණ්ඩාර", designation: "DISTRICT_SECRETARY", district: "Colombo" },
   { username: "dt0102", name: "එම්. රත්නායක", designation: "DISTRICT_CRPO", district: "Kandy" },
+  // Colombo's District CRPO, who releases the Ministry's allocations to Homagama and Kaduwela (REL-6).
+  { username: "dt0103", name: "ඒ. ගුණසේකර", designation: "DISTRICT_CRPO", district: "Colombo" },
   { username: "pv0101", name: "ජී. දිසානායක", designation: "PROVINCE_COMMISSIONER", province: "Western" },
   { username: "pd0101", name: "යූ. කුමාරි", designation: "DEPARTMENT_COMMISSIONER" },
   { username: "ho0101", name: "පී. අබේසේකර", designation: "MINISTRY_SECRETARY" },

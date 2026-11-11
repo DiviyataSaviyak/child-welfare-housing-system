@@ -1,11 +1,10 @@
 "use client";
 
-import { FileText, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import type { LetterState } from "@/app/ministry/allocate/actions";
 import { FormError } from "@/components/forms/form-field";
-import { DOCUMENT_ACCEPT, documentProblem, SNIFF_BYTES } from "@/lib/file-types";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
 import {
   defaultValidUntil,
@@ -14,8 +13,8 @@ import {
   RELEASE_FIELDS,
   type ReleaseErrors,
 } from "@/lib/validation/release";
-import type { UploadedFile, UploadError } from "@/server/files/uploads";
 import { LetterFields, type LetterValues } from "./letter-fields";
+import { type Scan, ScanPicker, type ScanUpload, TickAll } from "./scan-picker";
 
 /** A case awaiting its allocation on the district's letter, as the server gives it. */
 export type LetterFormCase = {
@@ -34,42 +33,6 @@ export type LetterFormCase = {
 };
 
 export type LetterFormGroup = { office: string; cases: LetterFormCase[] };
-
-type Scan =
-  | { state: "uploading"; name: string }
-  | { state: "done"; name: string; id: string }
-  | { state: "refused"; name: string; problem: UploadError | "fileFailed" };
-
-/** A "tick all" box, half ticked when only some of its cases are. */
-function TickAll({
-  label,
-  ids,
-  ticked,
-  onChange,
-}: {
-  label: string;
-  ids: string[];
-  ticked: ReadonlySet<string>;
-  onChange: (ids: string[], on: boolean) => void;
-}) {
-  const box = useRef<HTMLInputElement>(null);
-  const count = ids.filter((id) => ticked.has(id)).length;
-  useEffect(() => {
-    if (box.current) box.current.indeterminate = count > 0 && count < ids.length;
-  }, [count, ids.length]);
-  return (
-    <label className="flex cursor-pointer items-center gap-2 text-[15px] font-semibold">
-      <input
-        ref={box}
-        type="checkbox"
-        checked={count === ids.length}
-        onChange={(event) => onChange(ids, event.target.checked)}
-        className="size-5 accent-primary"
-      />
-      {label}
-    </label>
-  );
-}
 
 /**
  * REL-2, as in the prototype: one allocation letter to a District Secretary. The district's cases
@@ -93,10 +56,9 @@ export function LetterForm({
   /** "YYYY-MM-DD", in Colombo. */
   today: string;
   action: (state: LetterState, form: FormData) => Promise<LetterState>;
-  upload: (form: FormData) => Promise<{ ok: true; value: UploadedFile } | { ok: false; error: UploadError }>;
+  upload: ScanUpload;
 }) {
   const t = useTranslations("review");
-  const tf = useTranslations("cases.form");
   const locale = useLocale();
   const [state, dispatch, pending] = useActionState(action, { error: null, errors: {} });
   const [, startTransition] = useTransition();
@@ -108,7 +70,6 @@ export function LetterForm({
     note: "",
   });
   const [scan, setScan] = useState<Scan | null>(null);
-  const input = useRef<HTMLInputElement>(null);
   // The browser's own checks; null once the form has gone to the server, whose answer then shows.
   const [checkErrors, setCheckErrors] = useState<ReleaseErrors | null>(null);
   const [noCases, setNoCases] = useState(false);
@@ -129,28 +90,6 @@ export function LetterForm({
       }
       return next;
     });
-  }
-
-  async function chooseScan(file: File) {
-    const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
-    const problem = documentProblem(file.size, head);
-    if (problem) {
-      setScan({ state: "refused", name: file.name, problem });
-      return;
-    }
-    setScan({ state: "uploading", name: file.name });
-    const form = new FormData();
-    form.set("file", file);
-    try {
-      const result = await upload(form);
-      setScan(
-        result.ok
-          ? { state: "done", name: file.name, id: result.value.id }
-          : { state: "refused", name: file.name, problem: result.error },
-      );
-    } catch {
-      setScan({ state: "refused", name: file.name, problem: "fileFailed" });
-    }
   }
 
   function submit() {
@@ -267,69 +206,7 @@ export function LetterForm({
         errors={errors}
         limits={limits}
       >
-        <div className="flex flex-col gap-1.5">
-          <span className="text-base font-semibold">{t("letters.scan")}</span>
-          {scan && scan.state !== "refused" ? (
-            <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5">
-              <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
-              <span className="flex min-w-0 flex-1 flex-col">
-                {scan.state === "done" ? (
-                  <a
-                    href={`/files/${scan.id}`}
-                    target="_blank"
-                    rel="noopener"
-                    className="truncate font-semibold text-primary underline"
-                  >
-                    {scan.name}
-                  </a>
-                ) : (
-                  <span className="truncate font-semibold">{scan.name}</span>
-                )}
-                <span className="text-sm text-muted-foreground">
-                  {scan.state === "uploading" ? t("letters.scanUploading") : t("letters.scanNotSaved")}
-                </span>
-              </span>
-              {scan.state === "done" && (
-                <button
-                  type="button"
-                  onClick={() => setScan(null)}
-                  aria-label={t("letters.scanRemoveLabel", { name: scan.name })}
-                  className="h-9.5 shrink-0 rounded-lg border border-input bg-card px-3.5 text-[15px] font-semibold"
-                >
-                  {t("letters.scanRemove")}
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => input.current?.click()}
-                className="h-11 self-start rounded-lg border border-dashed border-[#8C877C] bg-card px-4 font-semibold"
-              >
-                {t("letters.scanChoose")}
-              </button>
-              {scan?.state === "refused" && (
-                <p className="text-[15px] font-medium text-destructive">
-                  {scan.name}: {tf(`errors.${scan.problem}`)}
-                </p>
-              )}
-            </>
-          )}
-          <input
-            ref={input}
-            type="file"
-            hidden
-            accept={DOCUMENT_ACCEPT}
-            data-testid="letter-scan-input"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              // Clearing the picker lets the same file be chosen again after it is removed.
-              event.target.value = "";
-              if (file) void chooseScan(file);
-            }}
-          />
-        </div>
+        <ScanPicker scan={scan} onChange={setScan} upload={upload} />
       </LetterFields>
 
       {formError && <FormError id="letter-error" message={t(`errors.${formError}`)} />}

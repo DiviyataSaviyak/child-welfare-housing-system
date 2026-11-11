@@ -367,8 +367,12 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
   });
 
   it("leaves the details to the DS of residence: the DS where it is built can't change or delete them", async () => {
-    expect((await getCase(db, resident, caseId, "si"))?.actsOn).toEqual({ edit: true, progress: false });
-    expect((await getCase(db, builder, caseId, "si"))?.actsOn).toEqual({ edit: false, progress: true });
+    expect((await getCase(db, resident, caseId, "si"))?.actsOn).toEqual({
+      edit: true,
+      progress: false,
+      release: false,
+    });
+    expect((await getCase(db, builder, caseId, "si"))?.actsOn).toEqual({ edit: false, progress: true, release: false });
 
     const before = await current();
     const edit = await saveCase(db, builder, {
@@ -432,7 +436,8 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
         officer.userId,
       ).toEqual(["ALLOCATED"]);
     }
-    // Until change 0006's task 7, the District's release to the DS where it is built is written directly.
+    // The District's release to the DS where it is built; until change 0006's task 8 the case is then moved
+    // on to in progress directly.
     await releaseToDsForTests(db, [caseId]);
     // The money counts where it is built (HOME-4, DSH-1).
     const after = await money();

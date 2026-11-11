@@ -139,6 +139,8 @@ const MINISTRY: Rule = { role: "MINISTRY_OFFICER" };
 const ADMIN: Rule = { role: "ADMIN" };
 /** The view-only area (PRM-4, PRM-5): it changes nothing, and only reads within the account's own area. */
 const OVERSIGHT: Rule = { role: ["VIEWER", "DISTRICT_OFFICER"] };
+/** The District officer's release to the DS offices (REL-5 to REL-9) and notifications (NTF-1). */
+const DISTRICT: Rule = { role: "DISTRICT_OFFICER" };
 
 const RULES: Record<string, Record<string, Rule>> = {
   "src/app/(auth)/actions.ts": {
@@ -204,6 +206,14 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/ministry/cases/export/route.ts": { GET: MINISTRY },
   "src/app/ministry/waiting/route.ts": { GET: MINISTRY },
   "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
+  "src/app/oversight/release/actions.ts": {
+    recordDsReleaseAction: DISTRICT,
+    uploadDsReleaseScanAction: DISTRICT,
+    correctDsReleaseAction: DISTRICT,
+  },
+  "src/app/oversight/notifications/actions.ts": { openNotificationAction: DISTRICT, markAllReadAction: DISTRICT },
+  "src/app/oversight/notifications/unread/route.ts": { GET: DISTRICT },
+  "src/app/oversight/waiting/route.ts": { GET: DISTRICT },
   "src/app/files/[id]/route.ts": { GET: { signedIn: "file" } },
   "src/app/files/[id]/thumb/route.ts": { GET: { signedIn: "file" } },
 };

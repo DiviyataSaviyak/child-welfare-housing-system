@@ -53,12 +53,19 @@ export async function newSavedCase(page: Page, input: CaseInput) {
   return saveNew(page, "ds");
 }
 
+/** Where each sample account lands after signing in. */
+function landing(username: string): RegExp {
+  if (username.startsWith("ho")) return /\/ministry$/;
+  if (username.startsWith("dt") || username.startsWith("pv") || username.startsWith("pd")) return /\/oversight$/;
+  return /\/ds$/;
+}
+
 /** A second person's browser window, beside the first, signed in and on their home page. */
 export async function asUser(browser: Browser, username: string, run: (page: Page) => Promise<void>) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "si-LK" });
   try {
     const page = await context.newPage();
-    await signInAs(page, username, username.startsWith("ho") ? /\/ministry$/ : /\/ds$/);
+    await signInAs(page, username, landing(username));
     await run(page);
   } finally {
     await context.close();
@@ -69,7 +76,7 @@ export async function asUser(browser: Browser, username: string, run: (page: Pag
 export async function openAs(browser: Browser, username: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "si-LK" });
   const page = await context.newPage();
-  await signInAs(page, username, username.startsWith("ho") ? /\/ministry$/ : /\/ds$/);
+  await signInAs(page, username, landing(username));
   return page;
 }
 
@@ -91,24 +98,44 @@ export async function recordLetterFor(ho: Page, names: string[], letterNumber: s
   await expect(ho.getByRole("status")).toContainText(`ලිපිය ${letterNumber} සටහන් කළා`);
 }
 
-/** Until change 0006's task 7: the District's release of these cases, written by ds-release-bridge.ts. */
-function districtReleaseForTests(caseIds: string[]) {
+/**
+ * On a DS office's release form (REL-6), as the District CRPO: ticks only the named cases, then records the
+ * release under this reference, dated today. Nothing is ticked to start with, and other tests' cases may
+ * wait for the same office, so only the named boxes are ticked.
+ */
+export async function recordDsReleaseFor(district: Page, names: string[], reference: string) {
+  const form = district.getByRole("group", { name: "මුදා හරින ප්‍රතිලාභීන්" });
+  const boxes = form.getByRole("checkbox");
+  await expect(boxes.first()).toBeVisible();
+  for (const box of await boxes.all()) await expect(box).not.toBeChecked();
+  for (const name of names) await form.getByRole("checkbox", { name: new RegExp(name) }).check();
+  await district.getByLabel("යොමු අංකය *").fill(reference);
+  await district.getByRole("button", { name: /^මුදා හැරීම සටහන් කරන්න · / }).click();
+  await expect(district).toHaveURL(/\/oversight\/release\?notice=released&release=[\w-]+$/);
+  await expect(district.getByRole("status")).toContainText(`මුදා හැරීම ${reference} සටහන් කළා`);
+}
+
+/** Until change 0006's task 8: moves these cases on to in progress, as installment 1 will (ds-release-bridge.ts). */
+function startForTests(caseIds: string[]) {
   execFileSync("npx", ["tsx", "tests/e2e/ds-release-bridge.ts", ...caseIds], { stdio: "inherit", shell: true });
 }
 
 /**
- * A case of the DS officer's office, allocated today on its district's allocation letter, which the
- * Ministry opens from the case's own page, then released to the DS: ready for its installments and
- * building progress (Phase 6). Until change 0006's task 7, the District's release is written straight to
- * the database (ds-release-bridge.ts).
+ * A case of Homagama (ds0101), allocated today on its district's allocation letter, which the
+ * Ministry opens from the case's own page, then released to the DS by the District CRPO from the release
+ * screen: ready for its installments and building progress (Phase 6). Until change 0006's task 8, it is then
+ * moved on to in progress straight in the database (ds-release-bridge.ts).
  */
-export async function releasedCase(ds: Page, ho: Page, label: string) {
+export async function releasedCase(ds: Page, ho: Page, district: Page, label: string) {
   const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
   const { url, number } = await newSavedCase(ds, { name, nic: randomNic() });
   const caseId = url.split("/").at(-1) ?? "";
   await ho.goto(`/ministry/cases/${caseId}`);
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();
   await recordLetterFor(ho, [name], `MWCA/E2E/${label}`);
-  districtReleaseForTests([caseId]);
+  await district.goto("/oversight/release");
+  await district.getByRole("link", { name: /^හෝමාගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await recordDsReleaseFor(district, [name], `DS/E2E/${label}`);
+  startForTests([caseId]);
   return { caseId, url, name, number };
 }

@@ -55,23 +55,24 @@ export async function notifyDistrict(
 }
 
 /**
- * Marks one of the user's own notifications read and gives its case, so the screen can open it (NTF-1).
+ * Marks one of the user's own notifications read and gives its case and type, so the screen can open it
+ * (NTF-1): a District officer's notice of a Ministry letter opens the release screen, any other its case.
  * Anyone else's notification, or one about a case the user may no longer see (PRM-3), reads as not found.
  */
 export async function openNotification(
   db: PrismaClient,
   viewer: Viewer & { userId: string },
   id: string,
-): Promise<{ caseId: string } | null> {
+): Promise<{ caseId: string; type: NotificationType } | null> {
   const scope = officeFilter(viewer);
   if (!scope) return null;
   const found = await db.notification.findFirst({
     where: { id, userId: viewer.userId, case: scope },
-    select: { caseId: true, readAt: true },
+    select: { caseId: true, type: true, readAt: true },
   });
   if (!found) return null;
   if (!found.readAt) await db.notification.updateMany({ where: { id, readAt: null }, data: { readAt: new Date() } });
-  return { caseId: found.caseId };
+  return { caseId: found.caseId, type: found.type };
 }
 
 /** Marks every unread notification of the user read. */

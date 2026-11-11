@@ -318,7 +318,7 @@ describe("where it is built (CASE-13)", () => {
     const row = await saved(dsA, newCase("200100000034", { buildDsOfficeId: dsB.dsOfficeId }));
     expect(await getCase(db, dsB, row.id, "si")).toMatchObject({
       buildDsOfficeId: dsB.dsOfficeId,
-      actsOn: { edit: false, progress: true },
+      actsOn: { edit: false, progress: true, release: false },
     });
     expect(await change(dsB, row.id, { remark: "x" })).toEqual({ ok: false, error: "notEditable" });
     expect(await deleteCase(db, dsB, { caseId: row.id, version: row.version, reason: REASON })).toEqual({

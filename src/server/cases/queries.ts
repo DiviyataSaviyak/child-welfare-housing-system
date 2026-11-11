@@ -62,9 +62,11 @@ export type CaseDetails = {
   /**
    * Which of the case's actions the viewer's office has (CASE-13): `edit` for the DS of residence,
    * `progress` (installments and stages) for the DS where it is built. Both are true for the Ministry.
+   * `release` is the District's release and its correction, for a District officer of the district where
+   * it is built (REL-9).
    * The role and the status still decide the rest (rules.ts, transitions.ts).
    */
-  actsOn: { edit: boolean; progress: boolean };
+  actsOn: { edit: boolean; progress: boolean; release: boolean };
 };
 
 /** Another case named on this one's page, with a link to it. */
@@ -105,6 +107,27 @@ export type ReleaseDetails = {
     /** The scanned letter, if one was added. */
     scanId: string | null;
   };
+  /** The District's release to the DS where it is built (REL-7); null until then. */
+  dsRelease: DsReleaseDetails | null;
+};
+
+export type DsReleaseDetails = {
+  id: string;
+  referenceNumber: string;
+  /** "YYYY-MM-DD" */
+  releasedOn: string;
+  note: string | null;
+  /** The DS office it went to. */
+  officeName: string;
+  districtName: string;
+  /** How many cases it released. */
+  cases: number;
+  /** "YYYY-MM-DD": the latest date of the Ministry's letter of one of its cases, the earliest it can be dated (REL-8). */
+  latestLetter: string | null;
+  byName: string;
+  at: Date;
+  /** The scanned letter, if one was added. */
+  scanId: string | null;
 };
 
 export type InstallmentDetails = {
@@ -199,6 +222,19 @@ export async function getCase(
               files: { where: { kind: "LETTER", removedAt: null }, take: 1, select: { id: true } },
             },
           },
+          dsRelease: {
+            select: {
+              id: true,
+              referenceNumber: true,
+              releasedOn: true,
+              note: true,
+              at: true,
+              by: { select: LABEL_SELECT },
+              dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+              releases: { select: { releasedOn: true } },
+              files: { where: { kind: "LETTER", removedAt: null }, take: 1, select: { id: true } },
+            },
+          },
         },
       },
       installments: {
@@ -218,7 +254,12 @@ export async function getCase(
   if (!found || !canSeeCase(viewer, found)) return null;
   const { dsOffice, buildDsOffice, files, release, installments, replaces, replacedBy, ...fields } = found;
   const places = { dsOffice, buildDsOffice };
-  const actsOn = { edit: canActOn(viewer, places, "edit"), progress: canActOn(viewer, places, "installment") };
+  const actsOn = {
+    edit: canActOn(viewer, places, "edit"),
+    progress: canActOn(viewer, places, "installment"),
+    release: viewer.role === "DISTRICT_OFFICER" && canActOn(viewer, places, "release"),
+  };
+  const dsRelease = release?.dsRelease;
   return {
     ...fields,
     officeName: localName(dsOffice, locale),
@@ -248,6 +289,21 @@ export async function getCase(
         latestEntered: latestDay(release.letter.releases.map((r) => colomboDay(r.case.createdAt))),
         scanId: release.letter.files[0]?.id ?? null,
       },
+      dsRelease: dsRelease
+        ? {
+            id: dsRelease.id,
+            referenceNumber: dsRelease.referenceNumber,
+            releasedOn: dateToDay(dsRelease.releasedOn),
+            note: dsRelease.note,
+            officeName: localName(dsRelease.dsOffice, locale),
+            districtName: localName(dsRelease.dsOffice.district, locale),
+            cases: dsRelease.releases.length,
+            latestLetter: latestDay(dsRelease.releases.map((r) => dateToDay(r.releasedOn))),
+            byName: accountLabel(dsRelease.by, locale),
+            at: dsRelease.at,
+            scanId: dsRelease.files[0]?.id ?? null,
+          }
+        : null,
     },
     installments: installments.map((i) => ({
       ...i,

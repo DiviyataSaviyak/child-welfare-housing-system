@@ -32,7 +32,8 @@
     "ministryAllocate": "To release allocations",
     "oversightDashboard": "Summary",
     "oversightCases": "Beneficiaries",
-    "waiting": "Beneficiaries waiting: {count}"
+    "waiting": "Beneficiaries waiting: {count}",
+    "districtRelease": "To release to DS offices"
   },
   "shell": {
     "signedInAs": "Signed in as",
@@ -713,8 +714,8 @@
       "releasedDetail": "{date} · {district} District",
       "allocated": "The Ministry has released {amount} to the {district} District. It is waiting for the District Secretariat to release it to the DS office.",
       "allocatedDs": "The Ministry has released {amount} to the {district} District for this beneficiary. The installments can start once the District Secretariat releases it to your office.",
-      "received": "Received through the District Secretary",
-      "receivedDetail": "Letter {number}",
+      "received": "Received from the District Secretariat",
+      "receivedDetail": "{date} · release {reference}",
       "paid": "Paid to the beneficiary",
       "left": "Balance with the DS office",
       "count": "{count, plural, =0 {No installments} one {# installment} other {# installments}}",
@@ -729,7 +730,9 @@
       "expectedOn": "Expected on: {date}",
       "paidOn": "Paid on: {date}",
       "note": "Note: {note}",
-      "recordedBy": "Recorded by {name} on {date}"
+      "recordedBy": "Recorded by {name} on {date}",
+      "dsReleaseName": "District release {reference}",
+      "dsReleaseText": "({date}) · from the {district} District Secretariat to the {office} DS office · beneficiaries: {count}"
     },
     "export": {
       "button": "Download as an Excel file",
@@ -853,7 +856,9 @@
     },
     "notices": {
       "corrected": "The allocation letter's details were corrected.",
-      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). They are now released to the district. The District Secretariat will release the money to the {offices} DS offices; they will be told."
+      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). They are now released to the district. The District Secretariat will release the money to the {offices} DS offices; they will be told.",
+      "dsReleased": "Release {reference} to the {office} DS office recorded: beneficiaries: {count}, {amount}. They are now “Allocation received”. The DS office has been told and can start the installments.",
+      "dsCorrected": "The District release's details were corrected."
     },
     "errors": {
       "summary": "Correct these before saving:",
@@ -875,7 +880,44 @@
       "roleNotAllowed": "You can't do this.",
       "noRelease": "No money has been released for this beneficiary yet.",
       "noCases": "Choose at least one beneficiary named in the letter.",
-      "scanUnavailable": "The copy of the letter can't be found. Choose it again."
+      "scanUnavailable": "The copy of the letter can't be found. Choose it again.",
+      "referenceRequired": "Enter the reference number.",
+      "referenceTooLong": "The reference number can't be longer than 50 characters.",
+      "releaseDateRequired": "Enter the release date.",
+      "releaseInFuture": "The release date can't be in the future.",
+      "releaseBeforeLetter": "The release date can't be before the date of the Ministry's letter of a beneficiary on it.",
+      "releaseAfterInstallment": "The date can't be after the date of an installment already recorded for a beneficiary on this release.",
+      "releaseAfterStage": "The date can't be after the date of physical progress already recorded for a beneficiary on this release.",
+      "noDsRelease": "The District Secretariat hasn't released this beneficiary's allocation yet.",
+      "noCasesRelease": "Choose at least one beneficiary released."
+    },
+    "district": {
+      "title": "To release to DS offices",
+      "intro": "The Ministry has released these beneficiaries' allocations to your district. Once the District Secretariat has released the money to a DS office, record the release here with its beneficiaries. The DS office then pays the installments.",
+      "waitingTitle": "DS offices waiting for a release",
+      "office": "{name} DS office",
+      "oldestLetter": "Oldest Ministry letter: {date}",
+      "none": "No beneficiaries are waiting for the District's release.",
+      "recordedTitle": "Releases recorded",
+      "recordedNone": "No releases recorded yet.",
+      "recordedName": "{office} · {reference}",
+      "formTitle": "Release to the {office} DS office",
+      "formIntro": "Tick only the beneficiaries whose money the District Secretariat has released to the {office} DS office.",
+      "back": "Back to the DS offices",
+      "casesLabel": "Beneficiaries released",
+      "caseDetail": "{number} · {category} · {kind}",
+      "letter": "Ministry letter {number} ({date})",
+      "notOnRelease": "Not on this release",
+      "reference": "Reference number *",
+      "referenceHelp": "As on the District Secretariat's letter or voucher.",
+      "date": "Release date *",
+      "save": "Record the release · {amount}",
+      "noneHere": "No beneficiaries of this DS office are waiting for a release."
+    },
+    "dsCorrect": {
+      "button": "Correct the release's details",
+      "title": "Correcting the District release's details",
+      "cases": "{count, plural, =1 {This release is for this beneficiary only.} other {This release is for # beneficiaries. Your change applies to all of them.}}"
     }
   },
   "notifications": {
@@ -890,14 +932,15 @@
       "SENT_BACK": "{name} has been sent back for correction",
       "VERIFIED": "{name} has been verified",
       "REJECTED": "{name} has been rejected",
-      "RELEASED": "Rs. 2,000,000 has been released for {name}",
+      "RELEASED": "The District Secretariat has released Rs. 2,000,000 for {name}",
       "COMPLETED": "{name} has been completed",
       "STOPPED": "{name} has been stopped",
       "REOPENED": "{name} has been reopened",
       "ALLOCATED": "The allocation for {name} has been released to the district",
-      "DISTRICT_LETTER": "A Ministry allocation letter has come for {name}"
+      "DISTRICT_LETTER": "Ministry allocation letter {number} · beneficiaries: {count}"
     },
-    "detail": "{number} · {date}"
+    "detail": "{number} · {date}",
+    "introDistrict": "The Ministry's allocation letters to your district."
   },
   "progress": {
     "installments": {
@@ -1041,7 +1084,9 @@
       "case_completed": "The project was completed",
       "case_stopped": "The project was stopped",
       "case_reopened": "The project was reopened",
-      "other": "A change was recorded"
+      "other": "A change was recorded",
+      "case_ds_released": "The {district} District Secretariat released Rs. 2,000,000 to the {office} DS office (reference number {reference})",
+      "ds_release_corrected": "The District release's details were corrected"
     },
     "reason": "Reason: {reason}",
     "note": "Note: {note}",

@@ -517,10 +517,10 @@ describe("notifications (NTF-1)", () => {
     expect(mine.map((n) => [n.type, n.read])).toEqual([["ALLOCATED", false]]);
     const before = await unreadCount(db, dsA);
     expect((await unreadNow(db, dsA)).count).toBe(before);
-    expect(await openNotification(db, dsA, mine[0]!.id)).toEqual({ caseId: ready.id });
+    expect(await openNotification(db, dsA, mine[0]!.id)).toEqual({ caseId: ready.id, type: "ALLOCATED" });
     expect(await unreadCount(db, dsA)).toBe(before - 1);
     // Opening it again changes nothing.
-    expect(await openNotification(db, dsA, mine[0]!.id)).toEqual({ caseId: ready.id });
+    expect(await openNotification(db, dsA, mine[0]!.id)).toEqual({ caseId: ready.id, type: "ALLOCATED" });
     expect(await unreadCount(db, dsA)).toBe(before - 1);
   });
 

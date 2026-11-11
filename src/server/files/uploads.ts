@@ -76,16 +76,17 @@ export async function uploadPhoto(
 }
 
 /**
- * Stores the scan of an allocation letter (REL-2), a PDF or an image checked like a document. Only Head
- * Office records letters. Like a document, it belongs to the person who uploaded it until the letter is
- * saved with it.
+ * Stores the scan of a letter, a PDF or an image checked like a document: the Ministry's allocation letter
+ * (REL-2), which only the Ministry records, or the District's letter of its release to a DS office (REL-6),
+ * which only a District officer records. Like a document, it belongs to the person who uploaded it until the
+ * letter or release is saved with it.
  */
 export async function uploadLetterScan(
   db: PrismaClient,
   actor: Actor,
   file: { name: string; bytes: Uint8Array },
 ): Promise<{ ok: true; value: UploadedFile } | { ok: false; error: UploadError }> {
-  if (actor.role !== "MINISTRY_OFFICER") return { ok: false, error: "notAllowed" };
+  if (actor.role !== "MINISTRY_OFFICER" && actor.role !== "DISTRICT_OFFICER") return { ok: false, error: "notAllowed" };
   const problem = documentProblem(file.bytes.length, file.bytes.subarray(0, SNIFF_BYTES));
   if (problem) return { ok: false, error: problem };
 
@@ -132,17 +133,20 @@ async function store(
   return { id, name: file.name };
 }
 
-/** Removes the person's uploads that were never saved with a case or a letter, once they are a day old. */
+/** Removes the person's uploads never saved with a case, a letter or a District release, once a day old. */
 async function removeUnusedUploads(db: PrismaClient, userId: string): Promise<void> {
   const where = {
     uploadedById: userId,
     caseId: null,
     letterId: null,
+    dsReleaseId: null,
     uploadedAt: { lt: new Date(Date.now() - UNUSED_UPLOAD_MS) },
   };
   const unused = await db.storedFile.findMany({ where, select: { id: true, storedName: true, thumbName: true } });
   if (unused.length === 0) return;
-  await db.storedFile.deleteMany({ where: { id: { in: unused.map((f) => f.id) }, caseId: null, letterId: null } });
+  await db.storedFile.deleteMany({
+    where: { id: { in: unused.map((f) => f.id) }, caseId: null, letterId: null, dsReleaseId: null },
+  });
   for (const file of unused) {
     for (const name of [file.storedName, file.thumbName]) {
       if (!name) continue;
@@ -157,8 +161,8 @@ export type FileToSend = { storedName: string; originalName: string; mimeType: s
 
 /**
  * A file the viewer may open (SEC-7): a case's file under the same office rules as the case itself
- * (PRM-1), a letter's scan for anyone who may see one of the letter's cases, or the viewer's own upload
- * that is not on a case or letter yet. Anything else is "not found".
+ * (PRM-1), a letter's or a District release's scan for anyone who may see one of its cases, or the
+ * viewer's own upload that is not on a case, letter or release yet. Anything else is "not found".
  * `thumb` asks for a photo's thumbnail (STG-6); a document has none.
  */
 export async function fileForViewer(
@@ -179,13 +183,15 @@ export async function fileForViewer(
       removedAt: true,
       case: { select: CASE_PLACES },
       letter: { select: { releases: { select: { case: { select: CASE_PLACES } } } } },
+      dsRelease: { select: { releases: { select: { case: { select: CASE_PLACES } } } } },
     },
   });
   if (!file || file.removedAt) return null;
+  const onCases = file.letter ?? file.dsRelease;
   const allowed = file.case
     ? canSeeCase(viewer, file.case)
-    : file.letter
-      ? file.letter.releases.some((release) => canSeeCase(viewer, release.case))
+    : onCases
+      ? onCases.releases.some((release) => canSeeCase(viewer, release.case))
       : file.uploadedById === viewer.userId;
   if (!allowed) return null;
   if (variant === "thumb") {
