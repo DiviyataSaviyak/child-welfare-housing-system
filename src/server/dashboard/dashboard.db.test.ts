@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
-import { addLoadData, LOAD_ID_PREFIX, removeLoadData } from "../../../scripts/seed-load";
+import { addLoadData, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
-import { backToTheDistrictForTests } from "../../../tests/db/ds-release";
 import type { Prisma } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { daysBetween } from "@/lib/dates";
@@ -28,8 +27,6 @@ let districts: DistrictOptions[];
 beforeAll(async () => {
   await seed(db);
   await addLoadData(db, { count: LOAD, seed: 7 });
-  // Until change 0006's task 10, no load-test case waits for the District's release; some must, for its figure.
-  await backToTheDistrictForTests(db, LOAD_ID_PREFIX, 200);
   districts = await districtsWithOffices(db, "si");
 }, 300_000);
 

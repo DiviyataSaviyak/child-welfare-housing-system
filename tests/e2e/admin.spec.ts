@@ -26,8 +26,9 @@ const NAME = "නම (අවශ්‍ය නම් පමණි)";
 const MOBILE = "ජංගම දුරකතන අංකය (අවශ්‍ය නම් පමණි)";
 
 /**
- * The Gampaha offices have no sample officer. Each test that creates one uses its own office, so it sees
- * only its own officers; tests/e2e/cleanup.ts deletes them again before each run.
+ * These Gampaha offices have no sample officer (Biyagama has `ds0105`, for AC-56). Each test that creates
+ * one uses its own office, so it sees only its own officers; tests/e2e/cleanup.ts deletes them again before
+ * each run.
  */
 const OFFICES = {
   signIn: "ගම්පහ",
@@ -441,7 +442,7 @@ test("the admin adds and reorders renovation stages (LST-4)", async ({ page }) =
   await expect(page.getByRole("region", { name: "නව නිවසක් ඉදිකිරීම" })).not.toContainText(suffix);
 });
 
-test("Head Office officers get 'not found' on the admin pages (PRM-2)", async ({ page }) => {
+test("Ministry officers get 'not found' on the admin pages (PRM-2)", async ({ page }) => {
   await signInAs(page, "ho0001", /\/ministry$/);
   for (const path of ["/admin/users", "/admin/users/new", "/admin/lists"]) {
     await page.goto(path);

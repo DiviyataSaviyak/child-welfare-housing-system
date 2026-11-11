@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { addDays, colomboDay, colomboYear, dateToDay } from "@/lib/dates";
+import { addDays, colomboDay, dateToDay } from "@/lib/dates";
 import { INSTALLMENT_AMOUNT, RELEASE_AMOUNT } from "@/lib/money";
 import { isComplete } from "@/server/cases/complete";
 import { applicationKey } from "@/server/cases/numbers";
@@ -43,19 +43,25 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
       where: loadCases,
       include: {
         dsOffice: { select: { code: true } },
+        buildDsOffice: { select: { districtId: true } },
         decisions: true,
-        release: { include: { dsRelease: true } },
+        release: { include: { letter: true, dsRelease: true } },
         installments: { orderBy: { number: "asc" } },
         stageUpdates: { include: { stage: { select: { sortOrder: true } } } },
       },
     });
     expect(cases).toHaveLength(COUNT);
     expect(new Set(cases.map((c) => c.dsOfficeId))).toEqual(new Set(active.map((o) => o.id)));
-    // Until change 0006's task 10, version 1's letter stands for the District's release too, so no case
-    // waits at the district.
+    // STS-1: every one of the five statuses.
     expect([...new Set(cases.map((c) => c.status))].sort()).toEqual(
-      (["AWAITING_ALLOCATION", "ALLOCATION_RECEIVED", "IN_PROGRESS", "COMPLETED"] as const).toSorted(),
+      (
+        ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED", "IN_PROGRESS", "COMPLETED"] as const
+      ).toSorted(),
     );
+    // CASE-13: a few are built in another DS office, most in the one that entered them.
+    const elsewhere = cases.filter((c) => c.buildDsOfficeId !== c.dsOfficeId).length;
+    expect(elsewhere).toBeGreaterThan(0);
+    expect(elsewhere).toBeLessThan(COUNT / 10);
     // CASE-12: each number once within its office.
     expect(new Set(cases.map((c) => `${c.dsOfficeId}:${c.applicationKey}`)).size).toBe(COUNT);
 
@@ -64,13 +70,11 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
       expect(c.createdAt.getTime()).toBeLessThanOrEqual(c.updatedAt.getTime());
       expect(c.updatedAt.getTime()).toBeLessThanOrEqual(now.getTime());
 
-      // CASE-12: an Application Number in version 1's form, of the year it was entered.
-      expect(c.applicationNumber).toMatch(new RegExp(`^${c.dsOffice.code}-${colomboYear(c.createdAt)}-\\d{3,}$`));
+      // CASE-12: an Application Number as a paper application might carry it, with its office's code.
+      expect(c.applicationNumber).toMatch(new RegExp(`^${c.dsOffice.code}/\\d+$`));
       expect(c.applicationKey).toBe(applicationKey(c.applicationNumber));
       expect(c.nicKey).not.toBeNull();
       expect(c.childName === null).toBe(c.category !== "CHILD_AT_RISK");
-      // CASE-13: built in the DS of residence.
-      expect(c.buildDsOfficeId).toBe(c.dsOfficeId);
       // Nobody checks, sends back, rejects or stops a case any more (change 0006).
       expect(c.decisions).toHaveLength(0);
 
@@ -81,19 +85,37 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
         continue;
       }
 
-      // REL-2: Rs. 2,000,000, on or after the day it was entered and never in the future, with the
-      // District's release to its DS on the letter's day.
+      // REL-2, REL-3: Rs. 2,000,000 on a letter to the district where it is built, on or after the day it
+      // was entered and never in the future.
       const release = c.release!;
-      const releasedOn = dateToDay(release.releasedOn);
+      const letterDay = dateToDay(release.releasedOn);
       expect(release.amount).toBe(RELEASE_AMOUNT);
-      expect(releasedOn >= colomboDay(c.createdAt)).toBe(true);
-      expect(releasedOn <= today).toBe(true);
-      expect(release.dsReleasedOn && dateToDay(release.dsReleasedOn)).toBe(releasedOn);
-      expect(release.dsRelease?.dsOfficeId).toBe(c.buildDsOfficeId);
+      expect(release.letter.districtId).toBe(c.buildDsOffice.districtId);
+      expect(dateToDay(release.letter.letterDate)).toBe(letterDay);
+      expect(letterDay >= colomboDay(c.createdAt)).toBe(true);
+      expect(letterDay <= today).toBe(true);
 
-      // INS-5: in progress once installment 1 is paid; until then, its allocation received and no stage.
+      if (c.status === "ALLOCATED_TO_DISTRICT") {
+        // REL-6: not yet released to the DS, so there is nothing to pay or record.
+        expect(release.dsRelease).toBeNull();
+        expect(release.dsReleasedOn).toBeNull();
+        expect(c.installments).toHaveLength(0);
+        expect(c.stageUpdates).toHaveLength(0);
+        continue;
+      }
+
+      // REL-6, REL-7: the District's release to the DS where it is built, on or after the letter's day.
+      const dsRelease = release.dsRelease!;
+      const releasedOn = dateToDay(release.dsReleasedOn!);
+      expect(dsRelease.dsOfficeId).toBe(c.buildDsOfficeId);
+      expect(dsRelease.districtId).toBe(c.buildDsOffice.districtId);
+      expect(dateToDay(dsRelease.releasedOn)).toBe(releasedOn);
+      expect(releasedOn >= letterDay && releasedOn <= today).toBe(true);
+
+      // INS-5: in progress once installment 1 is paid; until then, its allocation received, with visits
+      // perhaps but no stage reached.
       expect(c.installments[0].status === "RELEASED").toBe(c.status !== "ALLOCATION_RECEIVED");
-      if (c.status === "ALLOCATION_RECEIVED") expect(c.stageUpdates).toHaveLength(0);
+      if (c.status === "ALLOCATION_RECEIVED") for (const u of c.stageUpdates) expect(u.stageId).toBeNull();
 
       // INS-1 to INS-4: four of Rs. 500,000; only the next one is being paid, each paid after the one before.
       expect(c.installments.map((i) => [i.number, i.amount])).toEqual([1, 2, 3, 4].map((n) => [n, INSTALLMENT_AMOUNT]));

@@ -50,6 +50,10 @@ export const SAMPLE_USERS: SampleUser[] = [
   { username: "dt0102", name: "එම්. රත්නායක", designation: "DISTRICT_CRPO", district: "Kandy" },
   // Colombo's District CRPO, who releases the Ministry's allocations to Homagama and Kaduwela (REL-6).
   { username: "dt0103", name: "ඒ. ගුණසේකර", designation: "DISTRICT_CRPO", district: "Colombo" },
+  // AC-56: a case Kaduwela enters is built in Biyagama, in Gampaha. Gampaha's District CRPO releases it, and
+  // Biyagama's CRPO pays it. The admin tests add their officers to the other Gampaha offices.
+  { username: "dt0104", name: "එච්. ප්‍රේමරත්න", designation: "DISTRICT_CRPO", district: "Gampaha" },
+  { username: "ds0105", name: "ඩබ්ලිව්. කරුණාරත්න", designation: "DS_CRPO", officeCode: "BYG" },
   { username: "pv0101", name: "ජී. දිසානායක", designation: "PROVINCE_COMMISSIONER", province: "Western" },
   { username: "pd0101", name: "යූ. කුමාරි", designation: "DEPARTMENT_COMMISSIONER" },
   { username: "ho0101", name: "පී. අබේසේකර", designation: "MINISTRY_SECRETARY" },

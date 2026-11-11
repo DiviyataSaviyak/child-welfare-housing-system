@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { askForCode, screenText, signInAs } from "./helpers";
+import { askForCode, chooseLanguage, screenText, signInAs } from "./helpers";
 
 const shells = [
   { username: "ds0101", home: /\/ds$/, heading: "මගේ ප්‍රතිලාභීන්", office: "හෝමාගම ප්‍රාදේශීය ලේකම් කාර්යාලය" },
@@ -41,6 +41,29 @@ test("an old /ho address leads to the same page under /ministry (UI-10, AC-58)",
   await page.goto("/ho");
   await expect(page).toHaveURL(/\/ministry$/);
 });
+
+// AC-58: the Ministry's, a District CRPO's and a DS officer's screens never say Head Office, in any language.
+// The message files are checked word by word in src/i18n/messages.test.ts; this reads the screens themselves.
+const HEAD_OFFICE = /ප්‍රධාන\s*කාර්යාල|தலைமை\s*அலுவலக|head\s*office/i;
+const SCREENS = [
+  { username: "ho0001", home: /\/ministry$/, paths: ["/ministry", "/ministry/allocate", "/ministry/cases"] },
+  { username: "dt0103", home: /\/oversight$/, paths: ["/oversight", "/oversight/release", "/oversight/notifications"] },
+  { username: "ds0101", home: /\/ds$/, paths: ["/ds", "/ds/notifications"] },
+];
+for (const { username, home, paths } of SCREENS) {
+  test(`${username}'s screens never say Head Office, in Sinhala, Tamil or English (UI-10, AC-58)`, async ({ page }) => {
+    test.slow();
+    await signInAs(page, username, home);
+    for (const language of ["සිංහල", "தமிழ்", "English"] as const) {
+      await chooseLanguage(page, language);
+      for (const path of paths) {
+        await page.goto(path);
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        expect(await screenText(page), `${language} ${path}`).not.toMatch(HEAD_OFFICE);
+      }
+    }
+  });
+}
 
 test("/admin opens the users page", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);

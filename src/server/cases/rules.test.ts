@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { CaseStatus as STATUS_VALUES } from "@/generated/prisma/enums";
-import { applicationKey, formatCaseNumber } from "./numbers";
+import { applicationKey } from "./numbers";
 import { canChangeBuildOffice, canChangeOffice, canDeleteCase, canEditDetails } from "./rules";
 import { type Move, moveRefusal, MOVES, type Mover, movesFrom } from "./transitions";
 
@@ -114,13 +114,5 @@ describe("Application Numbers (CASE-12)", () => {
     expect(applicationKey("kdw / 147")).toBe("KDW/147");
     expect(applicationKey(" KDW/147 ")).toBe("KDW/147");
     expect(applicationKey("ප්‍රා/12 අ")).toBe("ප්‍රා/12අ");
-  });
-});
-
-describe("version 1's case numbers, for the made-up data", () => {
-  it("is the office code, the year and at least three digits", () => {
-    expect(formatCaseNumber("HMG", 2026, 11)).toBe("HMG-2026-011");
-    expect(formatCaseNumber("HMG", 2026, 1)).toBe("HMG-2026-001");
-    expect(formatCaseNumber("KDW", 2027, 1234)).toBe("KDW-2027-1234");
   });
 });

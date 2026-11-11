@@ -1,7 +1,19 @@
 import { expect, type Page, test } from "@playwright/test";
 import sharp from "sharp";
-import { asUser, IN_PROGRESS, openAs, RECEIVED, releasedCase, TODAY } from "./case-helpers";
-import { signInAs } from "./helpers";
+import {
+  asUser,
+  fillCase,
+  IN_PROGRESS,
+  openAs,
+  randomNic,
+  RECEIVED,
+  recordDsReleaseFor,
+  recordLetterFor,
+  releasedCase,
+  saveNew,
+  TODAY,
+} from "./case-helpers";
+import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the tests look for (messages/si.json). */
 const MONEY = "මූල්‍ය ප්‍රගතිය";
@@ -120,7 +132,7 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
     expect((await kaduwela.request.get(thumbSrc)).status()).toBe(404);
   });
 
-  // STG-6, HIS-2: Head Office sees the stages with the photo, and the history in plain sentences.
+  // STG-6, HIS-2: the Ministry sees the stages with the photo, and the history in plain sentences.
   await ho.goto(url.replace("/ds/", "/ministry/"));
   await ho
     .getByRole("region", { name: STAGES })
@@ -135,7 +147,7 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   await expect(history).toContainText("පළමු වාරිකය ගෙවූ බැවින් ව්‍යාපෘතිය වැඩ සිදුවෙමින් තත්ත්වයට පත් විය");
   await expect(history).toContainText("(ප්‍රා.ලේ.)");
   await expect(history).toContainText("(අමාත්‍යංශය)");
-  // Head Office records no progress itself.
+  // The Ministry records no progress itself.
   await expect(ho.getByRole("button", { name: UPDATE_STAGES })).toBeHidden();
   await expect(money(ho).getByRole("button", { name: START })).toBeHidden();
 
@@ -205,4 +217,82 @@ test("INS-6: the Ministry undoes a payment, with a reason, and the DS can pay it
   await expect(money(ds).getByRole("button", { name: PAY })).toBeVisible();
 
   await ho.context().close();
+});
+
+test("AC-56: a case Kaduwela enters, built in Biyagama, goes through Gampaha's District and Biyagama pays it", async ({
+  page: kaduwela,
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  await signInAs(kaduwela, "ds0103", /\/ds$/);
+  const ho = await openAs(browser, "ho0001");
+  const gampaha = await openAs(browser, "dt0104");
+  const biyagama = await openAs(browser, "ds0105");
+
+  // CASE-13: the DS of residence enters it, built in a DS office of another district.
+  await kaduwela.goto("/ds/cases/new");
+  const name = `${TEST_CASE_NAME} බියගම ${Date.now()}`;
+  await fillCase(kaduwela, { name, nic: randomNic() });
+  await kaduwela.getByRole("radio", { name: /^වෙනත් ප්‍රාදේශීය ලේකම් කොට්ඨාසයක/ }).check();
+  await kaduwela.getByLabel("ඉදිකරන දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
+  await kaduwela.getByLabel("ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: "බියගම" });
+  const { url } = await saveNew(kaduwela, "ds");
+  const caseId = url.split("/").at(-1) ?? "";
+
+  // REL-1 to REL-3: it waits under Gampaha, naming Kaduwela, and the letter goes to Gampaha.
+  await ho.goto("/ministry/allocate");
+  await ho.getByRole("link", { name: /^ගම්පහ දිස්ත්‍රික්කය/ }).click();
+  const letter = ho.getByRole("region", { name: "ගම්පහ දිස්ත්‍රික්කය", exact: true });
+  await expect(letter.getByRole("checkbox", { name: new RegExp(name) })).toBeVisible();
+  await expect(letter).toContainText("කඩුවෙල");
+  await recordLetterFor(ho, [name], `MWCA/E2E/AC-56-${Date.now()}`);
+
+  // REL-5 to REL-7: Gampaha's District CRPO releases it to Biyagama.
+  await gampaha.goto("/oversight/release");
+  await gampaha.getByRole("link", { name: /^බියගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await recordDsReleaseFor(gampaha, [name], "DS/E2E/AC-56");
+
+  // INS-5: Biyagama, where it is built, pays installment 1, which moves it on to in progress.
+  await biyagama.goto(url);
+  await expect(biyagama.getByRole("heading", { level: 1 })).toHaveText(name);
+  await expect(biyagama.getByRole("link", { name: "විස්තර සංස්කරණය කරන්න" })).toBeHidden();
+  await startPayment(biyagama, "පළමු වාරිකය");
+  await markPaid(biyagama, "පළමු වාරිකය");
+  await expect(biyagama.getByText(IN_PROGRESS, { exact: true }).first()).toBeVisible();
+
+  // NTF-1, PRM-1: Kaduwela heard of the allocation and the release, and sees the case, but pays nothing.
+  await kaduwela.goto("/ds/notifications");
+  await expect(
+    kaduwela.getByRole("button", { name: new RegExp(`^${name} සඳහා ප්‍රතිපාදන දිස්ත්‍රික්කයට මුදා හැර ඇත`) }),
+  ).toBeVisible();
+  await expect(
+    kaduwela.getByRole("button", {
+      name: new RegExp(`^${name} සඳහා දිස්ත්‍රික් ලේකම් කාර්යාලය රු. 2,000,000 මුදා හැර ඇත`),
+    }),
+  ).toBeVisible();
+  await kaduwela.goto(url);
+  await expect(kaduwela.getByText(IN_PROGRESS, { exact: true }).first()).toBeVisible();
+  await expect(money(kaduwela)).toContainText("DS/E2E/AC-56");
+  await expect(money(kaduwela).getByRole("button", { name: START })).toHaveCount(0);
+  await expect(money(kaduwela).getByRole("button", { name: PAY })).toHaveCount(0);
+  await expect(kaduwela.getByRole("button", { name: UPDATE_STAGES })).toBeHidden();
+
+  // PRM-4: the district where the beneficiary lives and the district where it is built both see it.
+  // (Gampaha's District Secretary is checked in src/server/scopes.db.test.ts; there is no sample one.)
+  const colombo = await openAs(browser, "dt0101");
+  for (const page of [gampaha, colombo]) {
+    await page.goto(`/oversight/cases/${caseId}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
+  }
+
+  // DSH-1: the Ministry's dashboard counts its money under Biyagama, in Gampaha.
+  await ho.goto("/ministry");
+  await ho.getByRole("table", { name: "දිස්ත්‍රික්ක අනුව" }).getByRole("link", { name: "ගම්පහ", exact: true }).click();
+  const biyagamaRow = ho
+    .getByRole("table", { name: "ගම්පහ දිස්ත්‍රික්කය: ප්‍රා.ලේ. කොට්ඨාස අනුව" })
+    .getByRole("row")
+    .filter({ has: ho.getByRole("rowheader", { name: "බියගම", exact: true }) });
+  await expect(biyagamaRow.getByRole("cell").last()).not.toHaveText("0");
+
+  for (const page of [ho, gampaha, biyagama, colombo]) await page.context().close();
 });

@@ -1,8 +1,9 @@
 /**
  * Made-up cases for load tests (PRF-1, PRF-3, PRF-4): 5,000 by default, spread over every active DS
- * office, at every point of a case's life. There are cases awaiting their allocation, cases whose
- * allocation was received, cases being built with their installments and stages (some with no update for
- * 30 days or more), and completed cases.
+ * office, at every point of a case's life. There are cases awaiting their allocation, cases the Ministry
+ * allocated to their district, cases the District released to their DS office, cases being built with their
+ * installments and stages (some with no update for 30 days or more), and completed cases. A few are built
+ * in another DS office than the one they were entered by (CASE-13).
  *
  *   npm run db:seed-load                   adds 5,000 cases
  *   npm run db:seed-load -- --count 500    adds 500
@@ -11,8 +12,9 @@
  *
  * Every name, NIC and phone number is made up (SEC-11). It runs on development, test and staging
  * databases only, never in production.
- * - The cases' ids start with "load-", which is how --remove finds them. Each gets an Application Number in
- *   version 1's form ({DS code}-{year}-{NNN}), after the highest one its office already has (CASE-12).
+ * - The cases' ids start with "load-", which is how --remove finds them. Each gets an Application Number as
+ *   a paper application might carry ({DS code}/{N}), after the highest one of that form its office already
+ *   has (CASE-12).
  * - They belong to one disabled account without a username, which can't sign in and isn't listed on
  *   the admin's users screen.
  * - No audit records are written, because the audit log can never be cleaned up (HIS-3). So a
@@ -26,12 +28,12 @@ import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import type { Prisma, PrismaClient } from "../src/generated/prisma/client";
 import type { CaseStatus, Category, Kind, NotificationType } from "../src/generated/prisma/enums";
-import { addDays, colomboDay, colomboStartOf, colomboYear, dayToDate } from "../src/lib/dates";
+import { addDays, colomboDay, colomboStartOf, dayToDate } from "../src/lib/dates";
 import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "../src/lib/money";
 import { NAMES, type Names } from "../src/lib/names";
 import { nicKey } from "../src/lib/nic";
 import { placeholderEmail } from "../src/server/auth/accounts";
-import { applicationKey, formatCaseNumber } from "../src/server/cases/numbers";
+import { applicationKey } from "../src/server/cases/numbers";
 import { createPrismaClient } from "../src/server/db";
 import { deleteStoredFile } from "../src/server/files/storage";
 import { generator, GIVEN_NAMES, madeUpNic, madeUpPhone, type Random, ROADS, type Share, SURNAMES } from "./made-up";
@@ -46,6 +48,8 @@ const DEFAULT_COUNT = 5_000;
 const MAX_AGE_DAYS = 720;
 /** Share of the cases being built whose last update was 30 or more days ago (DSH-1, HOME-3). */
 const STALE_SHARE = 0.25;
+/** Share of the cases built in another DS office than the one they were entered by (CASE-13). */
+const ELSEWHERE_SHARE = 0.03;
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 /** A notice older than this many days has been read. */
@@ -71,19 +75,16 @@ const PURPOSES = ["ගොඩනැගිලි ද්‍රව්‍ය", "ව�
 
 // --- Shares ---------------------------------------------------------------------------------------
 
-/**
- * Where a made-up case is in its life. Until change 0006's task 10, version 1's letter stands for both the
- * Ministry's allocation and the District's release, as `recordLetter` does, so no case waits at the
- * district.
- */
-export type Path = Exclude<CaseStatus, "ALLOCATED_TO_DISTRICT">;
+/** Where a made-up case is in its life: one of the five statuses (STS-1). */
+export type Path = CaseStatus;
 
 /** How the cases spread over the statuses, roughly as in a programme's second year. */
 const STATUS_SHARES: Share<Path> = [
-  ["AWAITING_ALLOCATION", 20],
+  ["AWAITING_ALLOCATION", 18],
+  ["ALLOCATED_TO_DISTRICT", 6],
   ["ALLOCATION_RECEIVED", 8],
-  ["IN_PROGRESS", 54],
-  ["COMPLETED", 18],
+  ["IN_PROGRESS", 51],
+  ["COMPLETED", 17],
 ];
 /** Installments paid on a case still being built: at least the first (INS-5). */
 const PAID_SHARES: Share<number> = [
@@ -125,17 +126,28 @@ export type Cast = {
   /** Every case's id starts with this, which is how they are removed again. */
   idPrefix: string;
   /**
-   * The office's officers: the first enters a case and takes the DS office's steps on it, and each one
-   * gets its notices (NTF-1).
+   * The office's officers. The first of the DS of residence's enters a case, and the first of the DS where
+   * it is built pays it and records its stages; each officer of either office gets its notices (NTF-1).
    */
   officers: (office: Office) => string[];
+  /** Where a case entered by `office` is built: most often the same office (CASE-13). */
+  buildOffice: (r: Random, office: Office) => Office;
   /** Who records the Ministry's letters. */
-  headOffice: (r: Random) => string;
+  ministry: (r: Random) => string;
+  /** Who records the District's release to `office` (REL-6). */
+  districtOfficer: (r: Random, office: Office) => string;
+  /** The District officers told of each of the district's letters (NTF-1). */
+  districtOfficers: (districtId: number) => string[];
   person: (r: Random, office: Office, category: Category) => Person;
   /** How many days ago a case on its way to `path` was entered; at least `minAge`. */
   age: (r: Random, path: Path, minAge: number) => number;
-  /** The day a case entered on `enteredDay` is released: after it, but never after `today` (REL-2). */
+  /**
+   * The day the Ministry's letter allocates a case entered on `enteredDay` and built in `office`: after it,
+   * but never after `today` (REL-2).
+   */
   releaseDay: (r: Random, enteredDay: string, office: Office, today: string) => string;
+  /** The day the District releases it to `office`: on or after `letterDay`, never after `today` (REL-6). */
+  dsReleaseDay: (r: Random, letterDay: string, office: Office, today: string) => string;
 };
 
 export type Context = {
@@ -152,7 +164,8 @@ type Json = Prisma.InputJsonValue | null;
 
 /**
  * One step of a case's history, as the screens would have written it to the audit log (HIS-1). The
- * writer fills in what is known only then: the Application Number, the letter of a release.
+ * writer fills in what is known only then: the Application Number, the Ministry's letter, the District's
+ * release.
  */
 type Step = {
   at: Date;
@@ -164,14 +177,27 @@ type Step = {
   after: Record<string, Json>;
 };
 
-/** A release before its allocation letter is known: the cases released on the same day in a district share one. */
-type PlannedRelease = Omit<Prisma.ReleaseCreateManyInput, "letterId"> & { districtId: number; day: string };
+/** The District's release of a case to the DS where it is built (REL-6), before the release itself is known. */
+type PlannedDsRelease = { day: string; byId: string; at: Date };
+
+/**
+ * A case's allocation before its letter and District release are known: the cases allocated on the same day
+ * in a district share one letter, and the cases released on the same day to a DS office share one release.
+ */
+type PlannedRelease = Omit<Prisma.ReleaseCreateManyInput, "letterId" | "dsReleaseId"> & {
+  districtId: number;
+  day: string;
+  ds: PlannedDsRelease | null;
+};
 
 /** A case before its Application Number is known; the writer gives it one. */
 type PlannedCase = Omit<Prisma.CaseCreateManyInput, "applicationNumber" | "applicationKey">;
 
 export type Planned = {
+  /** The DS office of residence, which entered it. */
   office: Office;
+  /** The DS office where it is built, which the money follows (CASE-13). */
+  build: Office;
   case: PlannedCase;
   release: PlannedRelease | null;
   installments: Prisma.InstallmentCreateManyInput[];
@@ -216,9 +242,12 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
   };
 
   const id = `${cast.idPrefix}${randomUUID()}`;
-  const officers = cast.officers(office);
-  const officer = officers[0]!;
-  const headOffice = cast.headOffice(r);
+  // CASE-13: the DS of residence enters it; the DS where it is built pays it and records its stages.
+  const build = cast.buildOffice(r, office);
+  const officer = cast.officers(office)[0]!;
+  const builder = cast.officers(build)[0]!;
+  const told = [...new Set([...cast.officers(office), ...cast.officers(build)])];
+  const ministry = cast.ministry(r);
   const category: Category = r.chance(1 / 3) ? "CARE_LEAVER" : "CHILD_AT_RISK";
   const kind: Kind = r.chance(0.8) ? "NEW_HOUSE" : "RENOVATION";
   const person = cast.person(r, office, category);
@@ -237,8 +266,9 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     remark: person.remark,
   };
 
-  const released = path !== "AWAITING_ALLOCATION";
-  const minAge = path === "COMPLETED" ? 150 : path === "IN_PROGRESS" ? 45 : released ? 10 : 0;
+  const allocated = path !== "AWAITING_ALLOCATION";
+  const received = allocated && path !== "ALLOCATED_TO_DISTRICT";
+  const minAge = path === "COMPLETED" ? 150 : path === "IN_PROGRESS" ? 45 : allocated ? 10 : 0;
 
   const createdDay = addDays(today, -cast.age(r, path, minAge));
   const createdAt = moment(createdDay, null);
@@ -250,7 +280,8 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     history.push({ entityType: "case", entityId: id, ...step });
     if (notice) {
       const read = ctx.now.getTime() - step.at.getTime() > UNREAD_DAYS * DAY;
-      for (const userId of officers) {
+      // NTF-1, CASE-13: the officers of both offices, each once.
+      for (const userId of told) {
         notifications.push({
           id: randomUUID(),
           userId,
@@ -276,36 +307,60 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     at: createdAt,
     actorId: officer,
     action: "case_created",
-    after: { ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)), documentsAdded: [] },
+    after: {
+      ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
+      buildDsOfficeId: build.id,
+      status: "AWAITING_ALLOCATION",
+      documentsAdded: [],
+    },
   });
 
   let completedAt: Date | null = null;
   let release: PlannedRelease | null = null;
   const installments: Prisma.InstallmentCreateManyInput[] = [];
   const stageUpdates: Prisma.StageUpdateCreateManyInput[] = [];
+  let moves = 0;
   let steps = 0;
 
-  if (released) {
-    // REL-2: on or after the day it was entered, never in the future.
-    const releasedDay = cast.releaseDay(r, createdDay, office, today);
-    const releaseAt = (last = moment(releasedDay, last));
+  if (allocated) {
+    // REL-2, REL-3: the Ministry's letter to the district where it is built, on or after the day it was
+    // entered and never in the future. The writer adds the letter's details.
+    const letterDay = cast.releaseDay(r, createdDay, build, today);
+    const letterAt = (last = moment(letterDay, last));
     release = {
       id: randomUUID(),
       caseId: id,
-      releasedOn: dayToDate(releasedDay),
-      // Version 1's letter stands for the District's release too, on the same day (see Path).
-      dsReleasedOn: dayToDate(releasedDay),
+      releasedOn: dayToDate(letterDay),
+      dsReleasedOn: null,
       amount: RELEASE_AMOUNT,
-      byId: headOffice,
-      at: releaseAt,
-      districtId: office.districtId,
-      day: releasedDay,
+      byId: ministry,
+      at: letterAt,
+      districtId: build.districtId,
+      day: letterDay,
+      ds: null,
     };
-    // The writer adds the allocation letter's details. Version 1's letter moves the case on as `releaseV1`
-    // does; one with nothing paid has its allocation received, as the migration left such cases.
-    const releasedTo = path === "ALLOCATION_RECEIVED" ? path : "IN_PROGRESS";
+    moves += 1;
     record(
-      move(releaseAt, headOffice, "case_released", "AWAITING_ALLOCATION", releasedTo, { amount: RELEASE_AMOUNT }),
+      move(letterAt, ministry, "case_allocated", "AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", {
+        amount: RELEASE_AMOUNT,
+      }),
+      "ALLOCATED",
+    );
+  }
+
+  if (received && release) {
+    // REL-6, REL-7: the District's release to the DS where it is built, on or after the letter's day. The
+    // writer adds the release's details.
+    const releasedDay = cast.dsReleaseDay(r, release.day, build, today);
+    const releasedBy = cast.districtOfficer(r, build);
+    const releaseAt = (last = moment(releasedDay, last));
+    release.ds = { day: releasedDay, byId: releasedBy, at: releaseAt };
+    release.dsReleasedOn = dayToDate(releasedDay);
+    moves += 1;
+    record(
+      move(releaseAt, releasedBy, "case_ds_released", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED", {
+        amount: RELEASE_AMOUNT,
+      }),
       "RELEASED",
     );
 
@@ -316,7 +371,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
       paid = INSTALLMENT_COUNT;
       reached = stages.length;
     } else if (path === "ALLOCATION_RECEIVED") {
-      // Nothing paid, and so no stage recorded (STG-5) until change 0006's task 8 allows it.
+      // Nothing paid yet (INS-5); some have installment 1 on its way, and visits with notes.
       paid = 0;
       reached = 0;
     } else {
@@ -334,7 +389,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     const events = interleave<Event>(r, [
       [...Array<Event>(paid).fill("pay"), ...(processing ? (["start"] as const) : [])],
       Array<Event>(reached).fill("stage"),
-      Array<Event>(path === "ALLOCATION_RECEIVED" ? 0 : r.weighted(NOTE_SHARES)).fill("note"),
+      Array<Event>(r.weighted(NOTE_SHARES)).fill("note"),
     ]);
     if (path === "COMPLETED") {
       // Nothing is recorded after completion (STG-5), so the visits come before the last step.
@@ -342,6 +397,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
       events.splice(lastStep, 0, ...events.splice(lastStep + 1));
     }
 
+    // STG-1, INS-3, INS-4: everything from the District's release to today.
     const lastDay =
       path === "COMPLETED"
         ? upToToday(addDays(releasedDay, r.int(90, 360)))
@@ -368,14 +424,14 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
           stageId: stage?.id ?? null,
           visitedOn: dayToDate(day),
           note,
-          byId: officer,
+          byId: builder,
           at: last,
         };
         stageUpdates.push(update);
         // As src/server/stages/commands.ts records it.
         record({
           at: last,
-          actorId: officer,
+          actorId: builder,
           action: "stage_updated",
           entityType: "stage_update",
           entityId: update.id,
@@ -398,7 +454,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     const recordStart = (at: Date, installmentId: string, number: number, expectedOn: string, purpose: Json) =>
       record({
         at,
-        actorId: officer,
+        actorId: builder,
         action: "installment_started",
         entityType: "installment",
         entityId: installmentId,
@@ -415,7 +471,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
         const startedAt = new Date(
           Math.max((after.getTime() + payment.at.getTime()) / 2, payment.at.getTime() - r.int(2, 14) * DAY),
         );
-        // INS-3: expected on or after the release.
+        // INS-3: expected on or after the District's release.
         const expectedOn = latestDay(colomboDay(startedAt), addDays(payment.day, -r.int(0, 7)));
         installments.push({
           ...base,
@@ -428,13 +484,18 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
         recordStart(startedAt, base.id, number, expectedOn, purpose);
         record({
           at: payment.at,
-          actorId: officer,
+          actorId: builder,
           action: "installment_paid",
           entityType: "installment",
           entityId: base.id,
           before: { number, status: "PROCESSING", note: null },
           after: { number, status: "RELEASED", releasedOn: payment.day, note: null },
         });
+        if (number === 1) {
+          // INS-5: paying installment 1 moves the case on, as the system, in the same step.
+          moves += 1;
+          record(move(payment.at, null, "case_started", "ALLOCATION_RECEIVED", "IN_PROGRESS"));
+        }
       } else if (start && number === paid + 1) {
         // Some have passed already, so the to-do panel has overdue payments (HOME-3).
         const expectedOn = addDays(start.day, r.int(3, 45));
@@ -452,6 +513,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     }
     if (path === "COMPLETED") {
       completedAt = last;
+      moves += 1;
       // The system finishes it in the same step (CLS-1), so the history names no one.
       record(move(last, null, "case_completed", "IN_PROGRESS", "COMPLETED"), "COMPLETED");
     }
@@ -459,19 +521,19 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
 
   return {
     office,
+    build,
     case: {
       id,
       ...fields,
       // The 12-digit form, so old and new numbers match (CASE-6).
       nicKey: nicKey(nic),
-      // Built in the DS of residence (CASE-13), as every case was before change 0006.
-      buildDsOfficeId: office.id,
+      buildDsOfficeId: build.id,
       status: path,
       createdById: officer,
       createdAt,
       updatedAt: last,
       completedAt,
-      version: 1 + (release ? 1 : 0) + steps,
+      version: 1 + moves + steps,
     },
     release,
     installments,
@@ -514,33 +576,42 @@ function chunks<T>(rows: readonly T[]): T[][] {
 }
 
 export type WriteOptions = {
-  /** Their allocation letters' ids start with this too. */
+  /** Their allocation letters' and District releases' ids start with this too. */
   idPrefix: string;
   /** Also write each case's history to the audit log, and its notices. The load-test data writes neither. */
   history: boolean;
+  /** The District officers told of each of a district's letters (NTF-1), with the history. */
+  districtOfficers?: (districtId: number) => string[];
   /** Runs first, in the same transaction. */
   prepare?: (tx: Prisma.TransactionClient) => Promise<void>;
 };
 
+/** The made-up Application Numbers, in a form a paper application might carry (CASE-12): `HMG/147`. */
+export function madeUpApplicationNumber(officeCode: string, sequence: number): string {
+  return `${officeCode}/${sequence}`;
+}
+
 /**
- * Writes the planned cases in one transaction, with their Application Numbers and allocation letters. Each
- * letter also stands for the District's release to each DS office of its cases, as version 1's letter does
- * until change 0006's tasks 6 and 7 (`recordLetter`).
+ * Writes the planned cases in one transaction, with their Application Numbers, the Ministry's allocation
+ * letters (as `recordLetter` makes them) and the Districts' releases (as `recordDsRelease` makes them,
+ * src/server/releases/commands.ts).
  */
 export async function writePlanned(
   db: PrismaClient,
   r: Random,
   planned: Planned[],
-  { idPrefix, history, prepare }: WriteOptions,
+  { idPrefix, history, districtOfficers, prepare }: WriteOptions,
 ): Promise<void> {
-  // REL-2: one allocation letter for the cases of a district released on the same day.
+  // REL-2: one allocation letter for the cases of a district allocated on the same day. REL-6: one District
+  // release for the cases released to a DS office on the same day.
   const letters = new Map<string, Prisma.ReleaseLetterCreateManyInput>();
   const onLetter = new Map<string, Planned[]>();
   const dsReleases = new Map<string, Prisma.DsReleaseCreateManyInput>();
+  const onDsRelease = new Map<string, Planned[]>();
   const releases: Prisma.ReleaseCreateManyInput[] = [];
   for (const p of planned) {
     if (!p.release) continue;
-    const { districtId, day, ...row } = p.release;
+    const { districtId, day, ds, ...row } = p.release;
     const key = `${districtId}:${day}`;
     let letter = letters.get(key);
     if (!letter) {
@@ -557,63 +628,94 @@ export async function writePlanned(
       onLetter.set(key, []);
     }
     onLetter.get(key)!.push(p);
-    const dsKey = `${letter.id}:${p.office.id}`;
-    let dsRelease = dsReleases.get(dsKey);
-    if (!dsRelease) {
-      dsRelease = {
-        id: `${idPrefix}${randomUUID()}`,
-        districtId,
-        dsOfficeId: p.office.id,
-        referenceNumber: letter.letterNumber,
-        releasedOn: letter.letterDate,
-        byId: letter.byId,
-        at: letter.at,
-      };
-      dsReleases.set(dsKey, dsRelease);
+    let dsRelease: Prisma.DsReleaseCreateManyInput | undefined;
+    if (ds) {
+      const dsKey = `${p.build.id}:${ds.day}`;
+      dsRelease = dsReleases.get(dsKey);
+      if (!dsRelease) {
+        dsRelease = {
+          id: `${idPrefix}${randomUUID()}`,
+          districtId: p.build.districtId,
+          dsOfficeId: p.build.id,
+          referenceNumber: `DS/${p.build.code}/${ds.day.slice(0, 4)}/${r.int(100, 999)}`,
+          releasedOn: dayToDate(ds.day),
+          byId: ds.byId,
+          at: ds.at,
+        };
+        dsReleases.set(dsKey, dsRelease);
+        onDsRelease.set(dsKey, []);
+      }
+      onDsRelease.get(dsKey)!.push(p);
     }
-    releases.push({ ...row, letterId: letter.id, dsReleaseId: dsRelease.id });
+    releases.push({ ...row, letterId: letter.id, dsReleaseId: dsRelease?.id ?? null });
   }
-  // The release's history names its letter, as recordLetter writes it (src/server/releases/commands.ts).
+
+  // Each case's history names its letter and its District release, as the commands write them.
+  const districtLetters: Prisma.NotificationCreateManyInput[] = [];
   for (const [key, cases] of onLetter) {
     const letter = letters.get(key)!;
     for (const p of cases) {
-      const step = p.history.find((s) => s.action === "case_released")!;
-      Object.assign(step.after, {
+      Object.assign(p.history.find((s) => s.action === "case_allocated")!.after, {
         letterId: letter.id,
         letterNumber: letter.letterNumber,
         letterDate: p.release!.day,
         validUntil: `${p.release!.day.slice(0, 4)}-12-31`,
-        district: p.office.districtSi,
+        district: p.build.districtSi,
+        cases: cases.length,
+      });
+    }
+    // NTF-1: each District officer of the district hears of the letter once, on its first case.
+    const at = new Date(letter.at!);
+    const read = Date.now() - at.getTime() > UNREAD_DAYS * DAY;
+    const first = cases.map((p) => p.case.id).sort()[0];
+    for (const userId of districtOfficers?.(letter.districtId) ?? []) {
+      districtLetters.push({
+        id: randomUUID(),
+        userId,
+        caseId: first,
+        type: "DISTRICT_LETTER",
+        createdAt: at,
+        readAt: read ? new Date(at.getTime() + 60 * MINUTE) : null,
+      });
+    }
+  }
+  for (const [key, cases] of onDsRelease) {
+    const dsRelease = dsReleases.get(key)!;
+    for (const p of cases) {
+      Object.assign(p.history.find((s) => s.action === "case_ds_released")!.after, {
+        dsReleaseId: dsRelease.id,
+        referenceNumber: dsRelease.referenceNumber,
+        releasedOn: p.release!.ds!.day,
+        office: p.build.nameSi,
+        district: p.build.districtSi,
         cases: cases.length,
       });
     }
   }
 
-  // CASE-12: numbers in the order of entering, within each office and year.
-  const groups = new Map<string, { office: Office; year: number; cases: PlannedCase[] }>();
+  // CASE-12: numbers in the order of entering, within each DS office of residence.
+  const groups = new Map<number, { office: Office; cases: PlannedCase[] }>();
   for (const { office, case: c } of planned) {
-    const year = colomboYear(new Date(c.createdAt!));
-    const key = `${office.id}:${year}`;
-    const group = groups.get(key) ?? { office, year, cases: [] };
+    const group = groups.get(office.id) ?? { office, cases: [] };
     group.cases.push(c);
-    groups.set(key, group);
+    groups.set(office.id, group);
   }
 
   await db.$transaction(
     async (tx) => {
       await prepare?.(tx);
       const cases: Prisma.CaseCreateManyInput[] = [];
-      for (const { office, year, cases: group } of groups.values()) {
+      for (const { office, cases: group } of groups.values()) {
         group.sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
         // After the highest number of this form the office already has, so none is taken twice (CASE-12).
-        const prefix = formatCaseNumber(office.code, year, 0).slice(0, -3);
+        const prefix = madeUpApplicationNumber(office.code, 0).slice(0, -1);
         const taken = await tx.case.findMany({
           where: { dsOfficeId: office.id, applicationNumber: { startsWith: prefix } },
           select: { applicationNumber: true },
         });
         const highest = Math.max(0, ...taken.map((c) => Number(c.applicationNumber.slice(prefix.length)) || 0));
         group.forEach((c, index) => {
-          const applicationNumber = formatCaseNumber(office.code, year, highest + index + 1);
+          const applicationNumber = madeUpApplicationNumber(office.code, highest + index + 1);
           cases.push({ ...c, applicationNumber, applicationKey: applicationKey(applicationNumber) });
         });
       }
@@ -639,7 +741,7 @@ export async function writePlanned(
         )
         .sort((a, b) => a.at.getTime() - b.at.getTime());
       for (const rows of chunks(audit)) await tx.auditLog.createMany({ data: rows });
-      for (const rows of chunks(planned.flatMap((p) => p.notifications)))
+      for (const rows of chunks([...planned.flatMap((p) => p.notifications), ...districtLetters]))
         await tx.notification.createMany({ data: rows });
     },
     { maxWait: 10_000, timeout: 10 * 60_000 },
@@ -697,10 +799,28 @@ export async function removeMadeUp(
 
 // --- The load-test data -------------------------------------------------------------------------
 
-const LOAD_CAST: Cast = {
+/**
+ * Where a case entered by `office` is built (CASE-13): most often the same office; otherwise another office
+ * of its district, or now and then of another district.
+ */
+export function buildOfficeAmong(offices: Office[], share: number): Cast["buildOffice"] {
+  return (r, office) => {
+    if (!r.chance(share)) return office;
+    const others = offices.filter((o) => o.id !== office.id);
+    const near = others.filter((o) => o.districtId === office.districtId);
+    const choices = near.length > 0 && r.chance(0.7) ? near : others;
+    return choices.length > 0 ? r.pick(choices) : office;
+  };
+}
+
+/** The load-test data, among these offices: one disabled account takes every step. */
+const loadCast = (offices: Office[]): Cast => ({
   idPrefix: LOAD_ID_PREFIX,
   officers: () => [LOAD_USER_ID],
-  headOffice: () => LOAD_USER_ID,
+  buildOffice: buildOfficeAmong(offices, ELSEWHERE_SHARE),
+  ministry: () => LOAD_USER_ID,
+  districtOfficer: () => LOAD_USER_ID,
+  districtOfficers: () => [],
   person: (r, office, category) => {
     const surname = r.pick(SURNAMES);
     return {
@@ -714,12 +834,17 @@ const LOAD_CAST: Cast = {
       remark: r.chance(0.1) ? r.pick(REMARKS) : null,
     };
   },
-  age: (r, _path, minAge) => r.int(minAge, MAX_AGE_DAYS),
+  // A case still at the district was allocated in the last few months.
+  age: (r, path, minAge) => r.int(minAge, path === "ALLOCATED_TO_DISTRICT" ? 120 : MAX_AGE_DAYS),
   releaseDay: (r, enteredDay, _office, today) => {
     const day = addDays(enteredDay, r.int(1, 30));
     return day > today ? today : day;
   },
-};
+  dsReleaseDay: (r, letterDay, _office, today) => {
+    const day = addDays(letterDay, r.int(0, 21));
+    return day > today ? today : day;
+  },
+});
 
 export type LoadOptions = {
   /** How many cases to add; 5,000 when left out. */
@@ -739,7 +864,7 @@ export async function addLoadData(db: PrismaClient, options: LoadOptions = {}): 
 
   const offices = await readOffices(db);
   if (offices.length === 0) throw new Error("There are no active DS offices: run the seed first.");
-  const ctx: Context = { r, now, today: colomboDay(now), stages: await readStages(db), cast: LOAD_CAST };
+  const ctx: Context = { r, now, today: colomboDay(now), stages: await readStages(db), cast: loadCast(offices) };
   // Every office gets at least one case, then the rest go to offices of different sizes.
   const officeShares: Share<Office> = offices.map((office) => [office, r.int(5, 15)]);
   const planned = Array.from({ length: count }, (_, index) =>

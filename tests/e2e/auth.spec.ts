@@ -19,7 +19,7 @@ for (const [username, home] of [
   });
 }
 
-test("a DS officer gets 'not found' on Head Office and admin pages (PRM-1, ERR-2)", async ({ page }) => {
+test("a DS officer gets 'not found' on the Ministry's and admin pages (PRM-1, ERR-2)", async ({ page }) => {
   await signInAs(page, "ds0101", /\/ds$/);
   for (const path of ["/ministry", "/ministry/allocate", "/admin/users"]) {
     await page.goto(path);
@@ -27,7 +27,7 @@ test("a DS officer gets 'not found' on Head Office and admin pages (PRM-1, ERR-2
   }
 });
 
-test("an admin gets 'not found' on DS and Head Office pages (PRM-2)", async ({ page }) => {
+test("an admin gets 'not found' on DS and Ministry pages (PRM-2)", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
   for (const path of ["/ds", "/ministry"]) {
     await page.goto(path);

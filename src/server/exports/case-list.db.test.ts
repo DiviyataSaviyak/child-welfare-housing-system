@@ -5,7 +5,6 @@ import messages from "../../../messages/si.json";
 import { seed } from "../../../prisma/seed-data";
 import { addLoadData, LOAD_ID_PREFIX, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
-import { backToTheDistrictForTests } from "../../../tests/db/ds-release";
 import { dateToDay } from "@/lib/dates";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { countCases, listCases, PAGE_SIZE } from "../cases/queries";
@@ -34,7 +33,8 @@ let district: number;
 beforeAll(async () => {
   await seed(db);
   await addLoadData(db, { count: LOAD, seed: 11 });
-  // The office with the most load-test cases and no other case. Other test files share the schema and set
+  // The office with the most load-test cases and no other case, with at least one case waiting at the
+  // district (REL-6), so the rows hold every stage of the money. Other test files share the schema and set
   // statuses directly, or give two offices the same Application Number (CASE-12), which the checks below
   // don't expect.
   const others = await db.case.findMany({
@@ -48,9 +48,17 @@ beforeAll(async () => {
     _count: { _all: true },
     orderBy: { _count: { dsOfficeId: "desc" } },
   });
-  busiestOffice = counts.find((group) => !taken.has(group.dsOfficeId))!.dsOfficeId;
-  // Until change 0006's task 10, no load-test case waits for the District's release; some of this office's must.
-  await backToTheDistrictForTests(db, LOAD_ID_PREFIX, 5, busiestOffice);
+  const atTheDistrict = new Set(
+    (
+      await db.case.findMany({
+        where: { id: { startsWith: LOAD_ID_PREFIX }, status: "ALLOCATED_TO_DISTRICT" },
+        select: { buildDsOfficeId: true },
+      })
+    ).map((c) => c.buildDsOfficeId),
+  );
+  busiestOffice = counts.find(
+    (group) => !taken.has(group.dsOfficeId) && atTheDistrict.has(group.dsOfficeId),
+  )!.dsOfficeId;
   district = (await db.dsOffice.findUniqueOrThrow({ where: { id: busiestOffice }, select: { districtId: true } }))
     .districtId;
 }, 300_000);
@@ -89,7 +97,8 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
   it("gives each case its allocation, the Ministry's letter, the District's release and its money from the database", async () => {
     const rows = (await caseListRows(db, ho, { dsOfficeId: busiestOffice }, "si"))!;
     const cases = await db.case.findMany({
-      where: { dsOfficeId: busiestOffice },
+      // FND-1, CASE-13: the list's DS office filter matches either office of a case.
+      where: { OR: [{ dsOfficeId: busiestOffice }, { buildDsOfficeId: busiestOffice }] },
       select: {
         applicationNumber: true,
         release: {
@@ -136,7 +145,7 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       select: { id: true },
     });
     const cases = await db.case.findMany({
-      where: { dsOfficeId: busiestOffice, kind: "NEW_HOUSE" },
+      where: { OR: [{ dsOfficeId: busiestOffice }, { buildDsOfficeId: busiestOffice }], kind: "NEW_HOUSE" },
       select: {
         applicationNumber: true,
         installments: { select: { number: true, status: true, expectedOn: true, releasedOn: true } },
@@ -180,13 +189,20 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     } as const;
     const rows = (await caseListRows(db, ds, {}, "si"))!;
     const own = await db.dsOffice.findUniqueOrThrow({ where: { id: busiestOffice }, select: { nameSi: true } });
-    expect(rows.length).toBe(await db.case.count({ where: { dsOfficeId: busiestOffice } }));
-    expect(new Set(rows.map((r) => r.officeName))).toEqual(new Set([own.nameSi]));
+    // PRM-1, CASE-13: the cases it entered and the cases built in it.
+    expect(rows.length).toBe(
+      await db.case.count({ where: { OR: [{ dsOfficeId: busiestOffice }, { buildDsOfficeId: busiestOffice }] } }),
+    );
+    for (const row of rows) expect([row.officeName, row.residenceOfficeName]).toContain(own.nameSi);
 
     // A search can't reach past the office, even with another office's number.
     const other = await db.case.findFirstOrThrow({
       // A load-test case: its number carries its own office's code, so no case of this office shares it.
-      where: { dsOfficeId: { not: busiestOffice }, id: { startsWith: LOAD_ID_PREFIX } },
+      where: {
+        dsOfficeId: { not: busiestOffice },
+        buildDsOfficeId: { not: busiestOffice },
+        id: { startsWith: LOAD_ID_PREFIX },
+      },
       select: { applicationNumber: true },
     });
     expect(await caseListRows(db, ds, { q: other.applicationNumber }, "si")).toEqual([]);
