@@ -15,7 +15,7 @@ import { StageUpdate } from "@/components/progress/stage-update";
 import { colomboDay } from "@/lib/dates";
 import { paidLimits, stageLimits, startLimits } from "@/lib/validation/progress";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
-import { canDeleteCase, canEditDetails } from "@/server/cases/rules";
+import { canDeleteCase, canEditDetails, takesProgress } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { caseHistory } from "@/server/history/queries";
@@ -56,8 +56,10 @@ export default async function DsCasePage({
   ]);
   const notice = (await searchParams).notice;
   const justCreated = notice === "created";
-  // CASE-13: only the DS where it is built pays the installments and records the stages.
-  const running = details.status === "IN_PROGRESS" && details.release !== null && details.actsOn.progress;
+  // CASE-13: only the DS where it is built pays the installments and records the stages, from the District's
+  // release to it until the case is completed (INS-5, STG-5). The date rules start from that release.
+  const receivedOn = details.release?.dsRelease?.releasedOn ?? null;
+  const running = takesProgress(details.status) && receivedOn !== null && details.actsOn.progress;
   const today = colomboDay(new Date());
   const next = running ? nextInstallment(details.installments) : null;
   // CASE-8, CASE-9: while it awaits its allocation, the DS of residence corrects or deletes it.
@@ -84,7 +86,7 @@ export default async function DsCasePage({
 
   /** The next installment's button (INS-2); a later one says which it waits for. */
   const installmentStep = (item: InstallmentDetails) => {
-    if (!running || !details.release || item.status === "RELEASED") return null;
+    if (!running || !receivedOn || item.status === "RELEASED") return null;
     const name = t(`installment.name.${item.number as 1 | 2 | 3 | 4}`);
     if (item.number !== next?.number) {
       const previous = t(`installment.name.${(item.number - 1) as 1 | 2 | 3}`);
@@ -103,8 +105,8 @@ export default async function DsCasePage({
         installmentName={name}
         limits={
           starting
-            ? startLimits(details.release.releasedOn)
-            : paidLimits(today, details.release.releasedOn, previousPaidOn(details.installments, item.number))
+            ? startLimits(receivedOn)
+            : paidLimits(today, receivedOn, previousPaidOn(details.installments, item.number))
         }
         initial={{ day: starting ? "" : today, purpose: item.purpose ?? "", note: item.note ?? "" }}
         action={starting ? startInstallmentAction : payInstallmentAction}
@@ -167,13 +169,14 @@ export default async function DsCasePage({
               <StageSection
                 progress={progress}
                 update={
-                  running && (
+                  running &&
+                  receivedOn && (
                     <StageUpdate
                       key={details.version}
                       caseId={details.id}
                       version={details.version}
                       choices={progress.choices}
-                      limits={stageLimits(today, details.release.releasedOn, progress.current?.reachedOn ?? null)}
+                      limits={stageLimits(today, receivedOn, progress.current?.reachedOn ?? null)}
                       today={today}
                       buttonLabel={tp(progress.choices.length > 0 ? "stages.update" : "stages.addNote")}
                       action={stageUpdateAction}

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import sharp from "sharp";
-import { asUser, openAs, releasedCase, TODAY } from "./case-helpers";
+import { asUser, IN_PROGRESS, openAs, RECEIVED, releasedCase, TODAY } from "./case-helpers";
 import { signInAs } from "./helpers";
 
 /** Screen text the tests look for (messages/si.json). */
@@ -77,9 +77,13 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   await expect(money(ds).getByText(PROCESSING, { exact: true })).toBeVisible();
   await expect(money(ds)).toContainText("රු. 500,000 · අත්තිවාරම සඳහා");
 
+  // AC-55: starting the payment leaves the case at allocation received; paying it moves it on.
+  await expect(ds.getByText(RECEIVED, { exact: true }).first()).toBeVisible();
   await markPaid(ds, "පළමු වාරිකය");
   await expect(ds.getByRole("status")).toHaveText("ගෙවූ බව සුරකින ලදී.");
   await expect(money(ds)).toContainText(`ගෙවූ දිනය: ${SHOWN_TODAY}`);
+  await expect(ds.getByText(IN_PROGRESS, { exact: true }).first()).toBeVisible();
+  await expect(ds.getByText(RECEIVED, { exact: true })).toHaveCount(0);
 
   // AC-12: choosing the third stage marks the two before it on the same day. The admin may have
   // renamed or reordered the stages, so their names come from the form.
@@ -128,6 +132,7 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   const history = ho.getByRole("region", { name: HISTORY });
   await expect(history).toContainText(`ළඟා වූ මට්ටම: ${first}, ${second}, ${third} (${SHOWN_TODAY})`);
   await expect(history).toContainText(`පළමු වාරිකය ගෙවන ලදී (ගෙවූ දිනය ${SHOWN_TODAY})`);
+  await expect(history).toContainText("පළමු වාරිකය ගෙවූ බැවින් ව්‍යාපෘතිය වැඩ සිදුවෙමින් තත්ත්වයට පත් විය");
   await expect(history).toContainText("(ප්‍රා.ලේ.)");
   await expect(history).toContainText("(අමාත්‍යංශය)");
   // Head Office records no progress itself.
@@ -189,6 +194,8 @@ test("INS-6: the Ministry undoes a payment, with a reason, and the DS can pay it
   await undo.getByRole("button", { name: "ඔව්, අවලංගු කරන්න" }).click();
   await expect(ho).toHaveURL(`${hoUrl}?notice=undone`);
   await expect(money(ho).getByText(PROCESSING, { exact: true })).toBeVisible();
+  // AC-55: undoing installment 1 puts the case back to allocation received.
+  await expect(ho.getByText(RECEIVED, { exact: true }).first()).toBeVisible();
   await expect(ho.getByRole("region", { name: HISTORY })).toContainText("හේතුව: ගෙවූ දිනය වැරදියි.");
 
   // Nobody stops a case any more (change 0006).

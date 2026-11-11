@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
 import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
-import { releaseToDsForTests } from "../../../tests/ds-release-bridge";
+import { releaseToDsForTests } from "../../../tests/db/ds-release";
 import { colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { defaultValidUntil, type ReleaseField } from "@/lib/validation/release";

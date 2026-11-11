@@ -66,7 +66,7 @@ export const START_FIELDS = ["expectedOn", "purpose", "note"] as const;
 export type StartField = (typeof START_FIELDS)[number];
 export type StartValues = { expectedOn: string; purpose: string | null; note: string | null };
 
-/** INS-3: the expected date is on or after the Rs. 2,000,000 release; it may be in the future. */
+/** INS-3: the expected date is on or after the District's release of the Rs. 2,000,000 to the DS (change 0006); it may be in the future. */
 export function startLimits(releasedOn: string): DayLimits {
   return { latest: null, earliest: [{ day: releasedOn, error: "dateBeforeRelease" }] };
 }
@@ -89,7 +89,7 @@ export type PaidField = (typeof PAID_FIELDS)[number];
 export type PaidValues = { releasedOn: string; note: string | null };
 
 /**
- * INS-4: the day paid is no later than today, on or after the Rs. 2,000,000 release, and on or after
+ * INS-4: the day paid is no later than today, on or after the District's release of the Rs. 2,000,000 to the DS (change 0006), and on or after
  * the previous installment's day paid.
  */
 export function paidLimits(today: string, releasedOn: string, previousPaidOn: string | null): DayLimits {
@@ -118,7 +118,7 @@ export type StageField = (typeof STAGE_FIELDS)[number];
 export type StageValues = { stageId: number | null; visitedOn: string; note: string | null };
 
 /**
- * STG-1: the day is no later than today and on or after the Rs. 2,000,000 release. A stage reached
+ * STG-1: the day is no later than today and on or after the District's release of the Rs. 2,000,000 to the DS (change 0006). A stage reached
  * can't come before the day the current stage was reached, so the stages keep their order.
  */
 export function stageLimits(today: string, releasedOn: string, currentStageOn: string | null): DayLimits {

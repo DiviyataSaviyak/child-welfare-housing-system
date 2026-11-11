@@ -66,3 +66,14 @@ export function canChangeOffice(role: Role, status: CaseStatus | null): boolean 
 export function canChangeBuildOffice(status: CaseStatus | null): boolean {
   return status === null || AWAITING.includes(status);
 }
+
+/**
+ * INS-5, STG-5: installments and stages change only once the District has released the allocation to the
+ * DS where it is built, until the case is completed. Paying installment 1 moves it on to in progress.
+ */
+export const PROGRESS_STATUSES: readonly CaseStatus[] = ["ALLOCATION_RECEIVED", "IN_PROGRESS"];
+
+/** Whether the case's installments and stages may change now (INS-5, STG-5). */
+export function takesProgress(status: CaseStatus): boolean {
+  return PROGRESS_STATUSES.includes(status);
+}

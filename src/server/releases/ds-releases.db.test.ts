@@ -452,8 +452,7 @@ describe("correcting a District release (REL-8, AC-57)", () => {
     });
     expect(await correct(daysAgo(10))).toEqual({ ok: true });
 
-    // Until change 0006's task 8, a stage needs the case in progress; it is moved there directly.
-    await db.case.update({ where: { id: visited.id }, data: { status: "IN_PROGRESS" } });
+    // A stage can be recorded as soon as the allocation is received (STG-5).
     const stage = await recordStageUpdate(db, dsA, {
       caseId: visited.id,
       version: (await load(visited.id)).version,

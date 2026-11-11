@@ -8,13 +8,14 @@ import { claimCase } from "../cases/claim";
 import type { Actor } from "../cases/commands";
 import { completeIfDone } from "../cases/complete";
 import { Refusal } from "../cases/refusal";
+import { PROGRESS_STATUSES, takesProgress } from "../cases/rules";
 import { CASE_PLACES, canActOn, canSeeCase } from "../permissions";
 import { getStageProgress } from "./queries";
 
 export type StageError =
   | "notFound"
   | "roleNotAllowed"
-  /** Stage updates are allowed only while the case is in progress (STG-5). */
+  /** Stage updates are allowed only once the allocation is received, until the case is completed (STG-5). */
   | "caseNotRunning"
   | "conflict"
   /** More than 10 photos (STG-1). */
@@ -39,7 +40,7 @@ const refused = (error: StageError): StageResult => ({ ok: false, error, errors:
 
 /**
  * STG-1 to STG-5: the DS office records building progress: a stage later than the current one, or a
- * note-only visit, on a day no later than today and on or after the release, with a note and up to
+ * note-only visit, on a day no later than today and on or after the District's release, with a note and up to
  * 10 photos. Choosing a stage further ahead marks the stages it skips as reached on the same day
  * (STG-2). A renovation case with no stages defined takes note-only updates (STG-4). Reaching the last
  * stage may finish the case (CLS-1).
@@ -54,18 +55,20 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
       ...CASE_PLACES,
       version: true,
       kind: true,
-      release: { select: { releasedOn: true } },
+      release: { select: { dsReleasedOn: true } },
     },
   });
   if (!found || !canSeeCase(actor, found)) return refused("notFound");
   // CASE-13: only the DS where it is built records the stages; the DS of residence only sees them.
   if (actor.role !== "DS_OFFICER" || !canActOn(actor, found, "stage")) return refused("roleNotAllowed");
-  if (found.status !== "IN_PROGRESS" || !found.release) return refused("caseNotRunning");
+  // STG-5: from the District's release to the DS until it is completed; a stage never moves the status.
+  const dsReleasedOn = found.release?.dsReleasedOn;
+  if (!takesProgress(found.status) || !dsReleasedOn) return refused("caseNotRunning");
 
   const now = new Date();
   // Sinhala names for the audit record, which also keeps all three (UI-9).
   const progress = await getStageProgress(db, found.id, found.kind, "si");
-  const limits = stageLimits(colomboDay(now), dateToDay(found.release.releasedOn), progress.current?.reachedOn ?? null);
+  const limits = stageLimits(colomboDay(now), dateToDay(dsReleasedOn), progress.current?.reachedOn ?? null);
   const parsed = parseStageForm((field) => input.form[field], limits);
   if (!parsed.ok) return { ok: false, error: null, errors: parsed.errors };
   const { stageId, visitedOn, note } = parsed.value;
@@ -81,7 +84,7 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
 
   try {
     const completed = await db.$transaction(async (tx) => {
-      await claimCase(tx, found, ["IN_PROGRESS"]);
+      await claimCase(tx, found, PROGRESS_STATUSES);
       const day = dayToDate(visitedOn);
       // The skipped stages first, then the chosen one, which carries the note and photos.
       const rows = [

@@ -3,7 +3,7 @@ import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../prisma/seed-data";
 import { createTestClient } from "../../tests/db/client";
-import { releaseToDsForTests } from "../../tests/ds-release-bridge";
+import { releaseToDsForTests } from "../../tests/db/ds-release";
 import messages from "../../messages/si.json";
 import { colomboDay } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
@@ -15,7 +15,7 @@ import { dashboard } from "./dashboard/queries";
 import { exportCaseList } from "./exports/case-list";
 import { fileForViewer, uploadDocument, uploadPhoto } from "./files/uploads";
 import { caseHistory } from "./history/queries";
-import { startInstallment } from "./installments/commands";
+import { markInstallmentPaid, startInstallment } from "./installments/commands";
 import { viewerArea } from "./lists/queries";
 import { recordLetter } from "./releases/commands";
 import { recordStageUpdate } from "./stages/commands";
@@ -436,8 +436,7 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
         officer.userId,
       ).toEqual(["ALLOCATED"]);
     }
-    // The District's release to the DS where it is built; until change 0006's task 8 the case is then moved
-    // on to in progress directly.
+    // The District's release to the DS where it is built.
     await releaseToDsForTests(db, [caseId]);
     // The money counts where it is built (HOME-4, DSH-1).
     const after = await money();
@@ -449,7 +448,7 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
 
   it("is paid and its stages recorded only by the DS where it is built", async () => {
     const running = await current();
-    expect(running.status).toBe("IN_PROGRESS");
+    expect(running.status).toBe("ALLOCATION_RECEIVED");
     const today = colomboDay(new Date());
     const start = (actor: Actor, version: number) =>
       startInstallment(db, actor, {
@@ -472,5 +471,11 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
 
     expect(await start(builder, running.version)).toEqual({ ok: true, completed: false });
     expect((await visit(builder, (await current()).version)).ok).toBe(true);
+    // AC-56: the DS where it is built pays installment 1, which moves the case on to in progress (INS-5).
+    const pay = (actor: Actor, version: number) =>
+      markInstallmentPaid(db, actor, { caseId, version, number: 1, form: { releasedOn: today, note: "" } });
+    expect(await pay(resident, (await current()).version)).toMatchObject({ ok: false, error: "roleNotAllowed" });
+    expect(await pay(builder, (await current()).version)).toEqual({ ok: true, completed: false });
+    expect((await current()).status).toBe("IN_PROGRESS");
   });
 });

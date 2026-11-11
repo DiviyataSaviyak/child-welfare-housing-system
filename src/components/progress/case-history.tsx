@@ -18,6 +18,9 @@ const ACTIONS = [
   "installment_started",
   "installment_paid",
   "installment_payment_undone",
+  // Change 0006: paying installment 1 moves the case to in progress, and undoing it moves it back (INS-5, INS-6).
+  "case_started",
+  "case_unstarted",
   "case_completed",
   "case_stopped",
   "case_reopened",

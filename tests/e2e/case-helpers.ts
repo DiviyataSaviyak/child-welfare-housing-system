@@ -1,11 +1,13 @@
 import { type Browser, expect, type Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the case tests look for (messages/si.json). */
 export const SAVE = "සුරකින්න";
 export const CONFIRM = "ඔව්, සුරකින්න";
 export const AWAITING = "ප්‍රතිපාදන මුදා හැරීමට ඇත";
+/** The statuses a case has around installment 1 (INS-5). */
+export const RECEIVED = "ප්‍රතිපාදන ලැබී ඇත";
+export const IN_PROGRESS = "වැඩ සිදුවෙමින්";
 export const YEAR = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo", year: "numeric" }).format(new Date());
 /** Today in Colombo as a date field takes it, "YYYY-MM-DD". */
 export const TODAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Colombo" }).format(new Date());
@@ -115,16 +117,10 @@ export async function recordDsReleaseFor(district: Page, names: string[], refere
   await expect(district.getByRole("status")).toContainText(`මුදා හැරීම ${reference} සටහන් කළා`);
 }
 
-/** Until change 0006's task 8: moves these cases on to in progress, as installment 1 will (ds-release-bridge.ts). */
-function startForTests(caseIds: string[]) {
-  execFileSync("npx", ["tsx", "tests/e2e/ds-release-bridge.ts", ...caseIds], { stdio: "inherit", shell: true });
-}
-
 /**
  * A case of Homagama (ds0101), allocated today on its district's allocation letter, which the
  * Ministry opens from the case's own page, then released to the DS by the District CRPO from the release
- * screen: ready for its installments and building progress (Phase 6). Until change 0006's task 8, it is then
- * moved on to in progress straight in the database (ds-release-bridge.ts).
+ * screen: its allocation received, ready for its installments and building progress (INS-5, STG-5).
  */
 export async function releasedCase(ds: Page, ho: Page, district: Page, label: string) {
   const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
@@ -136,6 +132,5 @@ export async function releasedCase(ds: Page, ho: Page, district: Page, label: st
   await district.goto("/oversight/release");
   await district.getByRole("link", { name: /^හෝමාගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
   await recordDsReleaseFor(district, [name], `DS/E2E/${label}`);
-  startForTests([caseId]);
   return { caseId, url, name, number };
 }
