@@ -28,7 +28,7 @@ describe("the allocation letter form (REL-2)", () => {
     expect(error("")).toBe("dateRequired");
     expect(error("2026-02-30")).toBe("dateInvalid");
     expect(error("2026-09-29")).toBe("dateInFuture");
-    expect(error("2026-09-09")).toBe("dateBeforeVerified");
+    expect(error("2026-09-09")).toBe("dateBeforeEntered");
   });
 
   it("needs a last valid day on or after the letter's date, which may be in the future", () => {

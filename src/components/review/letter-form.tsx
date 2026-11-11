@@ -1,11 +1,10 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useActionState, useRef, useState, useTransition } from "react";
-import type { LetterState } from "@/app/ho/check/actions";
+import { useActionState, useState, useTransition } from "react";
+import type { LetterState } from "@/app/ministry/allocate/actions";
 import { FormError } from "@/components/forms/form-field";
-import { DOCUMENT_ACCEPT, documentProblem, SNIFF_BYTES } from "@/lib/file-types";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
 import {
   defaultValidUntil,
@@ -14,55 +13,56 @@ import {
   RELEASE_FIELDS,
   type ReleaseErrors,
 } from "@/lib/validation/release";
-import type { UploadedFile, UploadError } from "@/server/files/uploads";
 import { LetterFields, type LetterValues } from "./letter-fields";
+import { type Scan, ScanPicker, type ScanUpload, TickAll } from "./scan-picker";
 
-/** A verified case on the district's letter, as the server gives it. */
+/** A case awaiting its allocation on the district's letter, as the server gives it. */
 export type LetterFormCase = {
   id: string;
   version: number;
   /** The name, with the child's if any. */
   name: string;
-  /** The case number and when it was verified. */
+  /** The Application Number, category, kind and when it was entered. */
   detail: string;
-  /** "YYYY-MM-DD", in Colombo. */
-  verifiedOn: string | null;
+  /** Where the beneficiary lives, when it isn't the DS office where it is built (CASE-13). */
+  residence: string | null;
+  /** The other cases with the same NIC, each with its link's text (CASE-6). */
+  duplicates: { id: string; text: string }[];
+  /** "YYYY-MM-DD", in Colombo: the day it was entered. */
+  enteredOn: string;
 };
 
 export type LetterFormGroup = { office: string; cases: LetterFormCase[] };
 
-type Scan =
-  | { state: "uploading"; name: string }
-  | { state: "done"; name: string; id: string }
-  | { state: "refused"; name: string; problem: UploadError | "fileFailed" };
-
 /**
- * REL-2, as in the prototype: one allocation letter to a District Secretary. The district's verified
- * cases are listed by DS office, all ticked to start with; the officer unticks any not named on the
- * letter. The total is Rs. 2,000,000 for each ticked case and is never typed in. The scan is optional
- * and uploads as soon as it is chosen. The browser runs the server's checks first, and what was typed
- * stays after a refusal (ERR-1).
+ * REL-2, as in the prototype: one allocation letter to a District Secretary. The district's cases
+ * awaiting their allocation are listed by DS office, none ticked to start with, because the Ministry
+ * chooses whom it funds; each office and the whole district have "tick all". A case that shares its NIC
+ * with another shows a flag that opens the matches (CASE-6). The total is Rs. 2,000,000 for each ticked
+ * case and is never typed in. The scan is optional and uploads as soon as it is chosen. The browser runs
+ * the server's checks first, and what was typed stays after a refusal (ERR-1).
  */
 export function LetterForm({
   districtId,
+  districtName,
   groups,
   today,
   action,
   upload,
 }: {
   districtId: number;
+  districtName: string;
   groups: LetterFormGroup[];
   /** "YYYY-MM-DD", in Colombo. */
   today: string;
   action: (state: LetterState, form: FormData) => Promise<LetterState>;
-  upload: (form: FormData) => Promise<{ ok: true; value: UploadedFile } | { ok: false; error: UploadError }>;
+  upload: ScanUpload;
 }) {
   const t = useTranslations("review");
-  const tf = useTranslations("cases.form");
   const locale = useLocale();
   const [state, dispatch, pending] = useActionState(action, { error: null, errors: {} });
   const [, startTransition] = useTransition();
-  const [left, setLeft] = useState<ReadonlySet<string>>(new Set());
+  const [on, setOn] = useState<ReadonlySet<string>>(new Set());
   const [values, setValues] = useState<LetterValues>({
     letterNumber: "",
     letterDate: today,
@@ -70,47 +70,26 @@ export function LetterForm({
     note: "",
   });
   const [scan, setScan] = useState<Scan | null>(null);
-  const input = useRef<HTMLInputElement>(null);
   // The browser's own checks; null once the form has gone to the server, whose answer then shows.
   const [checkErrors, setCheckErrors] = useState<ReleaseErrors | null>(null);
   const [noCases, setNoCases] = useState(false);
   const errors = checkErrors ?? state.errors;
 
   const cases = groups.flatMap((group) => group.cases);
-  const ticked = cases.filter((c) => !left.has(c.id));
+  const ticked = cases.filter((c) => on.has(c.id));
   const total = formatRupees(ticked.length * RELEASE_AMOUNT, locale);
-  const limits = { earliest: latestDay(ticked.map((c) => c.verifiedOn)), today };
+  const limits = { earliest: latestDay(ticked.map((c) => c.enteredOn)), today };
 
-  function toggle(id: string, on: boolean) {
+  function tick(ids: string[], value: boolean) {
     setNoCases(false);
-    setLeft((current) => {
+    setOn((current) => {
       const next = new Set(current);
-      if (on) next.delete(id);
-      else next.add(id);
+      for (const id of ids) {
+        if (value) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
-  }
-
-  async function chooseScan(file: File) {
-    const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
-    const problem = documentProblem(file.size, head);
-    if (problem) {
-      setScan({ state: "refused", name: file.name, problem });
-      return;
-    }
-    setScan({ state: "uploading", name: file.name });
-    const form = new FormData();
-    form.set("file", file);
-    try {
-      const result = await upload(form);
-      setScan(
-        result.ok
-          ? { state: "done", name: file.name, id: result.value.id }
-          : { state: "refused", name: file.name, problem: result.error },
-      );
-    } catch {
-      setScan({ state: "refused", name: file.name, problem: "fileFailed" });
-    }
   }
 
   function submit() {
@@ -142,34 +121,68 @@ export function LetterForm({
     >
       <fieldset className="flex flex-col gap-3">
         <legend className="sr-only">{t("letters.casesLabel")}</legend>
+        <TickAll
+          label={t("letters.tickDistrict", { district: districtName })}
+          ids={cases.map((c) => c.id)}
+          ticked={on}
+          onChange={tick}
+        />
         {groups.map((group) => (
           <div key={group.office} className="overflow-hidden rounded-lg border">
-            <div className="bg-muted px-3.5 py-2 text-[15px] font-bold text-[#3F4843]">
-              {t("letters.office", { office: group.office, count: group.cases.length })}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-muted px-3.5 py-2">
+              <span className="text-[15px] font-bold text-[#3F4843]">
+                {t("letters.office", { office: group.office, count: group.cases.length })}
+              </span>
+              <TickAll
+                label={t("letters.tickOffice", { office: group.office })}
+                ids={group.cases.map((c) => c.id)}
+                ticked={on}
+                onChange={tick}
+              />
             </div>
             {group.cases.map((c) => {
-              const on = !left.has(c.id);
+              const ticks = on.has(c.id);
               return (
-                <label
-                  key={c.id}
-                  className={`grid cursor-pointer grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 border-t px-3.5 py-2.5 ${
-                    on ? "bg-card" : "bg-muted"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={(event) => toggle(c.id, event.target.checked)}
-                    className="size-5.5 accent-primary"
-                  />
-                  <span className={`flex min-w-0 flex-col ${on ? "" : "text-muted-foreground"}`}>
-                    <span className="font-bold">{c.name}</span>
-                    <span className="text-sm text-muted-foreground">{c.detail}</span>
-                  </span>
-                  <span className={`font-semibold ${on ? "" : "text-muted-foreground"}`}>
-                    {on ? formatRupees(RELEASE_AMOUNT, locale) : t("letters.notOnLetter")}
-                  </span>
-                </label>
+                <div key={c.id} className={`border-t ${ticks ? "bg-card" : "bg-muted"}`}>
+                  <label className="grid cursor-pointer grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={ticks}
+                      onChange={(event) => tick([c.id], event.target.checked)}
+                      className="size-5.5 accent-primary"
+                    />
+                    <span className={`flex min-w-0 flex-col ${ticks ? "" : "text-muted-foreground"}`}>
+                      <span className="font-bold">{c.name}</span>
+                      <span className="text-sm text-muted-foreground">{c.detail}</span>
+                      {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                    </span>
+                    <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>
+                      {ticks ? formatRupees(RELEASE_AMOUNT, locale) : t("letters.notOnLetter")}
+                    </span>
+                  </label>
+                  {c.duplicates.length > 0 && (
+                    <details className="mr-3.5 mb-2.5 ml-[54px] rounded-md border border-[#E8B45A] bg-[#FFF4E0] px-3 py-1.5 text-[#6B3A04]">
+                      <summary className="cursor-pointer text-sm font-semibold">
+                        <TriangleAlert aria-hidden="true" className="mr-1.5 inline size-4 align-[-3px]" />
+                        {t("letters.duplicateFlag", { count: c.duplicates.length })}
+                      </summary>
+                      <ul className="mt-1 flex flex-col gap-0.5 pb-1 text-sm">
+                        {c.duplicates.map((match) => (
+                          <li key={match.id}>
+                            <a
+                              href={`/ministry/cases/${match.id}`}
+                              target="_blank"
+                              rel="noopener"
+                              className="font-semibold underline underline-offset-2"
+                            >
+                              {match.text}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -193,69 +206,7 @@ export function LetterForm({
         errors={errors}
         limits={limits}
       >
-        <div className="flex flex-col gap-1.5">
-          <span className="text-base font-semibold">{t("letters.scan")}</span>
-          {scan && scan.state !== "refused" ? (
-            <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5">
-              <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
-              <span className="flex min-w-0 flex-1 flex-col">
-                {scan.state === "done" ? (
-                  <a
-                    href={`/files/${scan.id}`}
-                    target="_blank"
-                    rel="noopener"
-                    className="truncate font-semibold text-primary underline"
-                  >
-                    {scan.name}
-                  </a>
-                ) : (
-                  <span className="truncate font-semibold">{scan.name}</span>
-                )}
-                <span className="text-sm text-muted-foreground">
-                  {scan.state === "uploading" ? t("letters.scanUploading") : t("letters.scanNotSaved")}
-                </span>
-              </span>
-              {scan.state === "done" && (
-                <button
-                  type="button"
-                  onClick={() => setScan(null)}
-                  aria-label={t("letters.scanRemoveLabel", { name: scan.name })}
-                  className="h-9.5 shrink-0 rounded-lg border border-input bg-card px-3.5 text-[15px] font-semibold"
-                >
-                  {t("letters.scanRemove")}
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => input.current?.click()}
-                className="h-11 self-start rounded-lg border border-dashed border-[#8C877C] bg-card px-4 font-semibold"
-              >
-                {t("letters.scanChoose")}
-              </button>
-              {scan?.state === "refused" && (
-                <p className="text-[15px] font-medium text-destructive">
-                  {scan.name}: {tf(`errors.${scan.problem}`)}
-                </p>
-              )}
-            </>
-          )}
-          <input
-            ref={input}
-            type="file"
-            hidden
-            accept={DOCUMENT_ACCEPT}
-            data-testid="letter-scan-input"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              // Clearing the picker lets the same file be chosen again after it is removed.
-              event.target.value = "";
-              if (file) void chooseScan(file);
-            }}
-          />
-        </div>
+        <ScanPicker scan={scan} onChange={setScan} upload={upload} />
       </LetterFields>
 
       {formError && <FormError id="letter-error" message={t(`errors.${formError}`)} />}

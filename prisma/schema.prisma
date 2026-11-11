@@ -23,15 +23,15 @@ enum Category {
 }
 
 /// A case's status (application spec, Case statuses and transitions). Only the moves listed there are allowed (STS-1).
+/// Change 0006 has five: awaiting the Ministry's allocation, allocated to the district, released to the DS
+/// (allocation received), in progress and completed. The migration `20261109120000_allocation_flow` moved
+/// every case to them.
 enum CaseStatus {
-  DRAFT
-  SUBMITTED
-  RETURNED
-  VERIFIED
+  AWAITING_ALLOCATION
+  ALLOCATED_TO_DISTRICT
+  ALLOCATION_RECEIVED
   IN_PROGRESS
   COMPLETED
-  REJECTED
-  STOPPED
 }
 
 enum DecisionType {
@@ -59,7 +59,8 @@ enum FileKind {
   LETTER
 }
 
-/// What a notification tells a DS office about one of its cases (NTF-1).
+/// What a notification tells an officer about a case (NTF-1). SENT_BACK, VERIFIED, REJECTED, STOPPED and
+/// REOPENED are no longer made once change 0006 is built; they stay for the notifications that hold them.
 enum NotificationType {
   SENT_BACK
   VERIFIED
@@ -68,6 +69,10 @@ enum NotificationType {
   COMPLETED
   STOPPED
   REOPENED
+  /// The Ministry's letter allocated the case to its district (REL-3).
+  ALLOCATED
+  /// For a District officer: a Ministry letter to the district (NTF-1).
+  DISTRICT_LETTER
 }
 
 /// Places and stages carry a name in each screen language (UI-9).
@@ -91,6 +96,7 @@ model District {
   province   Province        @relation(fields: [provinceId], references: [id])
   dsOffices  DsOffice[]
   letters    ReleaseLetter[]
+  dsReleases DsRelease[]
   users      User[]
 
   @@index([provinceId])
@@ -99,19 +105,23 @@ model District {
 
 /// A Divisional Secretariat. Never deleted: inactive offices keep their accounts and cases (LST-3).
 model DsOffice {
-  id         Int      @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   /// Three capital letters, unique nationally, used in case numbers (CASE-5).
-  code       String   @unique @db.Char(3)
-  nameEn     String   @map("name_en")
-  nameSi     String   @map("name_si")
-  nameTa     String   @map("name_ta")
-  districtId Int      @map("district_id")
-  district   District @relation(fields: [districtId], references: [id])
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  code       String      @unique @db.Char(3)
+  nameEn     String      @map("name_en")
+  nameSi     String      @map("name_si")
+  nameTa     String      @map("name_ta")
+  districtId Int         @map("district_id")
+  district   District    @relation(fields: [districtId], references: [id])
+  active     Boolean     @default(true)
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
   users      User[]
-  cases      Case[]
+  /// The cases of the people who live in this DS division.
+  cases      Case[]      @relation("CaseResidence")
+  /// The cases whose house is built, or land bought, in this DS division (CASE-13).
+  casesBuilt Case[]      @relation("CaseBuilt")
+  dsReleases DsRelease[]
 
   @@unique([districtId, nameSi])
   @@index([districtId])
@@ -174,7 +184,7 @@ model User {
   /// Generated sign-in name such as ds0101 (ADM-2).
   username               String?         @unique
   displayUsername        String?         @map("display_username")
-  /// DS_OFFICER, DISTRICT_OFFICER, HO_OFFICER, VIEWER or ADMIN; a database check allows nothing else.
+  /// DS_OFFICER, DISTRICT_OFFICER, MINISTRY_OFFICER, VIEWER or ADMIN; a database check allows nothing else.
   /// The designation decides it (src/server/auth/designations.ts).
   role                   String?
   /// true means the account is disabled (ADM-6).
@@ -208,6 +218,7 @@ model User {
   filesUploaded          StoredFile[]
   releases               Release[]
   releaseLetters         ReleaseLetter[]
+  dsReleases             DsRelease[]
   notifications          Notification[]
   stageUpdates           StageUpdate[]
   resetCodes             ResetCode[]
@@ -325,14 +336,23 @@ model UnknownSignInName {
 /// A beneficiary's case. Never deleted, except drafts (CASE-8).
 model Case {
   id                   String         @id
-  /// {DS code}-{year}-{NNN}, given on the first submit and never changed (CASE-5).
-  caseNumber           String?        @unique @map("case_number")
+  /// The Application Number (ඉල්ලුම් අංකය) the DS types from the paper application, kept as typed without
+  /// spaces at either end (CASE-12). Version 1's case numbers became Application Numbers.
+  applicationNumber    String         @map("application_number")
+  /// The Application Number in capitals without spaces (`applicationKey` in src/server/cases/numbers.ts):
+  /// unique within the DS office of residence.
+  applicationKey       String         @map("application_key")
+  /// The DS office of residence: it enters the case, and edits it while it awaits its allocation.
   dsOfficeId           Int            @map("ds_office_id")
-  dsOffice             DsOffice       @relation(fields: [dsOfficeId], references: [id])
-  /// Category and kind may be empty only while the case is a draft (CASE-4).
-  category             Category?
-  kind                 Kind?
-  status               CaseStatus     @default(DRAFT)
+  dsOffice             DsOffice       @relation("CaseResidence", fields: [dsOfficeId], references: [id])
+  /// The DS office where the house is built or the land bought (CASE-13): the DS office of residence
+  /// unless the form says otherwise. The money, the installments and the stages follow it.
+  buildDsOfficeId      Int            @map("build_ds_office_id")
+  buildDsOffice        DsOffice       @relation("CaseBuilt", fields: [buildDsOfficeId], references: [id])
+  category             Category
+  kind                 Kind
+  /// A new case is saved straight into AWAITING_ALLOCATION (CASE-5).
+  status               CaseStatus     @default(AWAITING_ALLOCATION)
   /// The care leaver, or the guardian of a child at risk.
   name                 String?
   /// Only for children at risk.
@@ -351,18 +371,10 @@ model Case {
   createdBy            User           @relation(fields: [createdById], references: [id])
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
-  /// The latest submit. The check queue lists the oldest first (CHK-1).
-  submittedAt          DateTime?      @map("submitted_at")
-  /// When Head Office verified it. The release queue lists the oldest first (REL-1).
-  verifiedAt           DateTime?      @map("verified_at")
   /// When the system found it finished (CLS-1).
   completedAt          DateTime?      @map("completed_at")
-  /// While the case is stopped: the status it goes back to when it is reopened (CLS-3).
-  statusBeforeStop     CaseStatus?    @map("status_before_stop")
-  /// Head Office asked the DS office for another name in this case's place when it rejected or stopped
-  /// it (CASE-11). Only a rejected or stopped case has it (a database check); reopening clears it.
-  anotherNameRequested Boolean        @default(false) @map("another_name_requested")
-  /// The rejected or stopped case this one was entered in place of (CASE-11). A case is replaced once.
+  /// The case this one was entered in place of. Version 1's CASE-11 made these links; change 0006 removed
+  /// it, and change 0008's amendments take its place. A case is replaced once.
   replacesCaseId       String?        @unique @map("replaces_case_id")
   replaces             Case?          @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
   replacedBy           Case?          @relation("Replacement")
@@ -375,26 +387,16 @@ model Case {
   notifications        Notification[]
   stageUpdates         StageUpdate[]
 
+  @@unique([dsOfficeId, applicationKey])
   @@index([dsOfficeId, status])
-  @@index([status, submittedAt])
-  @@index([status, verifiedAt])
+  @@index([buildDsOfficeId, status])
   @@index([nicKey])
   @@index([updatedAt])
   @@map("case")
 }
 
-/// The last case number given in each DS office and year (CASE-5). Taking the next number locks the
-/// row, so two submits at the same moment take turns and never get the same number.
-model CaseNumberCounter {
-  dsOfficeId Int @map("ds_office_id")
-  year       Int
-  last       Int
-
-  @@id([dsOfficeId, year])
-  @@map("case_number_counter")
-}
-
-/// A step in a case's life, with the reason when one is needed (CHK-3, CLS-2, CLS-3).
+/// Version 1's decisions on a case (its CHK-3, CLS-2, CLS-3), kept for the cases that have them. Change 0006
+/// removed the check and stopping, so nothing writes one any more; the replaced case's note reads them.
 model Decision {
   id     String       @id
   caseId String       @map("case_id")
@@ -425,6 +427,10 @@ model StoredFile {
   /// upload and the save of the letter.
   letterId      String?        @map("letter_id")
   letter        ReleaseLetter? @relation(fields: [letterId], references: [id], onDelete: Restrict)
+  /// A letter scan's District release (REL-6); empty for anything else. A scan never has both a letter and
+  /// a District release (a database check).
+  dsReleaseId   String?        @map("ds_release_id")
+  dsRelease     DsRelease?     @relation(fields: [dsReleaseId], references: [id], onDelete: Restrict)
   /// A random name with no extension; the type comes from the contents (SEC-7).
   storedName    String         @unique @map("stored_name")
   /// A photo's small copy for thumbnails (STG-6), under its own random name; empty for a document.
@@ -444,6 +450,7 @@ model StoredFile {
   @@index([uploadedById, caseId])
   @@index([stageUpdateId])
   @@index([letterId])
+  @@index([dsReleaseId])
   @@map("file")
 }
 
@@ -477,25 +484,57 @@ model ReleaseLetter {
   @@map("release_letter")
 }
 
-/// The Rs. 2,000,000 that Head Office releases for a case (REL-2), through its district's allocation
-/// letter. One per case.
+/// The Rs. 2,000,000 the Ministry allocates for a case through its district's allocation letter (REL-3),
+/// and, once the District releases it to the DS where it is built, that release (REL-7). One per case.
 model Release {
-  id         String        @id
-  caseId     String        @unique @map("case_id")
-  case       Case          @relation(fields: [caseId], references: [id])
-  letterId   String        @map("letter_id")
-  letter     ReleaseLetter @relation(fields: [letterId], references: [id])
-  /// The letter's date, kept here for the installment and stage date rules (INS-3, STG-1). Correcting
-  /// the letter's date changes it on every release of the letter (REL-4).
-  releasedOn DateTime      @map("released_on") @db.Date
+  id           String        @id
+  caseId       String        @unique @map("case_id")
+  case         Case          @relation(fields: [caseId], references: [id])
+  letterId     String        @map("letter_id")
+  letter       ReleaseLetter @relation(fields: [letterId], references: [id])
+  /// The letter's date. Correcting the letter's date changes it on every release of the letter (REL-4).
+  releasedOn   DateTime      @map("released_on") @db.Date
+  /// The District's release to the DS; empty until then. Set together with `dsReleasedOn` (a database check).
+  dsReleaseId  String?       @map("ds_release_id")
+  dsRelease    DsRelease?    @relation(fields: [dsReleaseId], references: [id], onDelete: Restrict)
+  /// The District release's date, kept here for the installment and stage date rules (INS-3, INS-4,
+  /// STG-1). Correcting the release's date changes it on every case of the release (REL-8).
+  dsReleasedOn DateTime?     @map("ds_released_on") @db.Date
   /// Always 2,000,000 (a database check).
-  amount     Int
-  byId       String        @map("by_id")
-  by         User          @relation(fields: [byId], references: [id])
-  at         DateTime      @default(now())
+  amount       Int
+  byId         String        @map("by_id")
+  by           User          @relation(fields: [byId], references: [id])
+  at           DateTime      @default(now())
 
   @@index([letterId])
+  @@index([dsReleaseId])
   @@map("release")
+}
+
+/// The District's release (දිස්ත්‍රික් මුදා හැරීම) to one of its DS offices of cases the Ministry allocated to
+/// the district (REL-6). The command checks that the office is in the district and that the day is never
+/// before the Ministry's letter of any of its cases.
+model DsRelease {
+  id              String       @id
+  districtId      Int          @map("district_id")
+  district        District     @relation(fields: [districtId], references: [id])
+  dsOfficeId      Int          @map("ds_office_id")
+  dsOffice        DsOffice     @relation(fields: [dsOfficeId], references: [id])
+  /// As on the District's letter or voucher.
+  referenceNumber String       @map("reference_number")
+  /// A calendar day, never in the future.
+  releasedOn      DateTime     @map("released_on") @db.Date
+  note            String?
+  byId            String       @map("by_id")
+  by              User         @relation(fields: [byId], references: [id])
+  at              DateTime     @default(now())
+  releases        Release[]
+  /// The scanned letter, if one was added.
+  files           StoredFile[]
+
+  @@index([districtId, at])
+  @@index([dsOfficeId])
+  @@map("ds_release")
 }
 
 /// One of the four payments of Rs. 500,000 to the beneficiary (INS-1). All four are made with the release.

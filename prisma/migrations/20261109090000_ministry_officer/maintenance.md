@@ -1,0 +1,1 @@
+The previous release knows the Ministry's officers only as HO_OFFICER: it would treat a MINISTRY_OFFICER account as having no role, and its account form writes HO_OFFICER, which this migration's checks refuse.

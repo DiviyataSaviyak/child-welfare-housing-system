@@ -3,17 +3,18 @@ import { seed } from "../../../prisma/seed-data";
 import { addLoadData, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
 import type { Prisma } from "@/generated/prisma/client";
+import type { CaseStatus } from "@/generated/prisma/enums";
 import { daysBetween } from "@/lib/dates";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { STALE_DAYS } from "../cases/queries";
-import { queueCounts } from "../cases/queues";
 import { districtsWithOffices, type DistrictOptions } from "../lists/queries";
 import type { Viewer } from "../permissions";
+import { awaitingAllocation } from "../releases/queries";
 import { dashboard, type DashboardFilter, type Figures, noFigures, STALE_SHOWN, tableRows } from "./queries";
 
 const db = createTestClient();
 const ho: Viewer = {
-  role: "HO_OFFICER",
+  role: "MINISTRY_OFFICER",
   designation: "MINISTRY_PROGRAMME_OFFICER",
   districtId: null,
   provinceId: null,
@@ -34,43 +35,54 @@ afterAll(async () => {
   await db.$disconnect();
 }, 300_000);
 
-const figures = ({ cases, inProgress, completed, released, paidOut }: Figures): Figures => ({
-  cases,
-  inProgress,
-  completed,
-  released,
-  paidOut,
-});
+/** Only the figures of a table row, without its name. */
+const figures = (row: Figures): Figures => {
+  const only = noFigures();
+  for (const key of Object.keys(only) as (keyof Figures)[]) only[key] = row[key];
+  return only;
+};
 
 const sum = (rows: Figures[]): Figures =>
-  rows.reduce(
-    (total, row) => ({
-      cases: total.cases + row.cases,
-      inProgress: total.inProgress + row.inProgress,
-      completed: total.completed + row.completed,
-      released: total.released + row.released,
-      paidOut: total.paidOut + row.paidOut,
-    }),
-    noFigures(),
-  );
+  rows.reduce((total, row) => {
+    for (const key of Object.keys(total) as (keyof Figures)[]) total[key] += row[key];
+    return total;
+  }, noFigures());
 
+// A case counts under the DS office where it is built, and in that office's district (CASE-13).
 const caseWhere = (filter: DashboardFilter): Prisma.CaseWhereInput => ({
   ...(filter.category && { category: filter.category }),
   ...(filter.kind && { kind: filter.kind }),
-  ...(filter.districtId && { dsOffice: { districtId: filter.districtId } }),
+  ...(filter.districtId && { buildDsOffice: { districtId: filter.districtId } }),
 });
 
-/** DSH-1's figures summed by the database itself, without the dashboard's code (AC-17). */
+const count = (where: Prisma.CaseWhereInput, status: CaseStatus) =>
+  db.case.count({ where: { AND: [where, { status }] } });
+
+/** DSH-1's figures summed by the database itself, without the dashboard's code (AC-17, AC-59). */
 async function direct(where: Prisma.CaseWhereInput): Promise<Figures> {
-  const sent: Prisma.CaseWhereInput = { AND: [where, { status: { not: "DRAFT" } }] };
-  const [cases, inProgress, completed, released, paid] = await Promise.all([
-    db.case.count({ where: sent }),
-    db.case.count({ where: { AND: [where, { status: "IN_PROGRESS" }] } }),
-    db.case.count({ where: { AND: [where, { status: "COMPLETED" }] } }),
-    db.release.aggregate({ where: { case: sent }, _sum: { amount: true } }),
-    db.installment.aggregate({ where: { status: "RELEASED", case: sent }, _sum: { amount: true } }),
-  ]);
-  return { cases, inProgress, completed, released: released._sum.amount ?? 0, paidOut: paid._sum.amount ?? 0 };
+  const [cases, awaiting, allocatedToDistrict, received, inProgress, completed, allocated, releasedToDs, paid] =
+    await Promise.all([
+      db.case.count({ where }),
+      count(where, "AWAITING_ALLOCATION"),
+      count(where, "ALLOCATED_TO_DISTRICT"),
+      count(where, "ALLOCATION_RECEIVED"),
+      count(where, "IN_PROGRESS"),
+      count(where, "COMPLETED"),
+      db.release.aggregate({ where: { case: where }, _sum: { amount: true } }),
+      db.release.aggregate({ where: { case: where, dsReleaseId: { not: null } }, _sum: { amount: true } }),
+      db.installment.aggregate({ where: { status: "RELEASED", case: where }, _sum: { amount: true } }),
+    ]);
+  return {
+    cases,
+    awaiting,
+    allocatedToDistrict,
+    received,
+    inProgress,
+    completed,
+    allocated: allocated._sum.amount ?? 0,
+    releasedToDs: releasedToDs._sum.amount ?? 0,
+    paidOut: paid._sum.amount ?? 0,
+  };
 }
 
 /** The cases in progress with no update for 30 days or more, counted in Colombo days, the longest first. */
@@ -85,7 +97,7 @@ async function staleCases(where: Prisma.CaseWhereInput, now: Date) {
     .sort((a, b) => b.days - a.days);
 }
 
-describe("Head Office dashboard (DSH-1)", () => {
+describe("the Ministry's dashboard (DSH-1)", () => {
   it("AC-17: every figure equals the database's own sums, for each filter", async () => {
     const now = new Date();
     const choices: DashboardFilter[] = [];
@@ -116,7 +128,8 @@ describe("Head Office dashboard (DSH-1)", () => {
     const rows = tableRows(districts, all.byOffice);
     expect(rows.map((r) => r.id)).toEqual(districts.map((d) => d.id));
     expect(sum(rows)).toEqual(all.totals);
-    for (const row of rows) expect(figures(row), row.name).toEqual(await direct({ dsOffice: { districtId: row.id } }));
+    for (const row of rows)
+      expect(figures(row), row.name).toEqual(await direct({ buildDsOffice: { districtId: row.id } }));
 
     const busiest = rows.toSorted((a, b) => b.cases - a.cases)[0];
     const inDistrict = await dashboard(db, ho, { districtId: busiest.id }, "si");
@@ -124,7 +137,8 @@ describe("Head Office dashboard (DSH-1)", () => {
     const offices = tableRows(districts, inDistrict.byOffice, busiest.id);
     expect(offices.length).toBeGreaterThan(1);
     expect(sum(offices)).toEqual(inDistrict.totals);
-    for (const office of offices) expect(figures(office), office.name).toEqual(await direct({ dsOfficeId: office.id }));
+    for (const office of offices)
+      expect(figures(office), office.name).toEqual(await direct({ buildDsOfficeId: office.id }));
   });
 
   it("lists the cases waiting longest for an update first, with their days, office and district", async () => {
@@ -155,7 +169,7 @@ describe("Head Office dashboard (DSH-1)", () => {
       "si",
     );
     expect([...own.byOffice.keys()]).toEqual([officeId]);
-    expect(own.totals).toEqual(await direct({ dsOfficeId: officeId }));
+    expect(own.totals).toEqual(await direct({ buildDsOfficeId: officeId }));
 
     const admin = await dashboard(
       db,
@@ -176,7 +190,7 @@ describe("Head Office dashboard (DSH-1)", () => {
     for (const filter of filters) {
       const started = performance.now();
       const list = await districtsWithOffices(db, "si");
-      const [data] = await Promise.all([dashboard(db, ho, filter, "si"), queueCounts(db, ho)]);
+      const [data] = await Promise.all([dashboard(db, ho, filter, "si"), awaitingAllocation(db, ho)]);
       tableRows(list, data.byOffice, filter.districtId);
       expect(performance.now() - started, JSON.stringify(filter)).toBeLessThan(2_000);
     }

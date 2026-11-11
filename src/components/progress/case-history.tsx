@@ -11,10 +11,16 @@ const ACTIONS = [
   "case_sent_back",
   "case_rejected",
   "case_released",
+  "case_allocated",
   "release_corrected",
+  "case_ds_released",
+  "ds_release_corrected",
   "installment_started",
   "installment_paid",
   "installment_payment_undone",
+  // Change 0006: paying installment 1 moves the case to in progress, and undoing it moves it back (INS-5, INS-6).
+  "case_started",
+  "case_unstarted",
   "case_completed",
   "case_stopped",
   "case_reopened",
@@ -24,6 +30,8 @@ const isAction = (value: string): value is Action => (ACTIONS as readonly string
 
 const FIELDS = [
   "dsOfficeId",
+  "buildDsOfficeId",
+  "applicationNumber",
   "category",
   "kind",
   "childName",
@@ -84,7 +92,12 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
         if ("replacesCaseId" in after) lines.push(t(text(after.replacesCaseId) ? "replacesSet" : "replacesCleared"));
         const added = count(after.documentsAdded);
         if (added > 0) lines.push(t("documentsAdded", { count: added }));
-        return { sentence: t(`actions.${entry.action}`), lines };
+        // CASE-12: since change 0006 a case is entered with its Application Number.
+        const number = entry.action === "case_created" ? text(after.applicationNumber) : null;
+        return {
+          sentence: number ? t("actions.case_createdNumber", { number }) : t(`actions.${entry.action}`),
+          lines,
+        };
       }
       case "case_submitted": {
         const number = text(after.caseNumber);
@@ -104,7 +117,25 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           lines,
         };
       }
-      case "release_corrected": {
+      case "case_allocated":
+        return {
+          sentence: t("actions.case_allocated", {
+            district: text(after.district) ?? tc("none"),
+            number: text(after.letterNumber) ?? tc("none"),
+          }),
+          lines,
+        };
+      case "case_ds_released":
+        return {
+          sentence: t("actions.case_ds_released", {
+            district: text(after.district) ?? tc("none"),
+            office: text(after.office) ?? tc("none"),
+            reference: text(after.referenceNumber) ?? tc("none"),
+          }),
+          lines,
+        };
+      case "release_corrected":
+      case "ds_release_corrected": {
         for (const field of ["releasedOn", "letterDate", "validUntil"] as const) {
           if (field in after) {
             lines.push(t("change", { field: t(`fields.${field}`), from: day(before[field]), to: day(after[field]) }));
@@ -118,7 +149,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           }
         }
         if ("note" in after) lines.push(t("changedFields", { fields: t("fields.note") }));
-        return { sentence: t("actions.release_corrected"), lines };
+        return { sentence: t(`actions.${entry.action}`), lines };
       }
       case "installment_started":
         if (text(after.purpose)) lines.push(text(after.purpose) as string);

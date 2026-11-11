@@ -11,7 +11,7 @@ const t = createTranslator({ locale: "si", messages, namespace: "cases" });
 
 /** Made-up cases (SEC-11). */
 const released: ExportRow = {
-  caseNumber: "HMG-2026-001",
+  applicationNumber: "HMG-2026-001",
   category: "CHILD_AT_RISK",
   kind: "NEW_HOUSE",
   status: "IN_PROGRESS",
@@ -22,15 +22,21 @@ const released: ExportRow = {
   gnDivision: "හෝමාගම නැගෙනහිර",
   mobile1: "0771234567",
   mobile2: null,
-  districtName: "කොළඹ",
-  officeName: "හෝමාගම",
-  submittedAt: new Date("2026-02-10T04:00:00Z"),
+  districtName: "ගම්පහ",
+  officeName: "ගම්පහ",
+  // CASE-13: entered by Homagama, built in Gampaha.
+  residenceOfficeName: "හෝමාගම",
   // 01:30 on 2 March in Colombo, still 1 March in UTC.
-  verifiedAt: new Date("2026-03-01T20:00:00Z"),
+  createdAt: new Date("2026-03-01T20:00:00Z"),
   completedAt: null,
   updatedAt: new Date("2026-04-05T06:00:00Z"),
   remark: null,
-  release: { releasedOn: "2026-03-10", amount: 2_000_000, paidOut: 1_000_000 },
+  release: {
+    amount: 2_000_000,
+    letterNumber: "MWCA/DS/2026/04",
+    letterDate: "2026-03-05",
+    dsRelease: { referenceNumber: "GMP/2026/11", releasedOn: "2026-03-10", paidOut: 1_000_000 },
+  },
   installments: [
     { status: "RELEASED", expectedOn: "2026-03-12", releasedOn: "2026-03-15" },
     { status: "PROCESSING", expectedOn: "2026-04-17", releasedOn: null },
@@ -40,18 +46,28 @@ const released: ExportRow = {
   progress: ["2026-03-20", null, null, null],
 };
 
-const draft: ExportRow = {
+const waiting: ExportRow = {
   ...released,
-  caseNumber: null,
+  applicationNumber: "HMG/2026/17",
   category: "CARE_LEAVER",
-  kind: null,
-  status: "DRAFT",
+  kind: "RENOVATION",
+  status: "AWAITING_ALLOCATION",
   childName: null,
   nic: "198800012345",
   mobile1: "0112345678",
-  submittedAt: null,
-  verifiedAt: null,
   release: null,
+  installments: [null, null, null, null],
+  progress: [null, null, null, null],
+};
+
+/** On the Ministry's letter, waiting for the District's release: no installments yet. */
+const allocated: ExportRow = {
+  ...released,
+  applicationNumber: "HMG/2026/18",
+  status: "ALLOCATED_TO_DISTRICT",
+  districtName: "කොළඹ",
+  officeName: "හෝමාගම",
+  release: { ...released.release!, dsRelease: null },
   installments: [null, null, null, null],
   progress: [null, null, null, null],
 };
@@ -76,21 +92,21 @@ const COLUMNS = Object.keys(messages.cases.export.columns).map((key) =>
 );
 const MONEY = ["පළමු වාරිකය", "දෙවන වාරිකය", "තුන්වන වාරිකය", "සිව්වන වාරිකය"];
 const BUILDING = ["අත්තිවාරම යෙදීම", "බිත්ති ගොඩනැංවීම", "වහළය සකස් කිරීම", "අත්‍යවශ්‍ය අංග සමඟ නිවස සම්පූර්ණ කිරීම"];
-// The financial progress follows the amount released, and the physical progress the balance.
-const AFTER_RELEASED = COLUMNS.indexOf(t("export.columns.released")) + 1;
+// The financial progress follows the amount allocated, and the physical progress the balance.
+const AFTER_ALLOCATED = COLUMNS.indexOf(t("export.columns.allocated")) + 1;
 const AFTER_BALANCE = COLUMNS.indexOf(t("export.columns.balance")) + 1;
 /** The sheet's column numbers where each group starts. */
-const MONEY_AT = AFTER_RELEASED + 1;
+const MONEY_AT = AFTER_ALLOCATED + 1;
 const BUILDING_AT = AFTER_BALANCE + MONEY.length + 1;
 
 describe("the case list's Excel file (EXP-1)", () => {
   it("has a Sinhala sheet name and headers, one row per case, and a two-row header that stays in view", async () => {
-    const sheet = await reopen([released, draft]);
+    const sheet = await reopen([released, waiting]);
     expect(sheet.name).toBe("ප්‍රතිලාභීන්");
     const inOrder = (money: string[], building: string[]) => [
-      ...COLUMNS.slice(0, AFTER_RELEASED),
+      ...COLUMNS.slice(0, AFTER_ALLOCATED),
       ...money,
-      ...COLUMNS.slice(AFTER_RELEASED, AFTER_BALANCE),
+      ...COLUMNS.slice(AFTER_ALLOCATED, AFTER_BALANCE),
       ...building,
       ...COLUMNS.slice(AFTER_BALANCE),
     ];
@@ -126,7 +142,7 @@ describe("the case list's Excel file (EXP-1)", () => {
   });
 
   it("writes a short dated note, as the old sheet did: when each installment was paid or is expected, and when each stage was finished", async () => {
-    const sheet = await reopen([released, draft]);
+    const sheet = await reopen([released, waiting]);
     const row = sheet.getRow(3);
     const [money, building] = [MONEY_AT, BUILDING_AT];
     expect([0, 1, 2, 3].map((i) => row.getCell(money + i).value)).toEqual([
@@ -150,7 +166,7 @@ describe("the case list's Excel file (EXP-1)", () => {
   });
 
   it("writes the list's words, keeps NICs and phone numbers as text, and dates as Colombo days", async () => {
-    const sheet = await reopen([released, draft]);
+    const sheet = await reopen([released, waiting]);
     const cell = byHeader(sheet, 3);
     expect(cell("number").value).toBe("HMG-2026-001");
     expect(cell("category").value).toBe("අවදානම් දරුවන්");
@@ -160,36 +176,69 @@ describe("the case list's Excel file (EXP-1)", () => {
     expect(cell("mobile1").value).toBe("0771234567");
     expect(cell("mobile2").value).toBeNull();
 
-    expect(cell("verifiedOn").value).toEqual(new Date("2026-03-02T00:00:00Z"));
-    expect(cell("verifiedOn").numFmt).toBe("yyyy.mm.dd");
-    expect(cell("releasedOn").value).toEqual(new Date("2026-03-10T00:00:00Z"));
+    expect(cell("enteredOn").value).toEqual(new Date("2026-03-02T00:00:00Z"));
+    expect(cell("enteredOn").numFmt).toBe("yyyy.mm.dd");
 
-    expect(cell("released").value).toBe(2_000_000);
-    expect(cell("released").numFmt).toBe("#,##0");
+    expect(cell("allocated").value).toBe(2_000_000);
+    expect(cell("allocated").numFmt).toBe("#,##0");
     expect(cell("paidOut").value).toBe(1_000_000);
     expect(cell("balance").value).toBe(1_000_000);
 
     const second = byHeader(sheet, 4);
     expect(second("nic").value).toBe("198800012345");
     expect(second("mobile1").value).toBe("0112345678");
-    expect(second("status").value).toBe("තවම යවා නැත");
+    expect(second("number").value).toBe("HMG/2026/17");
+    expect(second("status").value).toBe("ප්‍රතිපාදන මුදා හැරීමට ඇත");
+  });
+
+  it("names where it is built, then the DS of residence (CASE-13)", async () => {
+    const sheet = await reopen([released]);
+    const cell = byHeader(sheet, 3);
+    expect(
+      COLUMNS.slice(COLUMNS.indexOf(t("export.columns.district")), COLUMNS.indexOf(t("export.columns.gnDivision"))),
+    ).toEqual(["ඉදිකරන දිස්ත්‍රික්කය", "ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය", "පදිංචි ප්‍රාදේශීය ලේකම් කොට්ඨාසය"]);
+    expect([cell("district").value, cell("office").value, cell("residenceOffice").value]).toEqual([
+      "ගම්පහ",
+      "ගම්පහ",
+      "හෝමාගම",
+    ]);
+  });
+
+  it("gives the Ministry's letter and the District's release in place of the days it was sent, verified and released", async () => {
+    const sheet = await reopen([released]);
+    const cell = byHeader(sheet, 3);
+    expect(cell("letterNumber").value).toBe("MWCA/DS/2026/04");
+    expect(cell("letterDate").value).toEqual(new Date("2026-03-05T00:00:00Z"));
+    expect(cell("letterDate").numFmt).toBe("yyyy.mm.dd");
+    expect(cell("dsReleaseReference").value).toBe("GMP/2026/11");
+    expect(cell("dsReleasedOn").value).toEqual(new Date("2026-03-10T00:00:00Z"));
+    for (const gone of ["ලියාපදිංචි අංකය", "රු. 2,000,000 නිදහස් කළ දිනය", "ප්‍රා.ලේ. කාර්යාලයට නිදහස් කළ මුදල (රු.)"])
+      expect(COLUMNS).not.toContain(gone);
+    expect(t("export.columns.number")).toBe("ඉල්ලුම් අංකය");
   });
 
   it("leaves the money, stage and date columns empty for a case that hasn't got that far", async () => {
-    const sheet = await reopen([draft]);
+    const sheet = await reopen([waiting, allocated]);
     const cell = byHeader(sheet, 3);
-    for (const key of [
-      "number",
-      "kind",
-      "submittedOn",
-      "verifiedOn",
-      "releasedOn",
-      "released",
+    const money = [
+      "letterNumber",
+      "letterDate",
+      "dsReleaseReference",
+      "dsReleasedOn",
+      "allocated",
       "paidOut",
       "balance",
       "completedOn",
-    ] as const)
-      expect(cell(key).value, key).toBeNull();
+    ] as const;
+    for (const key of money) expect(cell(key).value, key).toBeNull();
+
+    // Allocated by the Ministry, not yet released by the District: the DS has received and paid nothing.
+    const onLetter = byHeader(sheet, 4);
+    expect(onLetter("letterNumber").value).toBe("MWCA/DS/2026/04");
+    expect(onLetter("allocated").value).toBe(2_000_000);
+    expect(onLetter("status").value).toBe("දිස්ත්‍රික්කයට මුදා හැර ඇත");
+    for (const key of ["dsReleaseReference", "dsReleasedOn", "paidOut", "balance"] as const)
+      expect(onLetter(key).value, key).toBeNull();
   });
 
   it("puts the filter buttons on the header's second row", async () => {
@@ -230,7 +279,7 @@ describe("the case list's Excel file (EXP-1)", () => {
     const workbook = new ExcelJS.Workbook();
     addSheet(workbook, tEn("export.sheet"), caseListColumns(tEn), [released]);
     const sheet = workbook.getWorksheet("Beneficiaries")!;
-    expect(sheet.getRow(1).getCell(1).value).toBe("Registration number");
+    expect(sheet.getRow(1).getCell(1).value).toBe("Application Number");
     expect(sheet.getRow(3).getCell(4).value).toBe("Work in progress");
   });
 });

@@ -5,7 +5,7 @@ kind: Component
 metadata:
   name: child-welfare-housing-system
   title: Diviyata Saviyak application
-  description: The web application for Head Office, the DS offices and the admin, in Sinhala, Tamil and English
+  description: The web application for the Ministry, the DS offices and the admin, in Sinhala, Tamil and English
   annotations:
     github.com/project-slug: DiviyataSaviyak/child-welfare-housing-system
     # Its Docs tab opens the application spec, in the system's one documents site.

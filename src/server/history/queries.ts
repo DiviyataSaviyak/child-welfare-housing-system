@@ -2,7 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
 import { isRole, type Role } from "../auth/roles";
-import { canSeeOffice, OFFICE_PLACE, type Viewer } from "../permissions";
+import { CASE_PLACES, canSeeCase, type Viewer } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 
 export type HistoryEntry = {
@@ -30,10 +30,14 @@ const isNames = (value: unknown): value is Names => {
 const ids = (value: unknown): number[] =>
   Array.isArray(value) ? value.filter((id): id is number => Number.isInteger(id)) : [];
 
+/** The actions whose record names an allocation letter and its district (REL-3). */
+const LETTER_ACTIONS = new Set(["case_released", "case_allocated"]);
+
 /**
  * The places and stages a record names, in the screen's language (UI-9). The audit log holds the
  * Sinhala names of the day, which stay as they are (HIS-3):
- * - a release names its district: it is read from the release's letter instead;
+ * - a release or an allocation names its district: it is read from its letter instead;
+ * - a District release names its district and DS office: they are read from the release instead;
  * - a stage update names its stages: since 7 Oct 2026 in all three languages; for an older record the
  *   Sinhala screen keeps the names of the day, and the others read the stages' names now.
  */
@@ -41,19 +45,32 @@ async function localPlaces(
   db: PrismaClient,
   rows: { action: string; after: Record<string, unknown> }[],
   locale: Locale,
-): Promise<{ districtOfLetter: Map<string, string>; stageName: Map<number, string> }> {
+): Promise<{
+  districtOfLetter: Map<string, string>;
+  placesOfDsRelease: Map<string, { district: string; office: string }>;
+  stageName: Map<number, string>;
+}> {
   const letterIds = rows.flatMap((row) =>
-    row.action === "case_released" && typeof row.after.letterId === "string" ? [row.after.letterId] : [],
+    LETTER_ACTIONS.has(row.action) && typeof row.after.letterId === "string" ? [row.after.letterId] : [],
   );
   const stageIds =
     locale === "si"
       ? []
       : rows.flatMap((row) => (row.action === "stage_updated" && !row.after.stageNames ? ids(row.after.stageIds) : []));
-  const [letters, stages] = await Promise.all([
+  const dsReleaseIds = rows.flatMap((row) =>
+    row.action === "case_ds_released" && typeof row.after.dsReleaseId === "string" ? [row.after.dsReleaseId] : [],
+  );
+  const [letters, dsReleases, stages] = await Promise.all([
     letterIds.length > 0
       ? db.releaseLetter.findMany({
           where: { id: { in: letterIds } },
           select: { id: true, district: { select: NAMES } },
+        })
+      : [],
+    dsReleaseIds.length > 0
+      ? db.dsRelease.findMany({
+          where: { id: { in: dsReleaseIds } },
+          select: { id: true, district: { select: NAMES }, dsOffice: { select: NAMES } },
         })
       : [],
     stageIds.length > 0
@@ -62,6 +79,12 @@ async function localPlaces(
   ]);
   return {
     districtOfLetter: new Map(letters.map((letter) => [letter.id, localName(letter.district, locale)])),
+    placesOfDsRelease: new Map(
+      dsReleases.map((release) => [
+        release.id,
+        { district: localName(release.district, locale), office: localName(release.dsOffice, locale) },
+      ]),
+    ),
     stageName: new Map(stages.map((stage) => [stage.id, localName(stage, locale)])),
   };
 }
@@ -77,8 +100,8 @@ export async function caseHistory(
   caseId: string,
   locale: Locale,
 ): Promise<HistoryEntry[] | null> {
-  const found = await db.case.findUnique({ where: { id: caseId }, select: { dsOffice: OFFICE_PLACE } });
-  if (!found || !canSeeOffice(viewer, found.dsOffice)) return null;
+  const found = await db.case.findUnique({ where: { id: caseId }, select: CASE_PLACES });
+  if (!found || !canSeeCase(viewer, found)) return null;
 
   const rows = await db.auditLog.findMany({
     where: { caseId },
@@ -94,12 +117,14 @@ export async function caseHistory(
     actors.map((a) => [a.id, { name: accountLabel(a, locale), role: isRole(a.role) ? a.role : null }]),
   );
   const records = rows.map((row) => ({ ...row, before: asObject(row.before), after: asObject(row.after) }));
-  const { districtOfLetter, stageName } = await localPlaces(db, records, locale);
+  const { districtOfLetter, placesOfDsRelease, stageName } = await localPlaces(db, records, locale);
 
   return records.map((row) => {
     const after = { ...row.after };
     const district = typeof after.letterId === "string" && districtOfLetter.get(after.letterId);
-    if (row.action === "case_released" && district) after.district = district;
+    if (LETTER_ACTIONS.has(row.action) && district) after.district = district;
+    const places = typeof after.dsReleaseId === "string" && placesOfDsRelease.get(after.dsReleaseId);
+    if (row.action === "case_ds_released" && places) Object.assign(after, places);
     if (row.action === "stage_updated") {
       const names = Array.isArray(after.stageNames) ? after.stageNames : null;
       if (names?.every(isNames)) after.stages = names.map((n) => localName(n, locale));

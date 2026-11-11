@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { inject } from "vitest";
 import { PrismaClient } from "@/generated/prisma/client";
@@ -22,3 +23,6 @@ export async function freeOfficeId(db: PrismaClient): Promise<number> {
   });
   return office.id;
 }
+
+/** A made-up Application Number (CASE-12), different for every case a test saves. */
+export const testApplicationNumber = (): string => `T/${randomUUID().slice(0, 13)}`;

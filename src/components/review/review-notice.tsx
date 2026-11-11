@@ -1,28 +1,29 @@
 import { getLocale, getTranslations } from "next-intl/server";
-import { caseName } from "@/components/cases/page-header";
 import { FormNotice } from "@/components/forms/form-field";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
-import type { CaseDetails } from "@/server/cases/queries";
-import type { LetterSummary } from "@/server/releases/queries";
+import type { DsReleaseSummary, LetterSummary } from "@/server/releases/queries";
 
-/** What a check action or a letter correction leaves on the next page, by its key under "review.notices". */
-const NOTICES = ["verified", "sentBack", "rejected", "rejectedAskName", "corrected"] as const;
-type ReviewNoticeKey = (typeof NOTICES)[number];
+/**
+ * A letter correction leaves `?notice=corrected` on the case page (REL-4), and a District release's
+ * correction `?notice=dsCorrected` (REL-8).
+ */
+export async function ReviewNotice({ notice }: { notice: unknown }) {
+  if (notice !== "corrected" && notice !== "dsCorrected") return null;
+  const t = await getTranslations("review");
+  return <FormNotice message={t(notice === "corrected" ? "notices.corrected" : "notices.dsCorrected")} />;
+}
 
-export const isReviewNotice = (value: unknown): value is ReviewNoticeKey =>
-  typeof value === "string" && (NOTICES as readonly string[]).includes(value);
-
-/** Says what was just done to the case, by its name and number. The URL holds only the case's id (SEC-8). */
-export async function ReviewNotice({ notice, details }: { notice: unknown; details: CaseDetails | null }) {
-  if (!isReviewNotice(notice) || !details) return null;
-  const [t, tc] = await Promise.all([getTranslations("review"), getTranslations("cases")]);
+/** Says which District release was just recorded, to which DS office and for how many cases (REL-7). */
+export async function DsReleaseNotice({ release }: { release: DsReleaseSummary | null }) {
+  if (!release) return null;
+  const [t, locale] = await Promise.all([getTranslations("review"), getLocale()]);
   return (
     <FormNotice
-      message={t(`notices.${notice}`, {
-        name: caseName(tc, details.name, details.childName),
-        number: details.caseNumber ?? tc("noNumber"),
-        office: details.officeName,
-        district: details.districtName,
+      message={t("notices.dsReleased", {
+        office: release.officeName,
+        reference: release.referenceNumber,
+        count: release.count,
+        amount: formatRupees(release.count * RELEASE_AMOUNT, locale),
       })}
     />
   );

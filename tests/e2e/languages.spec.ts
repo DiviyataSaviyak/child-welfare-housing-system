@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { asUser, newSubmittedCase, randomNic } from "./case-helpers";
+import { asUser, newSavedCase, randomNic } from "./case-helpers";
 import { chooseLanguage, screenText, signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** UI-9: the screens come in Sinhala, Tamil and English. Each browser keeps its own choice. */
@@ -50,29 +50,30 @@ test("a DS officer works in Tamil: the menu, the office's name and the money are
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("புதிய பயனாளியைச் சேர்த்தல்");
 });
 
-test("Head Office works in English, and its Excel file comes in English", async ({ page, browser }) => {
+test("the Ministry works in English, and its Excel file comes in English", async ({ page, browser }) => {
   test.slow();
   // A case of its own, so the list has something to export. Typed details stay as typed.
   const name = `${TEST_CASE_NAME} English ${Date.now()}`;
   const nic = randomNic();
-  await asUser(browser, "ds0101", (ds) => newSubmittedCase(ds, { name, nic }).then(() => undefined));
+  await asUser(browser, "ds0101", (ds) => newSavedCase(ds, { name, nic }).then(() => undefined));
 
-  await signInAs(page, "ho0001", /\/ho$/);
+  await signInAs(page, "ho0001", /\/ministry$/);
   await chooseLanguage(page, "English");
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Summary");
   const menu = await page.getByRole("navigation", { name: "Main menu" }).innerText();
   expect(menu).not.toMatch(SINHALA);
   expect(menu).not.toMatch(TAMIL);
-  await expect(page.getByRole("banner")).toContainText("Head Office");
+  await expect(page.getByRole("banner")).toContainText("Ministry");
+  await expect(page.getByRole("banner")).not.toContainText("Head Office");
   // Districts carry their English names.
   await expect(page.getByRole("link", { name: "Colombo", exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Beneficiaries", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Beneficiaries");
-  await page.goto(`/ho/cases?q=${nic}`);
+  await page.goto(`/ministry/cases?q=${nic}`);
   await expect(page.getByText("Matching beneficiaries: 1")).toBeVisible();
-  await expect(page.getByRole("row").filter({ hasText: name })).toContainText("Sent for checking");
+  await expect(page.getByRole("row").filter({ hasText: name })).toContainText("Awaiting fund allocation");
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("link", { name: "Download as an Excel file" }).click(),
@@ -82,11 +83,11 @@ test("Head Office works in English, and its Excel file comes in English", async 
   await workbook.xlsx.readFile(await download.path());
   const sheet = workbook.worksheets[0];
   expect(sheet.name).toBe("Beneficiaries");
-  expect(sheet.getRow(1).getCell(1).value).toBe("Registration number");
+  expect(sheet.getRow(1).getCell(1).value).toBe("Application Number");
   expect((sheet.getRow(3).values as unknown[]).slice(2, 6)).toEqual([
     "Care leaver",
     "New house",
-    "Sent for checking",
+    "Awaiting fund allocation",
     name,
   ]);
 });

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type CaseField, parseCaseForm, parseOfficeId } from "./case";
+import { type CaseField, parseBuildAnswer, parseCaseForm, parseOfficeId } from "./case";
 
 const COMPLETE: Record<CaseField, string> = {
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
+  applicationNumber: "  KDW/147  ",
   childName: "",
   name: "  ප්‍රතිලාභී නම  ",
   nic: "880001234v",
@@ -19,14 +20,15 @@ const form =
   (field: CaseField): string =>
     values[field] ?? "";
 
-describe("submitting a case (CASE-2, CASE-5)", () => {
+describe("saving a case (CASE-2, CASE-5, CASE-12)", () => {
   it("accepts a complete case and tidies its values", () => {
-    const result = parseCaseForm(form(COMPLETE), "submit");
+    const result = parseCaseForm(form(COMPLETE));
     expect(result).toEqual({
       ok: true,
       value: {
         category: "CARE_LEAVER",
         kind: "NEW_HOUSE",
+        applicationNumber: "KDW/147",
         childName: null,
         name: "ප්‍රතිලාභී නම",
         nic: "880001234V",
@@ -40,21 +42,19 @@ describe("submitting a case (CASE-2, CASE-5)", () => {
   });
 
   it("names every empty required field (AC-5)", () => {
-    expect(parseCaseForm(form({}), "submit")).toEqual({
+    expect(parseCaseForm(form({}))).toEqual({
       ok: false,
       errors: {
         category: "categoryRequired",
         kind: "kindRequired",
+        applicationNumber: "applicationNumberRequired",
         name: "nameRequired",
       },
     });
   });
 
   it("lets the NIC, address and phone numbers stay empty, and puts a lone phone number first", () => {
-    const result = parseCaseForm(
-      form({ ...COMPLETE, nic: "", address: "", mobile1: "", mobile2: "0771234567" }),
-      "submit",
-    );
+    const result = parseCaseForm(form({ ...COMPLETE, nic: "", address: "", mobile1: "", mobile2: "0771234567" }));
     expect(result).toMatchObject({
       ok: true,
       value: { nic: null, address: null, mobile1: "0771234567", mobile2: null },
@@ -62,7 +62,7 @@ describe("submitting a case (CASE-2, CASE-5)", () => {
   });
 
   it("needs the child's name for a child at risk, and calls the name the guardian's", () => {
-    const result = parseCaseForm(form({ ...COMPLETE, category: "CHILD_AT_RISK", name: "" }), "submit");
+    const result = parseCaseForm(form({ ...COMPLETE, category: "CHILD_AT_RISK", name: "" }));
     expect(result).toEqual({
       ok: false,
       errors: { childName: "childNameRequired", name: "guardianNameRequired" },
@@ -70,14 +70,13 @@ describe("submitting a case (CASE-2, CASE-5)", () => {
   });
 
   it("drops a child's name typed before the category changed to care leaver", () => {
-    const result = parseCaseForm(form({ ...COMPLETE, childName: "x" }), "submit");
+    const result = parseCaseForm(form({ ...COMPLETE, childName: "x" }));
     expect(result.ok && result.value.childName).toBe(null);
   });
 
   it("refuses wrong formats and lengths (AC-6)", () => {
     const result = parseCaseForm(
       form({ ...COMPLETE, nic: "12345", mobile1: "712345678", mobile2: "0712", name: "අ", remark: "x".repeat(1001) }),
-      "submit",
     );
     expect(result).toEqual({
       ok: false,
@@ -92,29 +91,39 @@ describe("submitting a case (CASE-2, CASE-5)", () => {
   });
 
   it("accepts both NIC formats (AC-6)", () => {
-    expect(parseCaseForm(form({ ...COMPLETE, nic: "198800012345" }), "submit").ok).toBe(true);
-    expect(parseCaseForm(form({ ...COMPLETE, nic: "880001234V" }), "submit").ok).toBe(true);
+    expect(parseCaseForm(form({ ...COMPLETE, nic: "198800012345" })).ok).toBe(true);
+    expect(parseCaseForm(form({ ...COMPLETE, nic: "880001234V" })).ok).toBe(true);
   });
 
   it("treats an unknown category or kind as not chosen", () => {
-    const result = parseCaseForm(form({ ...COMPLETE, category: "LAND", kind: "x" }), "submit");
+    const result = parseCaseForm(form({ ...COMPLETE, category: "LAND", kind: "x" }));
     expect(result).toEqual({ ok: false, errors: { category: "categoryRequired", kind: "kindRequired" } });
   });
 });
 
-describe("saving a draft (CASE-4)", () => {
-  it("skips the required fields", () => {
-    expect(parseCaseForm(form({ name: "ඒ. බී." }), "draft")).toMatchObject({
-      ok: true,
-      value: { name: "ඒ. බී.", nic: null },
+describe("the Application Number (CASE-12)", () => {
+  it("takes up to 30 characters", () => {
+    expect(parseCaseForm(form({ ...COMPLETE, applicationNumber: "x".repeat(30) })).ok).toBe(true);
+    expect(parseCaseForm(form({ ...COMPLETE, applicationNumber: "x".repeat(31) }))).toEqual({
+      ok: false,
+      errors: { applicationNumber: "tooLong" },
     });
   });
 
-  it("still checks the format of what is filled in", () => {
-    expect(parseCaseForm(form({ nic: "12345", mobile1: "123" }), "draft")).toEqual({
+  it("counts spaces alone as empty", () => {
+    expect(parseCaseForm(form({ ...COMPLETE, applicationNumber: "   " }))).toEqual({
       ok: false,
-      errors: { nic: "nicInvalid", mobile1: "mobileInvalid" },
+      errors: { applicationNumber: "applicationNumberRequired" },
     });
+  });
+});
+
+describe("where it is built (CASE-13)", () => {
+  it("is the same DS division unless the form says another", () => {
+    expect(parseBuildAnswer("same", "12")).toEqual({ kind: "same" });
+    expect(parseBuildAnswer("", "")).toEqual({ kind: "same" });
+    expect(parseBuildAnswer("other", "12")).toEqual({ kind: "other", dsOfficeId: 12 });
+    expect(parseBuildAnswer("other", "")).toEqual({ kind: "other", dsOfficeId: null });
   });
 });
 

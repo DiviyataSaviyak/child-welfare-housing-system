@@ -17,28 +17,43 @@ const districts: DistrictOptions[] = [
   { id: 3, name: "කළුතර", offices: [] },
 ];
 
-const of = (cases: number, inProgress = 0, completed = 0): Figures => ({
-  cases,
+/** An office's figures from its cases in each status, with the money each status has. */
+const of = (awaiting: number, inProgress = 0, completed = 0, allocatedToDistrict = 0, received = 0): Figures => ({
+  cases: awaiting + allocatedToDistrict + received + inProgress + completed,
+  awaiting,
+  allocatedToDistrict,
+  received,
   inProgress,
   completed,
-  released: (inProgress + completed) * 2_000_000,
+  allocated: (allocatedToDistrict + received + inProgress + completed) * 2_000_000,
+  releasedToDs: (received + inProgress + completed) * 2_000_000,
   paidOut: completed * 2_000_000,
 });
 
 const byOffice = new Map<number, Figures>([
-  [10, of(5, 3, 1)],
-  [11, of(2, 1)],
-  [12, of(1, 0, 1)],
-  [20, of(4, 4)],
+  [10, of(1, 3, 1)],
+  [11, of(0, 1, 0, 1)],
+  [12, of(0, 0, 1)],
+  [20, of(0, 4, 0, 0, 1)],
 ]);
 
 describe("the dashboard table (DSH-1)", () => {
   it("shows every district, with or without cases, adding up its offices", () => {
     const rows = tableRows(districts, byOffice);
-    expect(rows.map((r) => [r.name, r.cases, r.inProgress, r.completed, r.released, r.paidOut])).toEqual([
-      ["කොළඹ", 8, 4, 2, 12_000_000, 4_000_000],
-      ["ගම්පහ", 4, 4, 0, 8_000_000, 0],
-      ["කළුතර", 0, 0, 0, 0, 0],
+    expect(rows.map((r) => [r.name, r.cases, r.inProgress, r.completed])).toEqual([
+      ["කොළඹ", 8, 4, 2],
+      ["ගම්පහ", 5, 4, 0],
+      ["කළුතර", 0, 0, 0],
+    ]);
+    expect(rows.map((r) => [r.awaiting, r.allocatedToDistrict, r.received])).toEqual([
+      [1, 1, 0],
+      [0, 0, 1],
+      [0, 0, 0],
+    ]);
+    expect(rows.map((r) => [r.allocated, r.releasedToDs, r.paidOut])).toEqual([
+      [14_000_000, 12_000_000, 4_000_000],
+      [10_000_000, 10_000_000, 0],
+      [0, 0, 0],
     ]);
   });
 

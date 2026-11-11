@@ -13,7 +13,7 @@ export type Step = "start" | "pay";
 export type StepRefusal =
   /** An earlier installment isn't paid yet (INS-2). */
   | "notNext"
-  /** Already paid; only Head Office can undo that (INS-6). */
+  /** Already paid; only the Ministry can undo that (INS-6). */
   | "alreadyPaid"
   /** Starting a payment that is already started. */
   | "alreadyStarted"
@@ -43,7 +43,7 @@ export function previousPaidOn(list: readonly InstallmentState[], number: number
   return list.find((i) => i.number === number - 1)?.releasedOn ?? null;
 }
 
-/** INS-6: the most recently released installment, the only one Head Office may move back; null when none is paid. */
+/** INS-6: the most recently released installment, the only one the Ministry may move back; null when none is paid. */
 export function lastPaid<T extends InstallmentState>(list: readonly T[]): T | null {
   return [...list].sort((a, b) => b.number - a.number).find((i) => i.status === "RELEASED") ?? null;
 }

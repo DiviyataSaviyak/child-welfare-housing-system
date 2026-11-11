@@ -1,12 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { newSubmittedCase, openAs, randomNic, SUBMITTED } from "./case-helpers";
+import { AWAITING, newSavedCase, openAs, randomNic } from "./case-helpers";
 import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen and file text the test looks for (messages/si.json). */
 const EXPORT = "එක්සෙල් ගොනුවක් ලෙස බාගන්න";
 const FILE_NAME = /^දිවියට සවියක් ලැයිස්තුව \d{4}-\d{2}-\d{2}\.xlsx$/;
-const HEADERS = ["ලියාපදිංචි අංකය", "කාණ්ඩය", "ආධාරය", "තත්ත්වය", "නම (අවදානම් දරුවන් සඳහා භාරකරුගේ නම)"];
+const HEADERS = ["ඉල්ලුම් අංකය", "කාණ්ඩය", "ආධාරය", "තත්ත්වය", "නම (අවදානම් දරුවන් සඳහා භාරකරුගේ නම)"];
 
 /** Clicks the export button and opens the file it downloads. */
 async function exportList(page: Page) {
@@ -22,7 +22,7 @@ async function exportList(page: Page) {
   return { fileName: download.suggestedFilename(), sheet, rows: rows.map((row) => row.slice(1, 6)) };
 }
 
-test("the DS officer and Head Office take their lists to Excel, with the screen's search and filters (EXP-1)", async ({
+test("the DS officer and the Ministry take their lists to Excel, with the screen's search and filters (EXP-1)", async ({
   page,
   browser,
 }) => {
@@ -30,8 +30,8 @@ test("the DS officer and Head Office take their lists to Excel, with the screen'
   await signInAs(page, "ds0101", /\/ds$/);
   const name = `${TEST_CASE_NAME} එක්සෙල් ${Date.now()}`;
   const nic = randomNic();
-  const { number } = await newSubmittedCase(page, { name, nic });
-  const row = [number, "නිවාසගත", "නව නිවසක්", SUBMITTED, name];
+  const { number } = await newSavedCase(page, { name, nic });
+  const row = [number, "නිවාසගත", "නව නිවසක්", AWAITING, name];
 
   // The DS officer's own list, with the search the screen shows.
   await page.goto("/ds");
@@ -44,21 +44,22 @@ test("the DS officer and Head Office take their lists to Excel, with the screen'
   expect((own.sheet.getRow(1).values as unknown[]).slice(1, 6)).toEqual(HEADERS);
   expect(own.rows).toEqual([row]);
 
-  // Head Office's list, with its filters.
+  // The Ministry's list, with its filters.
   const ho = await openAs(browser, "ho0001");
-  await ho.goto(`/ho/cases?q=${nic}&status=SUBMITTED`);
+  await ho.goto(`/ministry/cases?q=${nic}&status=AWAITING_ALLOCATION`);
   await expect(ho.getByText("ගැළපෙන ප්‍රතිලාභීන් 1")).toBeVisible();
   const all = await exportList(ho);
   expect(all.fileName).toMatch(FILE_NAME);
   expect(all.rows).toEqual([row]);
 
   // Each list's file belongs to its own role (PRM-1).
-  expect((await page.request.get("/ho/cases/export")).status()).toBe(404);
+  expect((await page.request.get("/ministry/cases/export")).status()).toBe(404);
   expect((await ho.request.get("/ds/export")).status()).toBe(404);
   await ho.context().close();
 });
 
 test("an admin can't export any list (PRM-2, AC-2)", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
-  for (const path of ["/ho/cases/export", "/ds/export"]) expect((await page.request.get(path)).status()).toBe(404);
+  for (const path of ["/ministry/cases/export", "/ds/export"])
+    expect((await page.request.get(path)).status()).toBe(404);
 });

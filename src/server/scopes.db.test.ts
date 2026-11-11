@@ -3,18 +3,19 @@ import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../prisma/seed-data";
 import { createTestClient } from "../../tests/db/client";
+import { releaseToDsForTests } from "../../tests/db/ds-release";
 import messages from "../../messages/si.json";
+import { colomboDay, dateToDay } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
+import { NOTE_ONLY } from "@/lib/validation/progress";
 import { type Designation, roleOf } from "./auth/designations";
-import { type Actor, deleteDraft, saveCase } from "./cases/commands";
-import { decideCase } from "./cases/decide";
-import { caseWhere, getCase } from "./cases/queries";
-import { stopCase } from "./cases/stop";
+import { type Actor, deleteCase, saveCase } from "./cases/commands";
+import { type CaseFilter, caseWhere, getCase, officeMoney } from "./cases/queries";
 import { dashboard } from "./dashboard/queries";
-import { exportCaseList } from "./exports/case-list";
+import { caseListRows, exportCaseList } from "./exports/case-list";
 import { fileForViewer, uploadDocument, uploadPhoto } from "./files/uploads";
 import { caseHistory } from "./history/queries";
-import { startInstallment } from "./installments/commands";
+import { markInstallmentPaid, startInstallment } from "./installments/commands";
 import { viewerArea } from "./lists/queries";
 import { recordLetter } from "./releases/commands";
 import { recordStageUpdate } from "./stages/commands";
@@ -43,6 +44,7 @@ const PDF = new TextEncoder().encode("%PDF-1.4\n%made-up test file\n");
 const values = (nic: string): CaseValues => ({
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
+  applicationNumber: `S/${nic}`,
   childName: null,
   name: "විෂය පරීක්ෂණ",
   nic,
@@ -53,7 +55,7 @@ const values = (nic: string): CaseValues => ({
   remark: null,
 });
 
-/** An account as the server sees it; only Head Office's is in the database, as the cases' author. */
+/** An account as the server sees it; only the Ministry officer's is in the database, as the cases' author. */
 function as(designation: Designation | null, place: Partial<Pick<Actor, "dsOfficeId" | "districtId" | "provinceId">>) {
   return {
     userId: `scope-${designation ?? "admin"}`,
@@ -92,7 +94,7 @@ beforeAll(async () => {
       name: "විෂය ප්‍රධාන කාර්යාල",
       email: "scope-head-office@no-email.invalid",
       username: "scope-head-office",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
@@ -107,9 +109,9 @@ beforeAll(async () => {
       id: randomUUID(),
       version: null,
       dsOfficeId: office.id,
+      buildDsOfficeId: null,
       values: values(`19900000${index}${index}${index}${index}`),
       documentIds: office === otherProvince ? [documentId] : [],
-      submit: true,
     });
     if (!saved.ok) throw new Error(saved.error);
     caseIn.set(office.id, saved.value.id);
@@ -247,24 +249,22 @@ describe("an account that only views changes nothing (PRM-5, AC-42)", () => {
         id: randomUUID(),
         version: null,
         dsOfficeId: home.id,
+        buildDsOfficeId: null,
         values: values("199011112222"),
         documentIds: [],
-        submit: false,
       });
       expect(newCase.ok, `${label}, new case`).toBe(false);
       const edit = await saveCase(db, viewer, {
         id: caseId,
         version: before.version,
         dsOfficeId: home.id,
+        buildDsOfficeId: null,
         values: { ...values("199011112222"), name: "වෙනස් කළ" },
         documentIds: [],
-        submit: false,
       });
       expect(edit.ok, `${label}, edit`).toBe(false);
-      expect((await deleteDraft(db, viewer, caseId)).ok, `${label}, delete`).toBe(false);
-      const decided = await decideCase(db, viewer, { ...target, decision: "verify", reason: null });
-      expect(decided.ok, `${label}, verify`).toBe(false);
-      expect((await stopCase(db, viewer, { ...target, reason: "පරීක්ෂණ හේතුව" })).ok, `${label}, stop`).toBe(false);
+      const deleted = await deleteCase(db, viewer, { ...target, reason: "පරීක්ෂණ හේතුව" });
+      expect(deleted.ok, `${label}, delete`).toBe(false);
       const started = await startInstallment(db, viewer, { ...target, number: 1, form: {} as never });
       expect(started.ok, `${label}, installment`).toBe(false);
       const stage = await recordStageUpdate(db, viewer, { ...target, form: {} as never, photoIds: [] });
@@ -284,11 +284,243 @@ describe("an account that only views changes nothing (PRM-5, AC-42)", () => {
     expect(await db.storedFile.count({ where: { uploadedById: { in: viewers().map((v) => v.userId) } } })).toBe(0);
   });
 
-  it("leaves a Ministry Chief Accountant acting as Head Office does", async () => {
+  it("leaves a Ministry Chief Accountant acting as a Programme Officer does", async () => {
     const chief = { ...as("MINISTRY_CHIEF_ACCOUNTANT", {}), userId: headOffice.userId };
     const caseId = caseIn.get(sameDistrict.id)!;
     const found = await db.case.findUniqueOrThrow({ where: { id: caseId } });
-    const decided = await decideCase(db, chief, { caseId, version: found.version, decision: "verify", reason: null });
-    expect(decided).toEqual({ ok: true, value: "VERIFIED" });
+    const edited = await saveCase(db, chief, {
+      id: caseId,
+      version: found.version,
+      dsOfficeId: sameDistrict.id,
+      buildDsOfficeId: null,
+      values: { ...values("199000001111"), remark: "අමාත්‍යංශයෙන් සටහනක්" },
+      documentIds: [],
+    });
+    expect(edited).toMatchObject({ ok: true, value: { status: "AWAITING_ALLOCATION" } });
+  });
+});
+
+describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
+  // Lived in `home`, built in `sameProvince`, which is in another district of the same province.
+  let caseId: string;
+  let resident: Actor; // a CRPO of the DS of residence
+  let builder: Actor; // a CRPO of the DS where it is built
+
+  async function officer(id: string, dsOfficeId: number): Promise<Actor> {
+    await db.user.create({
+      data: {
+        id,
+        name: "විෂය පරීක්ෂණ නිලධාරී",
+        email: `${id}@no-email.invalid`,
+        username: id,
+        role: "DS_OFFICER",
+        designation: "DS_CRPO",
+        dsOfficeId,
+      },
+    });
+    return { ...as("DS_CRPO", { dsOfficeId }), userId: id };
+  }
+
+  /** The case as it is now, for the version a page would send. */
+  const current = () => db.case.findUniqueOrThrow({ where: { id: caseId } });
+
+  beforeAll(async () => {
+    resident = await officer("scope-resident", home.id);
+    builder = await officer("scope-builder", sameProvince.id);
+    const saved = await saveCase(db, resident, {
+      id: randomUUID(),
+      version: null,
+      dsOfficeId: null,
+      buildDsOfficeId: sameProvince.id,
+      values: values("199055556666"),
+      documentIds: [],
+    });
+    if (!saved.ok) throw new Error(saved.error);
+    caseId = saved.value.id;
+  });
+
+  it("is listed and opened by both offices and both districts, and by nobody else", async () => {
+    const sees = [
+      resident,
+      builder,
+      as("DS_SECRETARY", { dsOfficeId: sameProvince.id }),
+      as("DISTRICT_SECRETARY", { districtId: home.districtId }),
+      as("DISTRICT_CRPO", { districtId: sameProvince.districtId }),
+      as("PROVINCE_COMMISSIONER", { provinceId: home.provinceId }),
+      as("MINISTRY_SECRETARY", {}),
+    ];
+    const doesNot = [
+      as("DS_CRPO", { dsOfficeId: sameDistrict.id }),
+      as("DISTRICT_SECRETARY", { districtId: otherProvince.districtId }),
+      as("PROVINCE_COMMISSIONER", { provinceId: otherProvince.provinceId }),
+      as(null, {}),
+    ];
+    const all = [...sees.map((v) => [v, true] as const), ...doesNot.map((v) => [v, false] as const)];
+    for (const [viewer, expected] of all) {
+      const label = `${viewer.designation}, ${viewer.dsOfficeId ?? viewer.districtId ?? viewer.provinceId}`;
+      const where = caseWhere(viewer, {});
+      const listed = where ? await db.case.count({ where: { AND: [where, { id: caseId }] } }) : 0;
+      expect(listed, `${label}, list`).toBe(expected ? 1 : 0);
+      expect((await getCase(db, viewer, caseId, "si")) !== null, `${label}, case`).toBe(expected);
+      expect((await caseHistory(db, viewer, caseId, "si")) !== null, `${label}, history`).toBe(expected);
+    }
+  });
+
+  it("leaves the details to the DS of residence: the DS where it is built can't change or delete them", async () => {
+    expect((await getCase(db, resident, caseId, "si"))?.actsOn).toEqual({
+      edit: true,
+      progress: false,
+      release: false,
+    });
+    expect((await getCase(db, builder, caseId, "si"))?.actsOn).toEqual({ edit: false, progress: true, release: false });
+
+    const before = await current();
+    const edit = await saveCase(db, builder, {
+      id: caseId,
+      version: before.version,
+      dsOfficeId: null,
+      buildDsOfficeId: sameProvince.id,
+      values: { ...values("199055556666"), name: "වෙනස් කළ" },
+      documentIds: [],
+    });
+    expect(edit).toEqual({ ok: false, error: "notEditable" });
+    expect(await deleteCase(db, builder, { caseId, version: before.version, reason: "පරීක්ෂණ හේතුව" })).toEqual({
+      ok: false,
+      error: "notAllowedNow",
+    });
+    expect(await current()).toEqual(before);
+
+    const corrected = await saveCase(db, resident, {
+      id: caseId,
+      version: before.version,
+      dsOfficeId: null,
+      buildDsOfficeId: sameProvince.id,
+      values: { ...values("199055556666"), name: "නිවැරදි කළ" },
+      documentIds: [],
+    });
+    expect(corrected.ok).toBe(true);
+    // The office stays the DS of residence, and the case is still built in the other one.
+    expect(await current()).toMatchObject({ dsOfficeId: home.id, buildDsOfficeId: sameProvince.id });
+  });
+
+  it("goes on the letter of the district where it is built, and both offices hear of it (NTF-1)", async () => {
+    const builtWhere = as("DISTRICT_SECRETARY", { districtId: sameProvince.districtId });
+    const livedWhere = as("DISTRICT_SECRETARY", { districtId: home.districtId });
+    const money = async () => ({
+      resident: (await officeMoney(db, resident))!.received,
+      builder: (await officeMoney(db, builder))!.received,
+      builtDistrict: (await dashboard(db, builtWhere, {}, "si")).byOffice.get(sameProvince.id)?.releasedToDs ?? 0,
+      livedDistrict: (await dashboard(db, livedWhere, {}, "si")).byOffice.get(home.id)?.releasedToDs ?? 0,
+    });
+    const before = await money();
+
+    const today = colomboDay(new Date());
+    const letter = (districtId: number, version: number) =>
+      recordLetter(db, headOffice, {
+        districtId,
+        cases: [{ id: caseId, version }],
+        form: { letterNumber: "විෂය/13", letterDate: today, validUntil: "2099-12-31", note: "" },
+        scanId: null,
+      });
+    const ready = await current();
+    expect(await letter(home.districtId, ready.version)).toMatchObject({ ok: false, error: "notFound" });
+    expect((await letter(sameProvince.districtId, ready.version)).ok).toBe(true);
+
+    for (const officer of [resident, builder]) {
+      const notices = await db.notification.findMany({
+        where: { userId: officer.userId, caseId },
+        select: { type: true },
+      });
+      expect(
+        notices.map((n) => n.type),
+        officer.userId,
+      ).toEqual(["ALLOCATED"]);
+    }
+    // The District's release to the DS where it is built.
+    await releaseToDsForTests(db, [caseId]);
+    // The money counts where it is built (HOME-4, DSH-1).
+    const after = await money();
+    expect(after.builder - before.builder).toBe(2_000_000);
+    expect(after.resident - before.resident).toBe(0);
+    expect(after.builtDistrict - before.builtDistrict).toBe(2_000_000);
+    expect(after.livedDistrict - before.livedDistrict).toBe(0);
+  });
+
+  it("is paid and its stages recorded only by the DS where it is built", async () => {
+    const running = await current();
+    expect(running.status).toBe("ALLOCATION_RECEIVED");
+    const today = colomboDay(new Date());
+    const start = (actor: Actor, version: number) =>
+      startInstallment(db, actor, {
+        caseId,
+        version,
+        number: 1,
+        form: { expectedOn: today, purpose: "", note: "" },
+      });
+    const visit = (actor: Actor, version: number) =>
+      recordStageUpdate(db, actor, {
+        caseId,
+        version,
+        form: { stageId: NOTE_ONLY, visitedOn: today, note: "පරීක්ෂණ සංචාරය" },
+        photoIds: [],
+      });
+
+    expect(await start(resident, running.version)).toMatchObject({ ok: false, error: "roleNotAllowed" });
+    expect(await visit(resident, running.version)).toMatchObject({ ok: false, error: "roleNotAllowed" });
+    expect(await current()).toEqual(running);
+
+    expect(await start(builder, running.version)).toEqual({ ok: true, completed: false });
+    expect((await visit(builder, (await current()).version)).ok).toBe(true);
+    // AC-56: the DS where it is built pays installment 1, which moves the case on to in progress (INS-5).
+    const pay = (actor: Actor, version: number) =>
+      markInstallmentPaid(db, actor, { caseId, version, number: 1, form: { releasedOn: today, note: "" } });
+    expect(await pay(resident, (await current()).version)).toMatchObject({ ok: false, error: "roleNotAllowed" });
+    expect(await pay(builder, (await current()).version)).toEqual({ ok: true, completed: false });
+    expect((await current()).status).toBe("IN_PROGRESS");
+  });
+
+  it("is found by the list's DS office and district filters of either office, and of no other (FND-1)", async () => {
+    const ministry = as("MINISTRY_SECRETARY", {});
+    const found = (filter: CaseFilter) =>
+      db.case.count({ where: { AND: [caseWhere(ministry, filter)!, { id: caseId }] } });
+    const either: CaseFilter[] = [
+      { dsOfficeId: home.id },
+      { dsOfficeId: sameProvince.id },
+      { districtId: home.districtId },
+      { districtId: sameProvince.districtId },
+      { districtId: home.districtId, dsOfficeId: sameProvince.id },
+    ];
+    for (const filter of either) expect(await found(filter), JSON.stringify(filter)).toBe(1);
+    for (const filter of [{ dsOfficeId: sameDistrict.id }, { districtId: otherProvince.districtId }])
+      expect(await found(filter), JSON.stringify(filter)).toBe(0);
+  });
+
+  it("goes to Excel under where it is built, naming the DS of residence, the Ministry's letter and the District's release (EXP-1)", async () => {
+    const rows = (await caseListRows(db, as("MINISTRY_SECRETARY", {}), { q: "S/199055556666" }, "si"))!;
+    expect(rows).toHaveLength(1);
+    const offices = await db.dsOffice.findMany({
+      where: { id: { in: [home.id, sameProvince.id] } },
+      select: { id: true, nameSi: true, district: { select: { nameSi: true } } },
+    });
+    const name = (id: number) => offices.find((o) => o.id === id)!;
+    const { release } = await db.case.findUniqueOrThrow({
+      where: { id: caseId },
+      select: { release: { select: { letter: true, dsRelease: true } } },
+    });
+    expect(rows[0]).toMatchObject({
+      districtName: name(sameProvince.id).district.nameSi,
+      officeName: name(sameProvince.id).nameSi,
+      residenceOfficeName: name(home.id).nameSi,
+      release: {
+        amount: 2_000_000,
+        letterNumber: release!.letter.letterNumber,
+        letterDate: dateToDay(release!.letter.letterDate),
+        dsRelease: {
+          referenceNumber: release!.dsRelease!.referenceNumber,
+          releasedOn: dateToDay(release!.dsRelease!.releasedOn),
+          paidOut: 500_000,
+        },
+      },
+    });
   });
 });

@@ -1,31 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import {
-  CaseColumns,
-  CaseDetailsSection,
-  CaseNotes,
-  caseSubtitle,
-  ReplacementNotes,
-} from "@/components/cases/case-view";
+import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
-import { CompletedBanner, StoppedBanner } from "@/components/progress/case-banners";
+import { CompletedBanner } from "@/components/progress/case-banners";
 import { CaseHistory } from "@/components/progress/case-history";
 import { InstallmentAction } from "@/components/progress/installment-action";
+import { ReasonAction } from "@/components/progress/reason-action";
 import { StageSection } from "@/components/progress/stage-section";
 import { StageUpdate } from "@/components/progress/stage-update";
 import { colomboDay } from "@/lib/dates";
 import { paidLimits, stageLimits, startLimits } from "@/lib/validation/progress";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
-import { canEditDetails } from "@/server/cases/rules";
+import { canDeleteCase, canEditDetails, takesProgress } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { caseHistory } from "@/server/history/queries";
 import { nextInstallment, previousPaidOn } from "@/server/installments/rules";
 import { getStageProgress } from "@/server/stages/queries";
+import { deleteCaseAction } from "../actions";
 import { payInstallmentAction, stageUpdateAction, startInstallmentAction, uploadPhotoAction } from "./actions";
 
 /** What a progress action leaves on the page, by its key under "progress.notices". */
@@ -59,14 +55,38 @@ export default async function DsCasePage({
     caseSubtitle(details, "ds"),
   ]);
   const notice = (await searchParams).notice;
-  const justSubmitted = notice === "submitted" && details.caseNumber !== null;
-  const running = details.status === "IN_PROGRESS" && details.release !== null;
+  const justCreated = notice === "created";
+  // CASE-13: only the DS where it is built pays the installments and records the stages, from the District's
+  // release to it until the case is completed (INS-5, STG-5). The date rules start from that release.
+  const receivedOn = details.release?.dsRelease?.releasedOn ?? null;
+  const running = takesProgress(details.status) && receivedOn !== null && details.actsOn.progress;
   const today = colomboDay(new Date());
   const next = running ? nextInstallment(details.installments) : null;
+  // CASE-8, CASE-9: while it awaits its allocation, the DS of residence corrects or deletes it.
+  const canEdit = details.actsOn.edit && canEditDetails(viewer.role, details.status);
+  const remove = details.actsOn.edit && canDeleteCase(viewer.role, details.status) && (
+    <ReasonAction
+      key={`delete-${details.version}`}
+      id="delete"
+      look="danger"
+      hidden={{ caseId: details.id, version: String(details.version) }}
+      action={deleteCaseAction}
+      texts={{
+        button: t("deleteCase.button"),
+        title: t("deleteCase.title"),
+        text: t("deleteCase.text", { number: details.applicationNumber }),
+        reason: t("deleteCase.reason"),
+        reasonHelp: t("deleteCase.reasonHelp"),
+        confirm: t("deleteCase.confirm"),
+        cancel: t("deleteCase.cancel"),
+        working: t("deleteCase.working"),
+      }}
+    />
+  );
 
   /** The next installment's button (INS-2); a later one says which it waits for. */
   const installmentStep = (item: InstallmentDetails) => {
-    if (!running || !details.release || item.status === "RELEASED") return null;
+    if (!running || !receivedOn || item.status === "RELEASED") return null;
     const name = t(`installment.name.${item.number as 1 | 2 | 3 | 4}`);
     if (item.number !== next?.number) {
       const previous = t(`installment.name.${(item.number - 1) as 1 | 2 | 3}`);
@@ -85,8 +105,8 @@ export default async function DsCasePage({
         installmentName={name}
         limits={
           starting
-            ? startLimits(details.release.releasedOn)
-            : paidLimits(today, details.release.releasedOn, previousPaidOn(details.installments, item.number))
+            ? startLimits(receivedOn)
+            : paidLimits(today, receivedOn, previousPaidOn(details.installments, item.number))
         }
         initial={{ day: starting ? "" : today, purpose: item.purpose ?? "", note: item.note ?? "" }}
         action={starting ? startInstallmentAction : payInstallmentAction}
@@ -101,28 +121,32 @@ export default async function DsCasePage({
         backLabel={t("back.ds")}
         title={caseName(t, details.name, details.childName)}
         subtitle={subtitle}
-        aside={<StatusChip status={details.status} />}
+        aside={
+          <div className="flex items-center gap-3.5">
+            <StatusChip status={details.status} />
+            {remove}
+          </div>
+        }
       />
-      {justSubmitted && (
+      {justCreated && (
         <section
-          aria-labelledby="submitted-title"
+          aria-labelledby="created-title"
           className="flex max-w-4xl flex-col gap-2 rounded-xl border-2 border-primary bg-accent px-6 py-5"
         >
-          <h2 id="submitted-title" className="text-[22px] font-bold text-primary">
-            {t("submitted.title")}
+          <h2 id="created-title" className="text-[22px] font-bold text-primary">
+            {t("created.title")}
           </h2>
           <p className="text-lg">
-            {t("submitted.number")} <strong data-testid="case-number">{details.caseNumber}</strong>
+            {t("created.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
-          <p className="text-[#3F4843]">{t("submitted.text")}</p>
+          <p className="text-[#3F4843]">{t("created.text")}</p>
           <Link href="/ds/cases/new" className="self-start font-semibold text-primary underline">
-            {t("submitted.addAnother")}
+            {t("created.addAnother")}
           </Link>
         </section>
       )}
+      {notice === "changed" && <FormNotice message={t("notices.changed")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
-      <CaseNotes details={details} audience="ds" />
-      <StoppedBanner details={details} />
       <ReplacementNotes details={details} audience="ds" />
       <CompletedBanner details={details} />
       <CaseColumns
@@ -145,13 +169,14 @@ export default async function DsCasePage({
               <StageSection
                 progress={progress}
                 update={
-                  running && (
+                  running &&
+                  receivedOn && (
                     <StageUpdate
                       key={details.version}
                       caseId={details.id}
                       version={details.version}
                       choices={progress.choices}
-                      limits={stageLimits(today, details.release.releasedOn, progress.current?.reachedOn ?? null)}
+                      limits={stageLimits(today, receivedOn, progress.current?.reachedOn ?? null)}
                       today={today}
                       buttonLabel={tp(progress.choices.length > 0 ? "stages.update" : "stages.addNote")}
                       action={stageUpdateAction}
@@ -161,10 +186,7 @@ export default async function DsCasePage({
                 }
               />
             )}
-            <CaseDetailsSection
-              details={details}
-              editHref={canEditDetails(viewer.role, details.status) ? `/ds/cases/${details.id}/edit` : null}
-            />
+            <CaseDetailsSection details={details} editHref={canEdit ? `/ds/cases/${details.id}/edit` : null} />
           </>
         }
       />

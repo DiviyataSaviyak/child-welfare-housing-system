@@ -8,7 +8,6 @@ import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
 import { daysBetween, formatDate } from "@/lib/dates";
 import { formatRupees, INSTALLMENT_COUNT } from "@/lib/money";
-import { canEditDetails } from "@/server/cases/rules";
 import {
   type CaseRow,
   countCases,
@@ -26,14 +25,15 @@ import { readHomeList, type Tab, TABS, tabFilter } from "./list";
 
 /** The colour of each kind of to-do item, as in the prototype. */
 const TODO_COLOUR: Record<TodoItem["type"], string> = {
-  replace: "bg-[#F8E1DE]",
-  returned: "bg-[#FBEBD3]",
+  received: "bg-[#FBEBD3]",
   due: "bg-[#E4EDF8]",
   stale: "bg-muted",
-  draft: "bg-muted",
 };
 
-/** HOME-1 to HOME-4: the DS officer's own cases, with what needs doing next and the office's money beside them. */
+/**
+ * HOME-1 to HOME-4: the DS officer's own cases, entered there or built there (CASE-13), with what needs
+ * doing next and the office's money beside them.
+ */
 export default async function DsHomePage({
   searchParams,
 }: {
@@ -74,21 +74,23 @@ export default async function DsHomePage({
   /** What comes next for the case, in the progress column: for a running case, the stage reached (HOME-1). */
   const progress = (row: CaseRow) => {
     switch (row.status) {
-      case "SUBMITTED": {
-        const days = row.submittedAt ? daysBetween(row.submittedAt, now) : 0;
-        return days === 0 ? t("home.progress.submittedToday") : t("home.progress.SUBMITTED", { days });
-      }
       case "IN_PROGRESS":
         return row.stageName ?? t("home.progress.IN_PROGRESS");
-      case "DRAFT":
-      case "RETURNED":
-      case "VERIFIED":
+      case "AWAITING_ALLOCATION":
+      case "ALLOCATED_TO_DISTRICT":
+      case "ALLOCATION_RECEIVED":
       case "COMPLETED":
-      case "STOPPED":
         return t(`home.progress.${row.status}`);
       default:
         return t("none");
     }
+  };
+
+  /** HOME-1, CASE-13: the other office of a case built in another DS, or entered by another DS. */
+  const otherOffice = (row: CaseRow) => {
+    if (row.dsOfficeId !== viewer.dsOfficeId) return t("home.enteredBy", { office: row.officeName });
+    if (row.buildDsOfficeId !== row.dsOfficeId) return t("home.builtIn", { office: row.buildOfficeName });
+    return null;
   };
 
   return (
@@ -185,19 +187,17 @@ export default async function DsHomePage({
                 {list.rows.map((row) => (
                   <tr key={row.id} className="border-t hover:bg-accent/60">
                     <td className="px-5 py-2.5">
-                      <Link
-                        href={
-                          canEditDetails(viewer.role, row.status) ? `/ds/cases/${row.id}/edit` : `/ds/cases/${row.id}`
-                        }
-                        className="flex flex-col"
-                      >
+                      <Link href={`/ds/cases/${row.id}`} className="flex flex-col">
                         <span className="text-[17px] font-semibold text-primary underline-offset-2 hover:underline">
                           {caseName(t, row.name, row.childName)}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          {row.caseNumber ?? t("noNumber")}
+                          {row.applicationNumber}
                           {row.category && ` · ${t(`category.${row.category}`)}`}
                         </span>
+                        {otherOffice(row) && (
+                          <span className="text-sm font-semibold text-[#1E4E8C]">{otherOffice(row)}</span>
+                        )}
                       </Link>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
@@ -278,23 +278,13 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
   const name = caseName(t, item.name, item.childName);
   const content = (() => {
     switch (item.type) {
-      case "replace":
-        // CASE-11: Head Office asked for another name; the new-case form asks whether it is this one.
+      case "received":
+        // HOME-3: the District released it; the first installment is waiting to start.
         return {
-          href: "/ds/cases/new",
-          title: t("home.todo.replace", { name }),
-          text: t(item.status === "STOPPED" ? "home.todo.replaceStopped" : "home.todo.replaceRejected", {
-            number: item.caseNumber ?? t("noNumber"),
-            reason: item.reason ?? t("home.todo.noReason"),
-          }),
-          action: t("home.todo.replaceAction"),
-        };
-      case "returned":
-        return {
-          href: `/ds/cases/${item.id}/edit`,
-          title: t("home.todo.returned", { name }),
-          text: item.reason ?? t("home.todo.noReason"),
-          action: t("home.todo.returnedAction"),
+          href: `/ds/cases/${item.id}`,
+          title: t("home.todo.received", { name }),
+          text: t("home.todo.receivedText", { date: formatDate(item.releasedOn) }),
+          action: t("home.todo.open"),
         };
       case "due":
         return {
@@ -309,13 +299,6 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
           title: t("home.todo.stale", { name }),
           text: t("home.todo.staleText", { days: item.days }),
           action: t("home.todo.open"),
-        };
-      case "draft":
-        return {
-          href: `/ds/cases/${item.id}/edit`,
-          title: t("home.todo.draft", { name }),
-          text: t("home.todo.draftText", { date: formatDate(item.updatedAt) }),
-          action: t("home.todo.draftAction"),
         };
     }
   })();

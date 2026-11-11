@@ -135,10 +135,12 @@ type Rule =
   | { anyone: string }; // open to all, with the reason
 
 const DS: Rule = { role: "DS_OFFICER" };
-const HO: Rule = { role: "HO_OFFICER" };
+const MINISTRY: Rule = { role: "MINISTRY_OFFICER" };
 const ADMIN: Rule = { role: "ADMIN" };
 /** The view-only area (PRM-4, PRM-5): it changes nothing, and only reads within the account's own area. */
 const OVERSIGHT: Rule = { role: ["VIEWER", "DISTRICT_OFFICER"] };
+/** The District officer's release to the DS offices (REL-5 to REL-9) and notifications (NTF-1). */
+const DISTRICT: Rule = { role: "DISTRICT_OFFICER" };
 
 const RULES: Record<string, Record<string, Rule>> = {
   "src/app/(auth)/actions.ts": {
@@ -175,7 +177,7 @@ const RULES: Record<string, Record<string, Rule>> = {
     uploadDocumentAction: DS,
     checkNicAction: DS,
     removeDocumentAction: DS,
-    deleteDraftAction: DS,
+    deleteCaseAction: DS,
   },
   "src/app/ds/cases/[id]/actions.ts": {
     startInstallmentAction: DS,
@@ -186,23 +188,32 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/ds/notifications/actions.ts": { openNotificationAction: DS, markAllReadAction: DS },
   "src/app/ds/export/route.ts": { GET: DS },
   "src/app/ds/notifications/unread/route.ts": { GET: DS },
-  "src/app/ho/cases/actions.ts": {
-    saveCaseAction: HO,
-    uploadDocumentAction: HO,
-    checkNicAction: HO,
-    removeDocumentAction: HO,
-    deleteDraftAction: HO,
+  "src/app/ministry/cases/actions.ts": {
+    saveCaseAction: MINISTRY,
+    uploadDocumentAction: MINISTRY,
+    checkNicAction: MINISTRY,
+    removeDocumentAction: MINISTRY,
+    deleteCaseAction: MINISTRY,
   },
-  "src/app/ho/cases/[id]/actions.ts": { stopAction: HO, reopenAction: HO, undoInstallmentAction: HO },
-  "src/app/ho/check/actions.ts": {
-    decideAction: HO,
-    recordLetterAction: HO,
-    uploadLetterScanAction: HO,
-    correctReleaseAction: HO,
+  "src/app/ministry/cases/[id]/actions.ts": {
+    undoInstallmentAction: MINISTRY,
   },
-  "src/app/ho/cases/export/route.ts": { GET: HO },
-  "src/app/ho/waiting/route.ts": { GET: HO },
+  "src/app/ministry/allocate/actions.ts": {
+    recordLetterAction: MINISTRY,
+    uploadLetterScanAction: MINISTRY,
+    correctReleaseAction: MINISTRY,
+  },
+  "src/app/ministry/cases/export/route.ts": { GET: MINISTRY },
+  "src/app/ministry/waiting/route.ts": { GET: MINISTRY },
   "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
+  "src/app/oversight/release/actions.ts": {
+    recordDsReleaseAction: DISTRICT,
+    uploadDsReleaseScanAction: DISTRICT,
+    correctDsReleaseAction: DISTRICT,
+  },
+  "src/app/oversight/notifications/actions.ts": { openNotificationAction: DISTRICT, markAllReadAction: DISTRICT },
+  "src/app/oversight/notifications/unread/route.ts": { GET: DISTRICT },
+  "src/app/oversight/waiting/route.ts": { GET: DISTRICT },
   "src/app/files/[id]/route.ts": { GET: { signedIn: "file" } },
   "src/app/files/[id]/thumb/route.ts": { GET: { signedIn: "file" } },
 };

@@ -6,18 +6,17 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import { seed } from "../../../prisma/seed-data";
-import { createTestClient, freeOfficeId } from "../../../tests/db/client";
+import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
 import { type Actor, saveCase, type SaveCaseInput } from "../cases/commands";
-import { decideCase } from "../cases/decide";
 import { getCase, listCases, officeMoney, todoItems } from "../cases/queries";
-import { reopenCase, stopCase } from "../cases/stop";
 import { readStoredFile } from "../files/storage";
 import { fileForViewer, uploadPhoto } from "../files/uploads";
 import { caseHistory } from "../history/queries";
 import { recordLetter } from "../releases/commands";
+import { releaseToDsForTests } from "../../../tests/db/ds-release";
 import { recordStageUpdate } from "../stages/commands";
 import { getStageProgress } from "../stages/queries";
 import { markInstallmentPaid, startInstallment, undoInstallmentPayment } from "./commands";
@@ -41,8 +40,12 @@ const admin: Actor = {
 
 const today = () => colomboDay(new Date());
 const daysAgo = (days: number) => addDays(today(), -days);
-/** Every case's release is 50 days ago, so each test has room for earlier and later days. */
+/**
+ * Every case's District release is 50 days ago, so each test has room for earlier and later days. The
+ * Ministry's letter is 5 days before it, so a day between them shows which one the date rules read.
+ */
 const RELEASED_DAYS_AGO = 50;
+const LETTER_DAYS_AGO = RELEASED_DAYS_AGO + 5;
 
 let nicCounter = 0;
 /** A made-up NIC (SEC-11), different for every case so the tests don't match each other. */
@@ -51,6 +54,7 @@ const nextNic = () => `2003${String(++nicCounter).padStart(8, "0")}`;
 const values = (overrides: Partial<CaseValues> = {}): CaseValues => ({
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
+  applicationNumber: testApplicationNumber(),
   childName: null,
   name: "ප්‍රගති පරීක්ෂණ",
   nic: nextNic(),
@@ -64,39 +68,43 @@ const values = (overrides: Partial<CaseValues> = {}): CaseValues => ({
 
 const load = (id: string) => db.case.findUniqueOrThrow({ where: { id } });
 
-/**
- * A case of dsA's office with its Rs. 2,000,000 released 50 days ago: submitted, verified (its
- * verification moved back 60 days so the release can be earlier than today) and released.
- */
-async function running(overrides: Partial<CaseValues> = {}) {
+/** A case of dsA's office awaiting its allocation, entered 60 days ago so the letter can be earlier than today. */
+async function awaiting(overrides: Partial<CaseValues> = {}) {
   const input: SaveCaseInput = {
     id: randomUUID(),
     version: null,
     dsOfficeId: null,
+    buildDsOfficeId: null,
     values: values(overrides),
     documentIds: [],
-    submit: true,
   };
   const saved = await saveCase(db, dsA, input);
   if (!saved.ok) throw new Error(saved.error);
-  const sent = await load(saved.value.id);
-  const verified = await decideCase(db, ho, {
-    caseId: sent.id,
-    version: sent.version,
-    decision: "verify",
-    reason: null,
-  });
-  if (!verified.ok) throw new Error(verified.error);
-  await db.case.update({ where: { id: sent.id }, data: { verifiedAt: colomboStartOf(daysAgo(60)) } });
-  const ready = await load(sent.id);
+  await db.case.update({ where: { id: saved.value.id }, data: { createdAt: colomboStartOf(daysAgo(60)) } });
+  return load(saved.value.id);
+}
+
+/** A case awaiting its allocation, then allocated to its district by the Ministry's letter 55 days ago. */
+async function allocated(overrides: Partial<CaseValues> = {}) {
+  const ready = await awaiting(overrides);
   const { districtId } = await db.dsOffice.findUniqueOrThrow({ where: { id: ready.dsOfficeId } });
   const release = await recordLetter(db, ho, {
     districtId,
     cases: [{ id: ready.id, version: ready.version }],
-    form: { letterNumber: "MWCA/2026/P6", letterDate: daysAgo(RELEASED_DAYS_AGO), validUntil: "2099-12-31", note: "" },
+    form: { letterNumber: "MWCA/2026/P6", letterDate: daysAgo(LETTER_DAYS_AGO), validUntil: "2099-12-31", note: "" },
     scanId: null,
   });
   if (!release.ok) throw new Error(String(release.error ?? JSON.stringify(release.errors)));
+  return load(ready.id);
+}
+
+/**
+ * A case whose allocation its DS received: allocated, then released by the District 50 days ago, with its
+ * four installments not started. Paying installment 1 moves it on to in progress (INS-5).
+ */
+async function running(overrides: Partial<CaseValues> = {}) {
+  const ready = await allocated(overrides);
+  await releaseToDsForTests(db, [ready.id], { on: dayToDate(daysAgo(RELEASED_DAYS_AGO)) });
   return load(ready.id);
 }
 
@@ -183,13 +191,13 @@ beforeAll(async () => {
       id: "progress-test-ho",
       name: "ප්‍ර. පරීක්ෂණ",
       email: "progress-test-ho@no-email.invalid",
-      role: "HO_OFFICER",
+      role: "MINISTRY_OFFICER",
       designation: "MINISTRY_PROGRAMME_OFFICER",
     },
   });
   ho = {
     userId: "progress-test-ho",
-    role: "HO_OFFICER",
+    role: "MINISTRY_OFFICER",
     designation: "MINISTRY_PROGRAMME_OFFICER",
     districtId: null,
     provinceId: null,
@@ -226,7 +234,7 @@ describe("installments (INS-1 to INS-6)", () => {
     expect(list.map((i) => i.status)).toEqual(["RELEASED", "PROCESSING", "NOT_STARTED", "NOT_STARTED"]);
   });
 
-  it("keeps the dates in order: expected and paid on or after the release, paid no later than today and after the previous one (INS-3, INS-4)", async () => {
+  it("keeps the dates in order: expected and paid on or after the District's release, paid no later than today and after the previous one (INS-3, INS-4)", async () => {
     const c = await running();
     expect(await start(dsA, c.id, c.version, 1, daysAgo(RELEASED_DAYS_AGO + 1))).toMatchObject({
       ok: false,
@@ -248,7 +256,7 @@ describe("installments (INS-1 to INS-6)", () => {
     expect(await pay(dsA, c.id, await version(c.id), 2, daysAgo(20))).toMatchObject({ ok: true });
   });
 
-  it("is the case's own office's to change: another office finds nothing, Head Office and the admin may not", async () => {
+  it("is the case's own office's to change: another office finds nothing, the Ministry and the admin may not", async () => {
     const c = await running();
     expect(await start(dsB, c.id, c.version, 1)).toMatchObject({ ok: false, error: "notFound" });
     expect(await start(ho, c.id, c.version, 1)).toMatchObject({ ok: false, error: "roleNotAllowed" });
@@ -263,7 +271,7 @@ describe("installments (INS-1 to INS-6)", () => {
     expect(await pay(dsA, c.id, c.version, 1)).toMatchObject({ ok: false, error: "conflict" });
   });
 
-  it("lets Head Office move the most recently paid installment back, with a reason (INS-6)", async () => {
+  it("lets the Ministry move the most recently paid installment back, with a reason (INS-6)", async () => {
     const c = await running();
     await payNext(c.id, 1, daysAgo(35));
     await payNext(c.id, 2, daysAgo(30));
@@ -282,6 +290,57 @@ describe("installments (INS-1 to INS-6)", () => {
     expect(audit).toMatchObject({ actorId: ho.userId, after: { number: 2, reason: "වැරදි දිනයක් යෙදුවා" } });
     // The office pays it again, on the right day.
     expect(await pay(dsA, c.id, await version(c.id), 2, daysAgo(29))).toMatchObject({ ok: true });
+  });
+});
+
+describe("the case's status as it is paid (STS-1, INS-5, INS-6, STG-5, AC-55)", () => {
+  it("takes no installment or stage while the case awaits its allocation or is released to the district", async () => {
+    const [first] = await newHouseStages();
+    for (const c of [await awaiting(), await allocated()]) {
+      expect(await start(dsA, c.id, c.version, 1)).toMatchObject({ ok: false, error: "caseNotRunning" });
+      expect(await pay(dsA, c.id, c.version, 1)).toMatchObject({ ok: false, error: "caseNotRunning" });
+      expect(await stage(c.id, c.version, first!.id)).toMatchObject({ ok: false, error: "caseNotRunning" });
+      expect(await stage(c.id, c.version, null)).toMatchObject({ ok: false, error: "caseNotRunning" });
+      expect(await load(c.id)).toMatchObject({ status: c.status, version: c.version });
+    }
+  });
+
+  it("moves to in progress when installment 1 is paid, and back when the Ministry undoes that payment", async () => {
+    const c = await running();
+    expect(c.status).toBe("ALLOCATION_RECEIVED");
+    // Starting the payment and recording a stage leave the status as it is; nothing is paid to undo.
+    expect(await start(dsA, c.id, c.version, 1, daysAgo(40))).toMatchObject({ ok: true });
+    expect(await stage(c.id, await version(c.id), null, daysAgo(40))).toMatchObject({ ok: true });
+    expect((await load(c.id)).status).toBe("ALLOCATION_RECEIVED");
+    const undo = async (number: number) =>
+      undoInstallmentPayment(db, ho, { caseId: c.id, version: await version(c.id), number, reason: "වැරදි දිනයක්" });
+    expect(await undo(1)).toMatchObject({ ok: false, error: "nothingToUndo" });
+
+    expect(await pay(dsA, c.id, await version(c.id), 1, daysAgo(35))).toEqual({ ok: true, completed: false });
+    expect((await load(c.id)).status).toBe("IN_PROGRESS");
+    const started = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_started" } });
+    expect(started).toMatchObject({
+      actorId: null,
+      before: { status: "ALLOCATION_RECEIVED" },
+      after: { status: "IN_PROGRESS" },
+    });
+
+    // Undoing a later installment leaves it in progress; undoing installment 1 moves it back.
+    await payNext(c.id, 2, daysAgo(30));
+    expect(await undo(2)).toMatchObject({ ok: true });
+    expect((await load(c.id)).status).toBe("IN_PROGRESS");
+    expect(await undo(1)).toMatchObject({ ok: true });
+    expect((await load(c.id)).status).toBe("ALLOCATION_RECEIVED");
+    const unstarted = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_unstarted" } });
+    expect(unstarted).toMatchObject({
+      actorId: null,
+      before: { status: "IN_PROGRESS" },
+      after: { status: "ALLOCATION_RECEIVED" },
+    });
+
+    // Paid again, it moves on again.
+    expect(await pay(dsA, c.id, await version(c.id), 1, daysAgo(34))).toMatchObject({ ok: true });
+    expect((await load(c.id)).status).toBe("IN_PROGRESS");
   });
 });
 
@@ -350,7 +409,7 @@ describe("building progress (STG-1 to STG-5)", () => {
     }
   });
 
-  it("is the office's to record, and only while the case is in progress (STG-5)", async () => {
+  it("is the office's to record, and only once the allocation is received (STG-5)", async () => {
     const c = await running();
     const [first] = await newHouseStages();
     expect(
@@ -374,9 +433,9 @@ describe("building progress (STG-1 to STG-5)", () => {
       id: randomUUID(),
       version: null,
       dsOfficeId: null,
+      buildDsOfficeId: null,
       values: values(),
       documentIds: [],
-      submit: true,
     });
     if (!saved.ok) throw new Error(saved.error);
     expect(await stage(saved.value.id, await version(saved.value.id), first!.id)).toMatchObject({
@@ -521,78 +580,7 @@ describe("completing a case (CLS-1, AC-13)", () => {
   });
 });
 
-describe("stopping and reopening (CLS-2, CLS-3, AC-14)", () => {
-  it("needs a reason, blocks every change while stopped, and reopens to the status before", async () => {
-    const c = await running();
-    await payNext(c.id, 1, daysAgo(30));
-    const stopAs = async (actor: Actor, reason: string) =>
-      stopCase(db, actor, { caseId: c.id, version: await version(c.id), reason });
-
-    expect(await stopAs(dsA, "ඉඩම පිළිබඳ ගැටලුවක්")).toEqual({ ok: false, error: "roleNotAllowed" });
-    expect(await stopAs(ho, "")).toEqual({ ok: false, error: "reasonRequired" });
-    expect(await stopAs(ho, "නැත")).toEqual({ ok: false, error: "reasonTooShort" });
-    expect(await stopAs(ho, "ඉඩම පිළිබඳ ගැටලුවක්")).toEqual({ ok: true, value: "STOPPED" });
-
-    const stopped = await load(c.id);
-    expect(stopped).toMatchObject({ status: "STOPPED", statusBeforeStop: "IN_PROGRESS" });
-    const details = await getCase(db, dsA, c.id, "si");
-    expect(details?.stop).toMatchObject({ reason: "ඉඩම පිළිබඳ ගැටලුවක්", statusBefore: "IN_PROGRESS" });
-    const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_stopped" } });
-    expect(audit.after).toMatchObject({ reason: "ඉඩම පිළිබඳ ගැටලුවක්", balance: 1_500_000 });
-    expect(await db.notification.count({ where: { caseId: c.id, type: "STOPPED" } })).toBe(1);
-
-    // No installment, stage or detail change while stopped (INS-5, STG-5, CASE-9).
-    expect(await start(dsA, c.id, stopped.version, 2)).toMatchObject({ ok: false, error: "caseNotRunning" });
-    expect(await stage(c.id, stopped.version, null)).toMatchObject({ ok: false, error: "caseNotRunning" });
-    const edit = await saveCase(db, ho, {
-      id: c.id,
-      version: stopped.version,
-      dsOfficeId: null,
-      values: values({ address: "නව ලිපිනය" }),
-      documentIds: [],
-      submit: false,
-    });
-    expect(edit).toEqual({ ok: false, error: "notEditable" });
-    expect(await stopAs(ho, "නැවත නවත්වන්න")).toEqual({ ok: false, error: "notAllowedNow" });
-
-    const reopen = async (actor: Actor, reason: string) =>
-      reopenCase(db, actor, { caseId: c.id, version: await version(c.id), reason });
-    expect(await reopen(dsA, "ගැටලුව විසඳුණා")).toEqual({ ok: false, error: "roleNotAllowed" });
-    expect(await reopen(ho, " ")).toEqual({ ok: false, error: "reasonRequired" });
-    expect(await reopen(ho, "ගැටලුව විසඳුණා")).toEqual({ ok: true, value: "IN_PROGRESS" });
-    expect(await load(c.id)).toMatchObject({ status: "IN_PROGRESS", statusBeforeStop: null });
-    expect(await db.notification.count({ where: { caseId: c.id, type: "REOPENED" } })).toBe(1);
-    expect(await start(dsA, c.id, await version(c.id), 2, daysAgo(1))).toMatchObject({ ok: true });
-  });
-
-  it("reopens a case stopped before its release as verified, and refuses cases that can't stop", async () => {
-    const saved = await saveCase(db, dsA, {
-      id: randomUUID(),
-      version: null,
-      dsOfficeId: null,
-      values: values(),
-      documentIds: [],
-      submit: true,
-    });
-    if (!saved.ok) throw new Error(saved.error);
-    const id = saved.value.id;
-    expect(await stopCase(db, ho, { caseId: id, version: await version(id), reason: "යවා ඇති තත්ත්වයේ" })).toEqual({
-      ok: false,
-      error: "notAllowedNow",
-    });
-    const sent = await load(id);
-    await decideCase(db, ho, { caseId: id, version: sent.version, decision: "verify", reason: null });
-    expect(
-      await stopCase(db, ho, { caseId: id, version: await version(id), reason: "ප්‍රතිලාභියා පදිංචිය වෙනස් කළා" }),
-    ).toMatchObject({ ok: true });
-    expect(await reopenCase(db, ho, { caseId: id, version: await version(id), reason: "නැවත සොයා ගත්තා" })).toEqual({
-      ok: true,
-      value: "VERIFIED",
-    });
-  });
-});
-
-describe("Head Office's edits to a running case (CASE-9)", () => {
+describe("the Ministry's edits to a running case (CASE-9)", () => {
   it("can change the kind of help only until a stage is recorded", async () => {
     const c = await running();
     const details = { ...values(), nic: (await load(c.id)).nic };
@@ -601,9 +589,9 @@ describe("Head Office's edits to a running case (CASE-9)", () => {
         id: c.id,
         version: await version(c.id),
         dsOfficeId: null,
+        buildDsOfficeId: null,
         values: { ...details, kind },
         documentIds: [],
-        submit: false,
       });
     expect(await edit("RENOVATION")).toMatchObject({ ok: true });
     expect(await edit("NEW_HOUSE")).toMatchObject({ ok: true });
@@ -634,17 +622,20 @@ describe("the case history (HIS-1 to HIS-3, AC-15)", () => {
       "installment_started",
       "installment_paid",
       "installment_started",
+      "case_started",
       "installment_paid",
       "installment_started",
       "stage_updated",
-      "case_released",
-      "case_verified",
-      "case_submitted",
+      "case_ds_released",
+      "case_allocated",
       "case_created",
     ]);
     expect(history?.[0]).toMatchObject({ actor: null });
     expect(history?.[1]).toMatchObject({ actor: { name: "ප්‍රා. පරීක්ෂණ", role: "DS_OFFICER" }, after: { number: 4 } });
-    expect(history?.find((e) => e.action === "case_released")).toMatchObject({ actor: { role: "HO_OFFICER" } });
+    expect(history?.find((e) => e.action === "case_allocated")).toMatchObject({ actor: { role: "MINISTRY_OFFICER" } });
+    expect(history?.find((e) => e.action === "case_ds_released")).toMatchObject({
+      actor: { role: "DISTRICT_OFFICER" },
+    });
     expect(history?.every((e) => e.at instanceof Date)).toBe(true);
 
     expect(await caseHistory(db, dsB, c.id, "si")).toBeNull();
@@ -704,7 +695,7 @@ describe("the case history in Tamil and English (UI-9)", () => {
     expect(stagesOf(en)).toEqual([[first!.nameEn, second!.nameEn]]);
 
     const district = await db.district.findFirstOrThrow({ where: { dsOffices: { some: { id: c.dsOfficeId } } } });
-    const released = (history: typeof si) => history?.find((e) => e.action === "case_released")?.after.district;
+    const released = (history: typeof si) => history?.find((e) => e.action === "case_allocated")?.after.district;
     expect([released(si), released(ta), released(en)]).toEqual([district.nameSi, district.nameTa, district.nameEn]);
   });
 
@@ -737,7 +728,9 @@ describe("the DS home (HOME-1, HOME-3, HOME-4)", () => {
     await start(dsA, late.id, late.version, 1, daysAgo(3));
     const later = await running({ name: "ප්‍රගති පරීක්ෂණ පසුව" });
     await start(dsA, later.id, later.version, 1, addDays(today(), 8));
+    // Only a case in progress can be stale (HOME-3), so its installment 1 is paid first.
     const quiet = await running({ name: "ප්‍රගති පරීක්ෂණ නිශ්ශබ්ද" });
+    await payNext(quiet.id, 1, daysAgo(40));
     await db.case.update({ where: { id: quiet.id }, data: { updatedAt: colomboStartOf(daysAgo(31)) } });
 
     const todo = await todoItems(db, dsA);
@@ -761,7 +754,7 @@ describe("the DS home (HOME-1, HOME-3, HOME-4)", () => {
       balance: before!.balance + 1_500_000,
     });
     expect(await officeMoney(db, admin)).toBeNull();
-    const { rows } = await listCases(db, dsA, { q: (await load(c.id)).caseNumber ?? "" }, "si");
+    const { rows } = await listCases(db, dsA, { q: (await load(c.id)).applicationNumber ?? "" }, "si");
     expect(rows).toEqual([expect.objectContaining({ id: c.id, paid: 1, stageName: first!.nameSi })]);
   });
 });

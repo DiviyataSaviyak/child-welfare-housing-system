@@ -20,9 +20,9 @@ export type ListFilter = Omit<CaseFilter, "page">;
 export type ListName = "ho_cases" | "ds_cases" | "oversight_cases";
 
 export type ExportRow = {
-  caseNumber: string | null;
-  category: Category | null;
-  kind: Kind | null;
+  applicationNumber: string;
+  category: Category;
+  kind: Kind;
   status: CaseStatus;
   name: string | null;
   childName: string | null;
@@ -31,19 +31,31 @@ export type ExportRow = {
   gnDivision: string | null;
   mobile1: string | null;
   mobile2: string | null;
+  /** CASE-13: the district and DS office where it is built, which the money follows (EXP-1). */
   districtName: string;
   officeName: string;
-  submittedAt: Date | null;
-  verifiedAt: Date | null;
+  /** The DS office of residence, which entered it. */
+  residenceOfficeName: string;
+  /** When the DS entered it (EXP-1). */
+  createdAt: Date;
   completedAt: Date | null;
   updatedAt: Date;
   remark: string | null;
-  /** The Rs. 2,000,000 release (REL-2), once recorded; null before it. */
-  release: { releasedOn: string; amount: number; paidOut: number } | null;
-  /** Installments 1 to 4, made with the release (INS-1); null before it. */
+  /** The Ministry's Rs. 2,000,000 allocation (REL-3), once its letter names the case; null before it. */
+  release: ExportAllocation | null;
+  /** Installments 1 to 4, made with the District's release (REL-7); null before it. */
   installments: (ExportInstallment | null)[];
   /** For each of the four building-progress columns, the day ("YYYY-MM-DD") its stage was reached, or null. */
   progress: (string | null)[];
+};
+
+export type ExportAllocation = {
+  amount: number;
+  letterNumber: string;
+  /** "YYYY-MM-DD" */
+  letterDate: string;
+  /** The District's release to the DS (REL-7), with what the DS has paid from it; null until then. */
+  dsRelease: { referenceNumber: string; /** "YYYY-MM-DD" */ releasedOn: string; paidOut: number } | null;
 };
 
 export type ExportInstallment = {
@@ -54,7 +66,7 @@ export type ExportInstallment = {
   releasedOn: string | null;
 };
 
-/** The Head Office progress report has four installment columns and four building-progress columns. */
+/** The Ministry's progress report has four installment columns and four building-progress columns. */
 const INSTALLMENTS = [1, 2, 3, 4] as const;
 const PROGRESS_COLUMNS = 4;
 
@@ -88,7 +100,7 @@ export async function caseListRows(
       where,
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       select: {
-        caseNumber: true,
+        applicationNumber: true,
         category: true,
         kind: true,
         status: true,
@@ -100,12 +112,18 @@ export async function caseListRows(
         mobile1: true,
         mobile2: true,
         remark: true,
-        submittedAt: true,
-        verifiedAt: true,
+        createdAt: true,
         completedAt: true,
         updatedAt: true,
-        dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
-        release: { select: { releasedOn: true, amount: true } },
+        dsOffice: { select: NAMES },
+        buildDsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+        release: {
+          select: {
+            amount: true,
+            letter: { select: { letterNumber: true, letterDate: true } },
+            dsRelease: { select: { referenceNumber: true, releasedOn: true } },
+          },
+        },
         installments: { select: { number: true, amount: true, status: true, expectedOn: true, releasedOn: true } },
         stageUpdates: { where: { stageId: { not: null } }, select: { stageId: true, visitedOn: true } },
       },
@@ -118,20 +136,25 @@ export async function caseListRows(
   ]);
 
   const byKind = new Map(KINDS.map((kind) => [kind, progressStages(stages.filter((stage) => stage.kind === kind))]));
-  const noStages = progressStages<(typeof stages)[number]>([]);
 
-  return found.map(({ dsOffice, release, installments, stageUpdates, ...row }) => {
+  return found.map(({ dsOffice, buildDsOffice, release, installments, stageUpdates, ...row }) => {
     const paid = installments.filter((item) => item.status === "RELEASED");
     const byNumber = new Map(installments.map((item) => [item.number, item]));
     const reached = new Map(stageUpdates.map((update) => [update.stageId, dateToDay(update.visitedOn)]));
     return {
       ...row,
-      officeName: localName(dsOffice, locale),
-      districtName: localName(dsOffice.district, locale),
+      officeName: localName(buildDsOffice, locale),
+      districtName: localName(buildDsOffice.district, locale),
+      residenceOfficeName: localName(dsOffice, locale),
       release: release && {
-        releasedOn: dateToDay(release.releasedOn),
         amount: release.amount,
-        paidOut: paid.reduce((sum, i) => sum + i.amount, 0),
+        letterNumber: release.letter.letterNumber,
+        letterDate: dateToDay(release.letter.letterDate),
+        dsRelease: release.dsRelease && {
+          referenceNumber: release.dsRelease.referenceNumber,
+          releasedOn: dateToDay(release.dsRelease.releasedOn),
+          paidOut: paid.reduce((sum, i) => sum + i.amount, 0),
+        },
       },
       installments: INSTALLMENTS.map((number) => {
         const item = byNumber.get(number);
@@ -143,7 +166,7 @@ export async function caseListRows(
             }
           : null;
       }),
-      progress: (row.kind ? byKind.get(row.kind)! : noStages).map((stage) => (stage && reached.get(stage.id)) ?? null),
+      progress: byKind.get(row.kind)!.map((stage) => (stage && reached.get(stage.id)) ?? null),
     };
   });
 }
@@ -164,16 +187,19 @@ function installmentNote(t: CasesT, item: ExportInstallment | null): string | nu
 }
 
 /**
- * EXP-1's columns, with headers in the language of the screen it was asked from (UI-9). A case not yet released leaves its money columns empty.
- * Head Office's progress report adds two groups, each cell a short dated note: its financial progress,
- * when each installment was paid or is expected, follows the amount released; its physical progress,
+ * EXP-1's columns, with headers in the language of the screen it was asked from (UI-9). The places are
+ * where it is built, then the DS of residence (CASE-13). A case leaves empty what it hasn't reached yet:
+ * the Ministry's letter and the amount allocated until its allocation, the District's release, the
+ * installments, what was paid and the balance until the District releases it to the DS.
+ * The Ministry's progress report adds two groups, each cell a short dated note: its financial progress,
+ * when each installment was paid or is expected, follows the amount allocated; its physical progress,
  * when each building stage was finished, follows the balance.
  */
 export function caseListColumns(t: CasesT): Column<ExportRow>[] {
   return [
-    { header: t("export.columns.number"), width: 16, value: (r) => r.caseNumber },
-    { header: t("export.columns.category"), width: 16, value: (r) => r.category && t(`category.${r.category}`) },
-    { header: t("export.columns.kind"), width: 14, value: (r) => r.kind && t(`kindShort.${r.kind}`) },
+    { header: t("export.columns.number"), width: 16, value: (r) => r.applicationNumber },
+    { header: t("export.columns.category"), width: 16, value: (r) => t(`category.${r.category}`) },
+    { header: t("export.columns.kind"), width: 14, value: (r) => t(`kindShort.${r.kind}`) },
     { header: t("export.columns.status"), width: 18, value: (r) => t(`status.${r.status}`) },
     { header: t("export.columns.name"), width: 30, value: (r) => r.name },
     { header: t("export.columns.childName"), width: 26, value: (r) => r.childName },
@@ -183,11 +209,22 @@ export function caseListColumns(t: CasesT): Column<ExportRow>[] {
     { header: t("export.columns.mobile2"), width: 14, value: (r) => r.mobile2 },
     { header: t("export.columns.district"), width: 16, value: (r) => r.districtName },
     { header: t("export.columns.office"), width: 22, value: (r) => r.officeName },
+    { header: t("export.columns.residenceOffice"), width: 22, value: (r) => r.residenceOfficeName },
     { header: t("export.columns.gnDivision"), width: 22, value: (r) => r.gnDivision },
-    { header: t("export.columns.submittedOn"), width: 14, value: (r) => day(r.submittedAt) },
-    { header: t("export.columns.verifiedOn"), width: 14, value: (r) => day(r.verifiedAt) },
-    { header: t("export.columns.releasedOn"), width: 14, value: (r) => r.release && { day: r.release.releasedOn } },
-    { header: t("export.columns.released"), width: 16, amount: true, value: (r) => r.release?.amount ?? null },
+    { header: t("export.columns.enteredOn"), width: 14, value: (r) => day(r.createdAt) },
+    { header: t("export.columns.letterNumber"), width: 18, value: (r) => r.release?.letterNumber ?? null },
+    { header: t("export.columns.letterDate"), width: 14, value: (r) => r.release && { day: r.release.letterDate } },
+    {
+      header: t("export.columns.dsReleaseReference"),
+      width: 18,
+      value: (r) => r.release?.dsRelease?.referenceNumber ?? null,
+    },
+    {
+      header: t("export.columns.dsReleasedOn"),
+      width: 14,
+      value: (r) => (r.release?.dsRelease ? { day: r.release.dsRelease.releasedOn } : null),
+    },
+    { header: t("export.columns.allocated"), width: 16, amount: true, value: (r) => r.release?.amount ?? null },
     ...INSTALLMENTS.map((number): Column<ExportRow> => ({
       header: t(`installment.name.${number}`),
       group: t("export.progress.money"),
@@ -195,12 +232,17 @@ export function caseListColumns(t: CasesT): Column<ExportRow>[] {
       wrap: true,
       value: (r) => installmentNote(t, r.installments[number - 1]),
     })),
-    { header: t("export.columns.paidOut"), width: 16, amount: true, value: (r) => r.release?.paidOut ?? null },
+    {
+      header: t("export.columns.paidOut"),
+      width: 16,
+      amount: true,
+      value: (r) => r.release?.dsRelease?.paidOut ?? null,
+    },
     {
       header: t("export.columns.balance"),
       width: 16,
       amount: true,
-      value: (r) => (r.release ? r.release.amount - r.release.paidOut : null),
+      value: (r) => (r.release?.dsRelease ? r.release.amount - r.release.dsRelease.paidOut : null),
     },
     ...([1, 2, 3, 4] as const).map((number): Column<ExportRow> => ({
       header: t(`export.progress.stages.${number}`),

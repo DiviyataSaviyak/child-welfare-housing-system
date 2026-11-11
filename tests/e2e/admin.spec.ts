@@ -26,8 +26,9 @@ const NAME = "නම (අවශ්‍ය නම් පමණි)";
 const MOBILE = "ජංගම දුරකතන අංකය (අවශ්‍ය නම් පමණි)";
 
 /**
- * The Gampaha offices have no sample officer. Each test that creates one uses its own office, so it sees
- * only its own officers; tests/e2e/cleanup.ts deletes them again before each run.
+ * These Gampaha offices have no sample officer (Biyagama has `ds0105`, for AC-56). Each test that creates
+ * one uses its own office, so it sees only its own officers; tests/e2e/cleanup.ts deletes them again before
+ * each run.
  */
 const OFFICES = {
   signIn: "ගම්පහ",
@@ -183,7 +184,7 @@ test("AC-37: an account with no name, mobile or email signs in and sets its own 
     await expect(officer.getByRole("link", { name: /නව ප්‍රතිලාභියෙකු/ })).toHaveCount(0);
 
     // Another role's area answers "not found".
-    await officer.goto("/ho");
+    await officer.goto("/ministry");
     await expect(officer.getByRole("heading", { name: "මෙම පිටුව සොයාගත නොහැක" })).toBeVisible();
   });
 });
@@ -441,8 +442,8 @@ test("the admin adds and reorders renovation stages (LST-4)", async ({ page }) =
   await expect(page.getByRole("region", { name: "නව නිවසක් ඉදිකිරීම" })).not.toContainText(suffix);
 });
 
-test("Head Office officers get 'not found' on the admin pages (PRM-2)", async ({ page }) => {
-  await signInAs(page, "ho0001", /\/ho$/);
+test("Ministry officers get 'not found' on the admin pages (PRM-2)", async ({ page }) => {
+  await signInAs(page, "ho0001", /\/ministry$/);
   for (const path of ["/admin/users", "/admin/users/new", "/admin/lists"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(TEXT.notFound);

@@ -91,9 +91,22 @@ describe("the screen languages' message files (UI-1, UI-9)", () => {
 
   it("keeps Latin letters off the Sinhala and Tamil screens' main labels (AC-20)", () => {
     // Help texts may name file types such as PDF; the labels a screen is built from may not.
-    for (const key of ["app.name", "app.ministry", "nav.dsHome", "nav.hoDashboard", "nav.adminUsers", "login.title"]) {
+    for (const key of [
+      "app.name",
+      "app.ministry",
+      "nav.dsHome",
+      "nav.ministryDashboard",
+      "nav.adminUsers",
+      "login.title",
+    ]) {
       for (const locale of ["si", "ta"] as const)
         expect(flat[locale].get(key), `${locale} ${key}`).not.toMatch(/[A-Za-z]/);
     }
+  });
+
+  it("never calls the Ministry Head Office, in any language (UI-10, AC-58)", () => {
+    const headOffice = { si: /ප්‍රධාන\s*කාර්යාල/, ta: /தலைமை\s*அலுவலக/, en: /head\s*office/i };
+    for (const locale of LOCALES)
+      for (const [key, text] of flat[locale]) expect(text, `${locale} ${key}`).not.toMatch(headOffice[locale]);
   });
 });

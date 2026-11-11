@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-/** Error messages are keys under "review.errors" in messages/si.json. */
+/** Error messages are keys under "progress.errors" in messages/si.json. */
 export type ReasonErrorKey = "reasonRequired" | "reasonTooShort" | "reasonTooLong";
 
-/** CHK-3, CLS-2, CLS-3: the reason Head Office gives for sending back, rejecting, stopping or reopening. */
+/** The reason given for deleting a case (CASE-8) or undoing a payment (INS-6). */
 const reasonSchema = z
   .string()
   .trim()

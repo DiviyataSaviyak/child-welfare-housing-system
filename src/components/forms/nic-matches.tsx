@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import type { NicMatch } from "@/server/cases/duplicates";
 
 /**
- * CASE-6: other cases with the same NIC. It only warns; saving and submitting stay possible. What
+ * CASE-6: other cases with the same NIC. It only warns; saving stays possible. What
  * each match shows was already limited on the server to what the viewer may see.
  */
 export function NicMatches({ matches }: { matches: NicMatch[] }) {
@@ -12,11 +12,10 @@ export function NicMatches({ matches }: { matches: NicMatch[] }) {
 
   const describe = (match: NicMatch) => {
     const name = match.name ?? "";
-    if (!match.caseNumber) return t("draft", { name });
     if (match.name && match.officeName)
-      return t("numberNameOffice", { number: match.caseNumber, name, office: match.officeName });
-    if (match.name) return t("numberName", { number: match.caseNumber, name });
-    return t("numberOffice", { number: match.caseNumber, office: match.officeName ?? "" });
+      return t("numberNameOffice", { number: match.applicationNumber, name, office: match.officeName });
+    if (match.name) return t("numberName", { number: match.applicationNumber, name });
+    return t("numberOffice", { number: match.applicationNumber, office: match.officeName ?? "" });
   };
 
   return (
@@ -28,7 +27,7 @@ export function NicMatches({ matches }: { matches: NicMatch[] }) {
       <p className="font-semibold">{t("title")}</p>
       <ul className="list-disc ps-5">
         {matches.map((match, index) => (
-          <li key={`${match.caseNumber ?? "draft"}-${index}`}>{describe(match)}</li>
+          <li key={`${match.applicationNumber}-${index}`}>{describe(match)}</li>
         ))}
       </ul>
       <p>{t("advice")}</p>

@@ -15,24 +15,25 @@
   "areas": {
     "ds": "Divisional Secretariat",
     "dsOffice": "{office} Divisional Secretariat",
-    "ho": "Head Office",
+    "ministry": "Ministry",
     "district": "{district} District Secretariat",
     "province": "{province} Provincial Council",
     "oversight": "View only",
-    "admin": "Head Office · Administrator"
+    "admin": "Ministry · Administrator"
   },
   "nav": {
     "label": "Main menu",
     "dsHome": "My beneficiaries",
     "dsNewCase": "Add a new beneficiary",
-    "hoDashboard": "Summary",
+    "ministryDashboard": "Summary",
     "adminUsers": "Users",
     "adminLists": "Lists",
-    "hoCases": "Beneficiaries",
-    "hoCheck": "Checking and releasing allocations",
+    "ministryCases": "Beneficiaries",
+    "ministryAllocate": "To release allocations",
     "oversightDashboard": "Summary",
     "oversightCases": "Beneficiaries",
-    "waiting": "Beneficiaries waiting: {count}"
+    "waiting": "Beneficiaries waiting: {count}",
+    "districtRelease": "To release to DS offices"
   },
   "shell": {
     "signedInAs": "Signed in as",
@@ -65,7 +66,7 @@
     "submitting": "Signing in...",
     "forgot": "Forgot your password?",
     "passwordReset": "Your new password is set. Sign in with it.",
-    "help": "If you have no account or have forgotten your username, contact the administrator at Head Office.",
+    "help": "If you have no account or have forgotten your username, contact the administrator at the Ministry.",
     "errors": {
       "required": "Enter both your username and your password.",
       "invalid": "The username or password is wrong.",
@@ -99,7 +100,7 @@
     "username": "Username",
     "submit": "Send the code",
     "submitting": "Sending...",
-    "noUsername": "If you have forgotten your username, or your account has no email address or yours has changed, contact the administrator at Head Office.",
+    "noUsername": "If you have forgotten your username, or your account has no email address or yours has changed, contact the administrator at the Ministry.",
     "backToSignIn": "Back to sign in",
     "startAgain": "Start again",
     "email": {
@@ -120,7 +121,7 @@
       "submit": "Continue",
       "submitting": "Checking...",
       "sendAgain": "Send a new code",
-      "noEmail": "If no email arrives within a few minutes, look in the spam folder too. If it isn't there, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at Head Office."
+      "noEmail": "If no email arrives within a few minutes, look in the spam folder too. If it isn't there, check the username and ask for a new code. If it still doesn't arrive, contact the administrator at the Ministry."
     },
     "password": {
       "intro": "The code is right. Now set your new password.",
@@ -133,8 +134,8 @@
     "errors": {
       "required": "Enter your username.",
       "tooMany": "Too many requests from this computer. Try again in 15 minutes.",
-      "emailFailed": "The email couldn't be sent. Try again in a little while, or contact the administrator at Head Office.",
-      "emailOff": "Resetting a password by email isn't switched on yet. For a new password, contact the administrator at Head Office."
+      "emailFailed": "The email couldn't be sent. Try again in a little while, or contact the administrator at the Ministry.",
+      "emailOff": "Resetting a password by email isn't switched on yet. For a new password, contact the administrator at the Ministry."
     },
     "codeErrors": {
       "required": "Enter the code from the email.",
@@ -162,7 +163,7 @@
   },
   "error": {
     "title": "Something went wrong",
-    "body": "Please try again. If the problem continues, contact Head Office with the reference code below.",
+    "body": "Please try again. If the problem continues, contact the Ministry with the reference code below.",
     "reference": "Reference code",
     "retry": "Try again"
   },
@@ -186,7 +187,7 @@
     "roles": {
       "DS_OFFICER": "Divisional Secretariat Officer",
       "DISTRICT_OFFICER": "District Child Rights Promotion Officer",
-      "HO_OFFICER": "Head Office officer",
+      "MINISTRY_OFFICER": "Ministry Officer",
       "VIEWER": "View only",
       "ADMIN": "Administrator"
     },
@@ -219,7 +220,7 @@
     "roleHints": {
       "DS_OFFICER": "Adds beneficiaries, pays installments, updates progress",
       "DISTRICT_OFFICER": "Views the district's beneficiaries",
-      "HO_OFFICER": "All beneficiaries, checking and money",
+      "MINISTRY_OFFICER": "All beneficiaries, allocations and money",
       "VIEWER": "View only",
       "ADMIN": "Accounts and lists only"
     },
@@ -415,14 +416,11 @@
   },
   "cases": {
     "status": {
-      "DRAFT": "Not sent yet",
-      "SUBMITTED": "Sent for checking",
-      "RETURNED": "Sent back",
-      "VERIFIED": "Verified",
+      "AWAITING_ALLOCATION": "Awaiting fund allocation",
+      "ALLOCATED_TO_DISTRICT": "Released to the district",
+      "ALLOCATION_RECEIVED": "Allocation received",
       "IN_PROGRESS": "Work in progress",
-      "COMPLETED": "Completed",
-      "REJECTED": "Rejected",
-      "STOPPED": "Stopped"
+      "COMPLETED": "Completed"
     },
     "category": {
       "CARE_LEAVER": "Care leaver",
@@ -446,11 +444,10 @@
     },
     "noName": "Name not entered yet",
     "withChild": "{name} (child: {child})",
-    "noNumber": "No number yet",
     "none": "—",
     "back": {
       "ds": "Back to my beneficiaries",
-      "ho": "Back to the beneficiary list",
+      "ministry": "Back to the beneficiary list",
       "oversight": "Back to the beneficiary list",
       "case": "Back to the beneficiary's page"
     },
@@ -465,7 +462,7 @@
         "completed": "Completed ({count})"
       },
       "search": "Search",
-      "searchPlaceholder": "Name, number or NIC number",
+      "searchPlaceholder": "Name, Application Number or NIC number",
       "columns": {
         "beneficiary": "Beneficiary",
         "kind": "Assistance",
@@ -476,24 +473,15 @@
       "empty": "No matching beneficiaries.",
       "emptyStart": "No beneficiaries yet. Press “Add a new beneficiary” to start.",
       "progress": {
-        "DRAFT": "Complete it and send it to Head Office",
-        "SUBMITTED": "Days with Head Office: {days}",
-        "submittedToday": "Sent to Head Office today",
-        "RETURNED": "Correct it and send it again",
-        "VERIFIED": "Rs. 2,000,000 still to come",
+        "AWAITING_ALLOCATION": "Awaiting the Ministry's fund allocation",
+        "ALLOCATED_TO_DISTRICT": "Awaiting the District's release",
+        "ALLOCATION_RECEIVED": "Rs. 2,000,000 received; start the first installment",
         "COMPLETED": "Building completed",
         "IN_PROGRESS": "Rs. 2,000,000 received",
-        "STOPPED": "Stopped by Head Office",
         "stale": "Days without an update: {days}"
       },
       "todo": {
         "title": "Your to-do list",
-        "returned": "{name}: sent back",
-        "returnedAction": "Correct it and send it again",
-        "noReason": "Head Office gave no reason.",
-        "draft": "{name}: not sent yet",
-        "draftText": "Last saved {date}",
-        "draftAction": "Complete it and send it",
         "none": "Nothing to do for now.",
         "due": "{name}: {installment}",
         "dueText": "Due to be paid on {date}. Record it here once it is paid.",
@@ -501,18 +489,18 @@
         "stale": "{name}: update the progress",
         "staleText": "Days without an update: {days}.",
         "open": "Open",
-        "replace": "{name}: another name asked for",
-        "replaceRejected": "Head Office rejected {number}: “{reason}” Enter another beneficiary in its place and send it.",
-        "replaceStopped": "Head Office stopped {number}: “{reason}” Enter another beneficiary in its place and send it.",
-        "replaceAction": "Enter someone in its place"
+        "received": "{name}: allocation received",
+        "receivedText": "Received on {date}. Start paying the first installment."
       },
       "paid": "{paid} / {total}",
       "money": {
         "title": "Money",
-        "received": "Received from Head Office",
+        "received": "Received from the District",
         "paidOut": "Paid to beneficiaries",
         "balance": "Balance with you"
-      }
+      },
+      "builtIn": "Built in {office}",
+      "enteredBy": "Entered by {office}"
     },
     "list": {
       "title": "Beneficiaries",
@@ -520,7 +508,7 @@
       "add": "Add a new beneficiary",
       "filtersLabel": "Search beneficiaries",
       "search": "Search",
-      "searchPlaceholder": "Name, number or NIC number",
+      "searchPlaceholder": "Name, Application Number or NIC number",
       "district": "District",
       "office": "DS division",
       "status": "Status",
@@ -564,7 +552,7 @@
       "mobile2": "Second phone number (optional)",
       "remark": "Notes (optional)",
       "officeAuto": "The system fills in the district ({district}) and the DS division ({office}).",
-      "officeFixed": "District: {district} · DS division: {office}. This can't be changed once the beneficiary has a registration number.",
+      "officeFixed": "District: {district} · DS division: {office}. This can't be changed once the Ministry has allocated the funds.",
       "district": "District *",
       "office": "DS division *",
       "chooseDistrictFirst": "Choose the district first",
@@ -580,11 +568,9 @@
       "removeTitle": "Remove the document?",
       "removeText": "“{name}” will be removed from this beneficiary's documents.",
       "removeConfirm": "Yes, remove it",
-      "saveDraft": "Save to complete later",
-      "submit": "Send to Head Office",
       "saving": "Saving...",
       "cancel": "No",
-      "help": "If you have a problem, contact Head Office.",
+      "help": "If you have a problem, contact the Ministry.",
       "checklist": {
         "title": "Parts to fill in",
         "category": "Category",
@@ -596,24 +582,19 @@
         "optional": "Optional",
         "attached": "Attached"
       },
-      "returned": {
-        "title": "Head Office has sent this back",
-        "text": "Correct the point below and send it again."
-      },
       "duplicate": {
         "title": "These beneficiaries already have this NIC number:",
         "numberName": "{number} ({name})",
         "numberOffice": "{number} at the {office} DS office",
         "numberNameOffice": "{number} ({name}, {office} DS)",
-        "draft": "A beneficiary not sent yet ({name})",
-        "advice": "Check whether it is the same person. This doesn't stop saving or sending; Head Office will see it when checking."
+        "advice": "Check whether it is the same person. This doesn't stop saving; the Ministry sees it when allocating funds."
       },
       "confirm": {
-        "title": "Send to Head Office?",
+        "title": "Save this beneficiary?",
         "text": "Please look over the details again.",
-        "after": "Once sent, this can't be changed until Head Office has checked it.",
+        "after": "Once saved, it awaits the Ministry's fund allocation. Until then you can correct or delete it.",
         "back": "No, go back",
-        "send": "Yes, send it",
+        "send": "Yes, save it",
         "category": "Category",
         "kind": "Assistance",
         "childName": "Child's name",
@@ -626,11 +607,11 @@
         "office": "DS division",
         "documents": "Other documents",
         "documentCount": "{count, plural, =0 {None attached} one {# file} other {# files}}",
-        "replaces": "In place of"
+        "applicationNumber": "Application Number",
+        "built": "Built in"
       },
       "errors": {
-        "summary": "Correct these before sending:",
-        "summaryDraft": "Correct these before saving:",
+        "summary": "Correct these before saving:",
         "inField": "{field}: {message}",
         "categoryRequired": "Choose a category.",
         "kindRequired": "Choose the kind of assistance.",
@@ -657,53 +638,38 @@
         "notAllowedNow": "This can't be done in the beneficiary's current status. Reload the page.",
         "roleNotAllowed": "You can't do this.",
         "kindLocked": "Physical progress is already recorded for this beneficiary, so the kind of assistance can't be changed.",
-        "replacementRequired": "Choose whether this beneficiary is in place of the case Head Office named.",
-        "replacementUnavailable": "A name can no longer be entered in place of the chosen case. Reload the page and choose again."
+        "applicationNumberRequired": "Enter the Application Number.",
+        "applicationNumberTaken": "Another beneficiary of this DS division already has this Application Number.",
+        "buildOfficeRequired": "Choose the DS division where the house is built."
       },
       "saveChanges": "Save the changes",
-      "changeIntro": "This beneficiary has been verified. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
-      "replaces": {
-        "title": "Head Office has asked for another name *",
-        "text": "Is the beneficiary you are entering now the one sent in its place? This question shows only while there is such a request.",
-        "yes": "Yes, in place of {number}",
-        "rejectedOn": "{name} · rejected on {date}",
-        "stoppedOn": "{name} · stopped on {date}",
-        "reason": "Reason: {reason}",
-        "no": "No, this is a separate new beneficiary",
-        "noHint": "The request stays on the DS office's to-do list until a name is sent in its place.",
-        "ref": "{number} ({name})"
-      }
+      "changeIntro": "The Ministry has allocated funds for this beneficiary. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
+      "applicationNumber": "Application Number *",
+      "applicationNumberHelp": "The number on the beneficiary's paper application",
+      "built": {
+        "title": "DS division where the house is built or the land bought *",
+        "same": "The same DS division",
+        "sameHint": "Where the beneficiary lives",
+        "other": "Another DS division",
+        "otherHint": "That DS office pays the installments and records the progress",
+        "district": "District where it is built *",
+        "office": "DS division where it is built *",
+        "fixed": "Built in: {office} DS division, {district} District. This can't be changed once the Ministry has allocated the funds.",
+        "fixedSame": "Built in the DS division where the beneficiary lives. This can't be changed once the Ministry has allocated the funds."
+      },
+      "save": "Save"
     },
     "notices": {
-      "saved": "Saved. You can complete it later from the “My beneficiaries” page.",
-      "savedHo": "Saved.",
-      "deleted": "Draft deleted.",
+      "deleted": "Beneficiary deleted.",
       "changed": "Changes saved."
-    },
-    "submitted": {
-      "title": "Sent to Head Office",
-      "number": "Registration number:",
-      "text": "Once Head Office has checked it, you'll be told on the “My beneficiaries” page.",
-      "textHo": "It is now on the “To check” list.",
-      "addAnother": "Add another person"
-    },
-    "deleteDraft": {
-      "button": "Delete the draft",
-      "title": "Delete this draft?",
-      "text": "It hasn't been sent to Head Office yet. Once deleted, its details and attached documents can't be recovered.",
-      "confirm": "Yes, delete it",
-      "cancel": "No",
-      "working": "Deleting..."
     },
     "page": {
       "details": "The beneficiary's details",
       "documents": "Other documents",
       "noDocuments": "No documents attached.",
       "edit": "Edit the details",
-      "fix": "Correct and send again",
-      "waiting": "Head Office is checking this. The details can't be changed until they decide.",
       "fields": {
-        "number": "Registration number",
+        "number": "Application Number",
         "category": "Category",
         "kind": "Assistance given",
         "childName": "Child's name",
@@ -717,22 +683,18 @@
         "remark": "Notes",
         "office": "DS division",
         "district": "District",
-        "submittedAt": "Last sent on",
-        "verifiedAt": "Verified on"
+        "applicationNumber": "Application Number",
+        "built": "Built in",
+        "createdAt": "Entered on"
       },
-      "verifiedDs": "Head Office has verified this. You'll be told once the Rs. 2,000,000 is released.",
-      "rejectedTitle": "Head Office has rejected this",
       "replacesTitle": "Entered in place of {number} ({name})",
-      "replacesRejected": "Head Office rejected it on {date} and asked for another name.",
-      "replacesStopped": "Head Office stopped it on {date} and asked for another name.",
+      "replacesRejected": "The Ministry rejected it on {date} and asked for another name.",
+      "replacesStopped": "The Ministry stopped it on {date} and asked for another name.",
       "replacesReason": "Reason: {reason}",
       "openOther": "Open {number}",
-      "askedTitle": "Another name was asked for in this one's place",
-      "askedWaiting": "The DS office hasn't entered one yet.",
-      "askedEnter": "Enter someone in its place",
-      "askedDone": "{number} ({name}) has been entered in its place."
+      "replacedBy": "{number} ({name}) was entered in this one's place"
     },
-    "officeClosed": "Your Divisional Secretariat has been deactivated, so new beneficiaries can't be added. Contact Head Office.",
+    "officeClosed": "Your Divisional Secretariat has been deactivated, so new beneficiaries can't be added. Contact the Ministry.",
     "installment": {
       "name": {
         "1": "First installment",
@@ -750,14 +712,16 @@
       "title": "Financial progress",
       "released": "Released to the District Secretary",
       "releasedDetail": "{date} · {district} District",
-      "received": "Received through the District Secretary",
-      "receivedDetail": "Letter {number}",
+      "allocated": "The Ministry has released {amount} to the {district} District. It is waiting for the District Secretariat to release it to the DS office.",
+      "allocatedDs": "The Ministry has released {amount} to the {district} District for this beneficiary. The installments can start once the District Secretariat releases it to your office.",
+      "received": "Received from the District Secretariat",
+      "receivedDetail": "{date} · release {reference}",
       "paid": "Paid to the beneficiary",
       "left": "Balance with the DS office",
       "count": "{count, plural, =0 {No installments} one {# installment} other {# installments}}",
       "letterName": "Allocation letter {number}",
       "letterHo": "({date}) · to the {district} District Secretary · beneficiaries: {count}, {total} in all · valid until {until}",
-      "letterDs": "({date}) · from Head Office through the {district} District Secretary · valid until {until}",
+      "letterDs": "({date}) · from the Ministry through the {district} District Secretary · valid until {until}",
       "letterScan": "Copy of the letter",
       "opensInNewTab": "(opens in a new tab)",
       "installment": "Installment",
@@ -766,7 +730,9 @@
       "expectedOn": "Expected on: {date}",
       "paidOn": "Paid on: {date}",
       "note": "Note: {note}",
-      "recordedBy": "Recorded by {name} on {date}"
+      "recordedBy": "Recorded by {name} on {date}",
+      "dsReleaseName": "District release {reference}",
+      "dsReleaseText": "({date}) · from the {district} District Secretariat to the {office} DS office · beneficiaries: {count}"
     },
     "export": {
       "button": "Download as an Excel file",
@@ -774,7 +740,7 @@
       "sheet": "Beneficiaries",
       "fileName": "Diviyata Saviyak list {date}.xlsx",
       "columns": {
-        "number": "Registration number",
+        "number": "Application Number",
         "category": "Category",
         "kind": "Assistance",
         "status": "Status",
@@ -784,13 +750,16 @@
         "address": "Address",
         "mobile1": "Phone number",
         "mobile2": "Second phone number",
-        "district": "District",
-        "office": "DS division",
+        "district": "District where built",
+        "office": "DS division where built",
+        "residenceOffice": "DS division of residence",
         "gnDivision": "Grama Niladhari division",
-        "submittedOn": "Last sent on",
-        "verifiedOn": "Verified on",
-        "releasedOn": "Rs. 2,000,000 released on",
-        "released": "Amount released to the DS office (Rs.)",
+        "enteredOn": "Entered on",
+        "letterNumber": "Ministry's letter number",
+        "letterDate": "Ministry's letter date",
+        "dsReleaseReference": "District release reference",
+        "dsReleasedOn": "District release date",
+        "allocated": "Amount allocated (Rs.)",
         "paidOut": "Amount paid to the beneficiary (Rs.)",
         "balance": "Balance with the DS office (Rs.)",
         "completedOn": "Completed on",
@@ -810,91 +779,56 @@
           "4": "Completing the house with the essentials"
         }
       }
+    },
+    "created": {
+      "title": "Saved",
+      "number": "Application Number:",
+      "text": "It now awaits the Ministry's fund allocation. Until then you can correct or delete it.",
+      "textMinistry": "It is now on the list awaiting fund allocation.",
+      "addAnother": "Add another person"
+    },
+    "deleteCase": {
+      "button": "Delete",
+      "title": "Delete this beneficiary?",
+      "text": "Use this only for a beneficiary entered by mistake, for example twice. The details and documents of {number} can't be recovered.",
+      "reason": "Reason for deleting *",
+      "reasonHelp": "The reason is kept in the records. 5 to 1,000 characters.",
+      "confirm": "Yes, delete it",
+      "cancel": "No",
+      "working": "Deleting..."
     }
   },
   "review": {
-    "title": "Checking and releasing allocations",
-    "intro": "Check the beneficiaries sent by the DS offices one by one. Once the allocation letter has gone to the District Secretary, record it on the second tab.",
-    "tabsLabel": "Choose a list",
-    "tabs": {
-      "check": "1. To check ({count})",
-      "release": "2. To release allocations ({count})"
-    },
-    "listLabel": {
-      "check": "Beneficiaries to check"
-    },
-    "empty": {
-      "check": "Nothing to check."
-    },
-    "emptyHere": {
-      "check": "Nothing to check from this area."
-    },
-    "place": {
-      "label": "View by area",
-      "district": "District",
-      "office": "DS division",
-      "allDistricts": "All districts ({count})",
-      "allOffices": "All DS divisions ({count})",
-      "option": "{name} ({count})",
-      "inactive": "{name} (inactive) ({count})",
-      "districtFirst": "Choose the district first",
-      "clear": "Show all areas"
-    },
-    "rowOffice": "{number} · {office} DS",
-    "waiting": {
-      "check": "Sent on {date} · {days, plural, =0 {sent today} one {waiting for # day} other {waiting for # days}}"
-    },
-    "duplicateFlag": "Another beneficiary also has this NIC number",
-    "replacesFlag": "In place of {number}",
-    "subtitle": "{number} · {office} DS division · {district} District",
-    "openCase": "The beneficiary's full page",
-    "documents": "Documents",
-    "noDocuments": "No documents attached.",
-    "opensInNewTab": "(opens in a new tab)",
+    "title": "To release allocations",
+    "intro": "The DS offices enter only the beneficiaries they have approved. Once the allocation letter has gone to the District Secretary, record it here with the beneficiaries named in it. The District Secretariat then releases the money to the DS offices.",
     "duplicates": {
       "title": "Other beneficiaries also have this NIC number. Check whether it is the same family or the same person.",
-      "item": "{number}: {name} · {office} DS · {status}",
-      "draft": "A beneficiary not sent yet: {name} · {office} DS"
-    },
-    "decision": {
-      "title": "Your decision",
-      "verify": "Verify",
-      "sendBack": "Send back for correction",
-      "reject": "Reject",
-      "sendBackReason": "What must the DS office correct? *",
-      "rejectReason": "Reason for rejecting *",
-      "reasonHelp": "This reason is shown to the DS office. 5 to 1,000 characters.",
-      "confirmSendBack": "Send back",
-      "confirmReject": "Reject",
-      "cancel": "Cancel",
-      "verifyTitle": "Verify?",
-      "verifyText": "Once {name} ({number}) is verified, it goes to the “To release allocations” list. The DS office will be told.",
-      "verifyConfirm": "Yes, verify",
-      "verifyBack": "No",
-      "working": "Saving...",
-      "askName": "Ask the DS office for another name",
-      "askNameHelp": "It shows on the DS office's to-do list. The name they send comes as a new beneficiary in this one's place and is checked as usual.",
-      "confirmRejectAsk": "Reject and ask for another name"
+      "item": "{number}: {name} · {office} DS · {status}"
     },
     "letters": {
       "waitingTitle": "Districts waiting for a letter",
       "district": "{name} District",
-      "districtCount": "Verified beneficiaries: {count} · {amount}",
+      "districtCount": "Beneficiaries waiting: {count} · {amount}",
       "districtOffices": "{offices} DS",
-      "oldest": "{days, plural, =0 {verified today} one {the oldest verification has waited # day} other {the oldest verification has waited # days}}",
-      "none": "No verified beneficiaries are waiting for a letter.",
+      "oldest": "{days, plural, =0 {entered today} one {the oldest was entered # day ago} other {the oldest was entered # days ago}}",
+      "none": "No beneficiaries are waiting for an allocation letter.",
       "recordedTitle": "Letters recorded",
       "recordedNone": "No letters recorded yet.",
       "recordedName": "{district} · {number}",
       "recordedSub": "{date} · beneficiaries: {count} · {amount}",
       "recordedUntil": "Valid until {date}",
       "title": "{district} District",
-      "intro": "The letter goes to the District Secretary, {district}. Keep ticked only the beneficiaries named in the letter.",
+      "intro": "The letter goes to the District Secretary, {district}. Tick only the beneficiaries named in the letter.",
       "casesLabel": "Beneficiaries on the letter",
+      "tickDistrict": "Tick all in the {district} District",
+      "tickOffice": "Tick all in {office}",
       "office": "{office} DS division ({count})",
-      "verifiedOn": "{number} · verified on {date}",
-      "verifiedToday": "{number} · verified today",
+      "enteredOn": "entered on {date}",
+      "enteredToday": "entered today",
+      "caseDetail": "{number} · {category} · {kind} · {entered}",
+      "livesIn": "Lives in the {office} DS division",
       "notOnLetter": "Not on this letter",
+      "duplicateFlag": "{count, plural, one {Another beneficiary has this NIC number} other {# other beneficiaries have this NIC number}}",
       "total": "Total amount",
       "totalHelp": "Beneficiaries: {count} × Rs. 2,000,000",
       "number": "My No. *",
@@ -911,10 +845,8 @@
       "note": "Note (optional)",
       "save": "Record the letter · {amount}",
       "working": "Saving...",
-      "hint": "Nothing more to check in the {district} District. Verified beneficiaries waiting for an allocation letter: {count} ({amount}).",
-      "hintGo": "Go and record the letter →",
-      "caseTitle": "Releasing the Rs. 2,000,000",
-      "caseText": "Money for this beneficiary is released with an allocation letter to the {district} District Secretary. Once the letter has gone, record it on the “To release allocations” tab.",
+      "caseTitle": "Releasing the Rs. 2,000,000 allocation",
+      "caseText": "The allocation for this beneficiary is released with an allocation letter to the {district} District Secretary. Once the letter has gone, record it on the “To release allocations” screen.",
       "caseGo": "Go and record the letter →"
     },
     "correct": {
@@ -927,25 +859,21 @@
       "working": "Saving..."
     },
     "notices": {
-      "verified": "{name} ({number}) verified. It is now on the “To release allocations” tab, under the {district} District.",
-      "sentBack": "{name} ({number}) sent back to the {office} DS office for correction.",
-      "rejected": "{name} ({number}) rejected. The reason is shown to the DS office.",
       "corrected": "The allocation letter's details were corrected.",
-      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). Their work is now in progress. The {offices} DS offices will be told.",
-      "rejectedAskName": "{name} ({number}) rejected. The {office} DS office was asked for another name in its place."
+      "letterRecorded": "Letter {number} recorded for the {district} District ({amount}; beneficiaries: {count}). They are now released to the district. The District Secretariat will release the money to the {offices} DS offices; they will be told.",
+      "dsReleased": "Release {reference} to the {office} DS office recorded: beneficiaries: {count}, {amount}. They are now “Allocation received”. The DS office has been told and can start the installments.",
+      "dsCorrected": "The District release's details were corrected."
     },
     "errors": {
       "summary": "Correct these before saving:",
-      "reasonRequired": "Enter the reason.",
-      "reasonTooShort": "The reason must be at least 5 characters.",
-      "reasonTooLong": "The reason can't be longer than 1,000 characters.",
       "numberRequired": "Enter My No.",
       "numberTooLong": "My No. can't be longer than 50 characters.",
       "dateRequired": "Enter the letter's date.",
       "dateInvalid": "This isn't a valid date.",
       "dateInFuture": "The letter's date can't be in the future.",
-      "dateBeforeVerified": "The letter's date can't be before the day a beneficiary on it was verified.",
+      "dateBeforeEntered": "The letter's date can't be before the day a beneficiary on it was entered.",
       "dateAfterInstallment": "The date can't be after the date of an installment already recorded for a beneficiary on this letter.",
+      "dateAfterDsRelease": "The date can't be after the District Secretariat's release of a beneficiary on this letter.",
       "untilRequired": "Enter the valid-until date.",
       "untilInvalid": "This isn't a valid date.",
       "untilBeforeDate": "The valid-until date can't be before the letter's date.",
@@ -956,14 +884,51 @@
       "roleNotAllowed": "You can't do this.",
       "noRelease": "No money has been released for this beneficiary yet.",
       "noCases": "Choose at least one beneficiary named in the letter.",
-      "scanUnavailable": "The copy of the letter can't be found. Choose it again."
+      "scanUnavailable": "The copy of the letter can't be found. Choose it again.",
+      "referenceRequired": "Enter the reference number.",
+      "referenceTooLong": "The reference number can't be longer than 50 characters.",
+      "releaseDateRequired": "Enter the release date.",
+      "releaseInFuture": "The release date can't be in the future.",
+      "releaseBeforeLetter": "The release date can't be before the date of the Ministry's letter of a beneficiary on it.",
+      "releaseAfterInstallment": "The date can't be after the date of an installment already recorded for a beneficiary on this release.",
+      "releaseAfterStage": "The date can't be after the date of physical progress already recorded for a beneficiary on this release.",
+      "noDsRelease": "The District Secretariat hasn't released this beneficiary's allocation yet.",
+      "noCasesRelease": "Choose at least one beneficiary released."
+    },
+    "district": {
+      "title": "To release to DS offices",
+      "intro": "The Ministry has released these beneficiaries' allocations to your district. Once the District Secretariat has released the money to a DS office, record the release here with its beneficiaries. The DS office then pays the installments.",
+      "waitingTitle": "DS offices waiting for a release",
+      "office": "{name} DS office",
+      "oldestLetter": "Oldest Ministry letter: {date}",
+      "none": "No beneficiaries are waiting for the District's release.",
+      "recordedTitle": "Releases recorded",
+      "recordedNone": "No releases recorded yet.",
+      "recordedName": "{office} · {reference}",
+      "formTitle": "Release to the {office} DS office",
+      "formIntro": "Tick only the beneficiaries whose money the District Secretariat has released to the {office} DS office.",
+      "back": "Back to the DS offices",
+      "casesLabel": "Beneficiaries released",
+      "caseDetail": "{number} · {category} · {kind}",
+      "letter": "Ministry letter {number} ({date})",
+      "notOnRelease": "Not on this release",
+      "reference": "Reference number *",
+      "referenceHelp": "As on the District Secretariat's letter or voucher.",
+      "date": "Release date *",
+      "save": "Record the release · {amount}",
+      "noneHere": "No beneficiaries of this DS office are waiting for a release."
+    },
+    "dsCorrect": {
+      "button": "Correct the release's details",
+      "title": "Correcting the District release's details",
+      "cases": "{count, plural, =1 {This release is for this beneficiary only.} other {This release is for # beneficiaries. Your change applies to all of them.}}"
     }
   },
   "notifications": {
     "bell": "Notifications",
     "bellUnread": "Notifications, {count} unread",
     "title": "Notifications",
-    "intro": "Head Office's decisions about your beneficiaries.",
+    "intro": "The Ministry's decisions about your beneficiaries.",
     "empty": "No notifications yet.",
     "unread": "New",
     "markAll": "Mark all as read",
@@ -971,12 +936,15 @@
       "SENT_BACK": "{name} has been sent back for correction",
       "VERIFIED": "{name} has been verified",
       "REJECTED": "{name} has been rejected",
-      "RELEASED": "Rs. 2,000,000 has been released for {name}",
+      "RELEASED": "The District Secretariat has released Rs. 2,000,000 for {name}",
       "COMPLETED": "{name} has been completed",
       "STOPPED": "{name} has been stopped",
-      "REOPENED": "{name} has been reopened"
+      "REOPENED": "{name} has been reopened",
+      "ALLOCATED": "The allocation for {name} has been released to the district",
+      "DISTRICT_LETTER": "Ministry allocation letter {number} · beneficiaries: {count}"
     },
-    "detail": "{number} · {date}"
+    "detail": "{number} · {date}",
+    "introDistrict": "The Ministry's allocation letters to your district."
   },
   "progress": {
     "installments": {
@@ -1039,38 +1007,18 @@
       "newTab": "Open in a new tab",
       "alt": "{label}: photo {number}"
     },
-    "stop": {
-      "button": "Stop the project",
-      "title": "Stop the project?",
-      "text": "{name} ({number}). The DS office still holds {balance}.",
-      "textNoRelease": "{name} ({number}). The Rs. 2,000,000 hasn't been released yet.",
-      "reason": "Reason for stopping *",
-      "reasonHelp": "This reason is shown to the DS office. 5 to 1,000 characters.",
-      "confirm": "Stop the project",
-      "cancel": "Cancel",
-      "working": "Saving...",
-      "bannerTitle": "This project was stopped on {date}",
-      "bannerReason": "Reason: {reason}",
-      "bannerBalance": "The DS office holds {balance}.",
-      "reopen": "Reopen",
-      "reopenTitle": "Reopen the project?",
-      "reopenText": "{name} ({number}) goes back to “{status}”, its status before it was stopped.",
-      "reopenReason": "Reason for reopening *",
-      "reopenConfirm": "Yes, reopen it",
-      "askName": "Ask the DS office for another name",
-      "askNameHelp": "It shows on the DS office's to-do list. The name they send comes as a new beneficiary in this one's place and is checked as usual.",
-      "confirmAsk": "Stop and ask for another name"
-    },
     "completed": "This project was completed on {date}. All four installments were paid and the last stage was reached.",
     "notices": {
       "started": "The start of the payment was saved.",
       "paid": "The payment was saved.",
       "stage": "The physical progress was saved.",
       "completed": "Saved. All four installments are paid and the last stage is reached, so this project is complete.",
-      "stopped": "The project has been stopped. The DS office will be told.",
-      "reopened": "The project has been reopened. The DS office will be told.",
-      "undone": "The payment was undone. The installment is back to “Being paid”.",
-      "stoppedAskName": "The project has been stopped. The DS office was asked for another name in its place."
+      "undone": "The payment was undone. The installment is back to “Being paid”."
+    },
+    "reasonPopup": {
+      "reasonHelp": "This reason is shown to the DS office. 5 to 1,000 characters.",
+      "cancel": "Cancel",
+      "working": "Saving..."
     },
     "errors": {
       "dateRequired": "Enter the date.",
@@ -1086,7 +1034,7 @@
       "notFound": "This beneficiary can't be found.",
       "roleNotAllowed": "You can't do this.",
       "notAllowedNow": "This can't be done in the beneficiary's current status. Reload the page.",
-      "caseNotRunning": "Installments and physical progress can be changed only on a project in progress.",
+      "caseNotRunning": "Installments and physical progress can be changed only once the allocation is received, until the project is completed.",
       "conflict": "Someone else has changed these details meanwhile. Reload the page.",
       "notNext": "Installments must be recorded in order. This can be changed only after the previous installment is paid.",
       "alreadyPaid": "This installment is already paid.",
@@ -1103,8 +1051,7 @@
       "fileType": "Add only a JPEG, PNG or WebP photo.",
       "photoUnreadable": "This photo can't be opened. Choose another photo.",
       "fileFailed": "The upload failed. Try again.",
-      "notAllowed": "You can't add photos.",
-      "replaced": "Another beneficiary has already been entered in this one's place, so it can't be reopened."
+      "notAllowed": "You can't add photos."
     }
   },
   "history": {
@@ -1115,31 +1062,37 @@
     "roles": {
       "DS_OFFICER": "DS",
       "DISTRICT_OFFICER": "District Secretariat",
-      "HO_OFFICER": "Head Office",
+      "MINISTRY_OFFICER": "Ministry",
       "VIEWER": "View only",
       "ADMIN": "Administrator"
     },
     "actions": {
       "case_created": "Beneficiary entered",
+      "case_createdNumber": "Beneficiary entered. Application Number {number}",
       "case_updated": "Details changed",
       "document_removed": "A document was removed",
-      "case_submitted": "Sent to Head Office",
-      "case_submittedNumber": "Sent to Head Office. Registration number {number}",
-      "case_verified": "Verified by Head Office",
+      "case_submitted": "Sent to the Ministry",
+      "case_submittedNumber": "Sent to the Ministry. Registration number {number}",
+      "case_verified": "Verified by the Ministry",
       "case_sent_back": "Sent back for correction",
       "case_rejected": "Rejected",
       "case_released": "Rs. 2,000,000 released (reference number {reference})",
       "case_releasedLetter": "Rs. 2,000,000 released through the {district} District Secretary (letter {number})",
+      "case_allocated": "Rs. 2,000,000 allocation released to the {district} District (letter {number})",
       "release_corrected": "The allocation letter's details were corrected",
       "installment_started": "Payment of the {installment} started (expected on {date})",
       "installment_paid": "{installment} paid (paid on {date})",
       "installment_payment_undone": "Payment of the {installment} undone",
       "stage_reached": "Stage reached: {stages} ({date})",
       "stage_visit": "Site visited. The stage hasn't changed ({date})",
+      "case_started": "Work in progress: the first installment was paid",
+      "case_unstarted": "Back to allocation received: the first installment's payment was undone",
       "case_completed": "The project was completed",
       "case_stopped": "The project was stopped",
       "case_reopened": "The project was reopened",
-      "other": "A change was recorded"
+      "other": "A change was recorded",
+      "case_ds_released": "The {district} District Secretariat released Rs. 2,000,000 to the {office} DS office (reference number {reference})",
+      "ds_release_corrected": "The District release's details were corrected"
     },
     "reason": "Reason: {reason}",
     "note": "Note: {note}",
@@ -1149,6 +1102,8 @@
     "change": "{field}: {from} → {to}",
     "fields": {
       "dsOfficeId": "DS division",
+      "buildDsOfficeId": "DS division where built",
+      "applicationNumber": "Application Number",
       "category": "Category",
       "kind": "Assistance",
       "childName": "Child's name",
@@ -1188,13 +1143,14 @@
     "tiles": {
       "label": "Totals",
       "cases": "Total beneficiaries",
-      "casesNote": "All except those not sent yet",
-      "inProgress": "Work in progress",
-      "inProgressNote": "Money received and work going on",
-      "completed": "Completed",
-      "completedNote": "All 4 installments paid and the work finished",
-      "released": "Amount released (Rs.)",
-      "releasedNote": "Paid to beneficiaries: {amount}"
+      "casesNote": "Every beneficiary entered",
+      "money": "Money",
+      "allocated": "Allocated to districts (Rs.)",
+      "allocatedNote": "By the Ministry's allocation letters",
+      "releasedToDs": "Released to DS offices (Rs.)",
+      "releasedToDsNote": "By the District Secretariats",
+      "paidOut": "Paid to beneficiaries (Rs.)",
+      "paidOutNote": "Installments paid"
     },
     "table": {
       "byDistrict": "By district",
@@ -1206,15 +1162,16 @@
       "cases": "Beneficiaries",
       "inProgress": "Work in progress",
       "completed": "Completed",
-      "released": "Amount released (Rs.)",
+      "allocated": "Allocated (Rs.)",
+      "releasedToDs": "Released to DS (Rs.)",
       "paidOut": "Amount paid (Rs.)",
       "total": "Total",
       "noOffices": "This district has no DS divisions."
     },
     "waiting": {
       "title": "Needs your action",
-      "check": "To check",
-      "release": "To release allocations"
+      "release": "To release allocations",
+      "dsRelease": "To release to DS offices"
     },
     "stale": {
       "title": "Not updated for {days} days or more ({count})",

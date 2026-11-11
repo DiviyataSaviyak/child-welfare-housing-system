@@ -31,7 +31,7 @@ const account = (id: string, fields: Fields) =>
   prisma.user.create({ data: { id, name: "පරීක්ෂණ", email: `${id}@no-email.invalid`, username: id, ...fields } });
 
 const crpo = { role: "DS_OFFICER", designation: "DS_CRPO" };
-const programmeOfficer = { role: "HO_OFFICER", designation: "MINISTRY_PROGRAMME_OFFICER" };
+const programmeOfficer = { role: "MINISTRY_OFFICER", designation: "MINISTRY_PROGRAMME_OFFICER" };
 
 describe("account rules kept by the database (application spec, Roles and permissions)", () => {
   it("accepts every designation with its role and its own place, and an admin with neither", async () => {
@@ -60,13 +60,13 @@ describe("account rules kept by the database (application spec, Roles and permis
     const refused = /app_user_designation_check/;
     await expect(account("rule-no-designation", { role: "DS_OFFICER", dsOfficeId: office })).rejects.toThrow(refused);
     await expect(account("rule-no-designation-or-place", { role: "DS_OFFICER" })).rejects.toThrow(refused);
-    await expect(account("rule-ho-no-designation", { role: "HO_OFFICER" })).rejects.toThrow(refused);
+    await expect(account("rule-ho-no-designation", { role: "MINISTRY_OFFICER" })).rejects.toThrow(refused);
     await expect(account("rule-viewer-no-designation", { role: "VIEWER" })).rejects.toThrow(refused);
     await expect(
       account("rule-free-text", { role: "DS_OFFICER", designation: "සංවර්ධන නිලධාරී", dsOfficeId: office }),
     ).rejects.toThrow(refused);
     await expect(
-      account("rule-viewer-acts", { role: "HO_OFFICER", designation: "MINISTRY_SECRETARY" }),
+      account("rule-viewer-acts", { role: "MINISTRY_OFFICER", designation: "MINISTRY_SECRETARY" }),
     ).rejects.toThrow(refused);
     await expect(
       account("rule-crpo-views", { role: "VIEWER", designation: "DS_CRPO", dsOfficeId: office }),
