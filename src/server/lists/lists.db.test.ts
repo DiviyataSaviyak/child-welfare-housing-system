@@ -132,6 +132,15 @@ describe("building stages (LST-4)", () => {
     ]);
   });
 
+  it("keeps stage lists for the house kinds only (LST-4)", async () => {
+    expect(Object.keys(await stagesByKind(db))).toEqual(["NEW_HOUSE", "RENOVATION"]);
+    const land = { nameSi: "ඉඩම මිලදී ගැනීම", nameTa: "காணி கொள்வனவு", nameEn: "Land bought" };
+    for (const kind of ["LAND_ONLY", "LAND_AND_BUILD", "LAND_WITH_HOUSE"] as const) {
+      expect(await addStage(db, ADMIN, kind, land)).toEqual({ ok: false, error: "notFound" });
+    }
+    expect(await db.stageDefinition.count({ where: { nameSi: land.nameSi } })).toBe(0);
+  });
+
   it("leaves the first stage where it is when moved up", async () => {
     const first = (await stagesByKind(db)).NEW_HOUSE[0];
     expect(await moveStage(db, ADMIN, first.id, "up")).toEqual({ ok: true });

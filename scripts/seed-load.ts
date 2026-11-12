@@ -32,6 +32,7 @@ import { addDays, colomboDay, colomboStartOf, dayToDate } from "../src/lib/dates
 import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "../src/lib/money";
 import { NAMES, type Names } from "../src/lib/names";
 import { nicKey } from "../src/lib/nic";
+import { type HouseKind, isHouseKind, stageKind } from "../src/lib/validation/case";
 import { placeholderEmail } from "../src/server/auth/accounts";
 import { applicationKey } from "../src/server/cases/numbers";
 import { createPrismaClient } from "../src/server/db";
@@ -155,8 +156,8 @@ export type Context = {
   now: Date;
   /** "YYYY-MM-DD" in Colombo */
   today: string;
-  /** The active stages of each kind, in order (LST-4), with their Sinhala name and all three (UI-9). */
-  stages: Record<Kind, { id: number; name: string; names: Names }[]>;
+  /** The active stages of each house kind, in order (LST-4), with their Sinhala name and all three (UI-9). */
+  stages: Record<HouseKind, { id: number; name: string; names: Names }[]>;
   cast: Cast;
 };
 
@@ -364,7 +365,8 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
       "RELEASED",
     );
 
-    const stages = ctx.stages[kind];
+    const list = stageKind(kind);
+    const stages = list ? ctx.stages[list] : [];
     let paid: number;
     let reached: number;
     if (path === "COMPLETED") {
@@ -564,7 +566,7 @@ export async function readStages(db: PrismaClient): Promise<Context["stages"]> {
     select: { id: true, ...NAMES, kind: true },
   })) {
     const { id, kind, ...names } = stage;
-    stages[kind].push({ id, name: names.nameSi, names });
+    if (isHouseKind(kind)) stages[kind].push({ id, name: names.nameSi, names });
   }
   return stages;
 }

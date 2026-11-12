@@ -9,8 +9,39 @@ import { isValidPhone, normalisePhone } from "@/lib/phone";
 export const CATEGORIES = ["CARE_LEAVER", "CHILD_AT_RISK"] as const;
 export type CategoryValue = (typeof CATEGORIES)[number];
 
-export const KINDS = ["NEW_HOUSE", "RENOVATION"] as const;
+/**
+ * The kinds of help (CASE-17), in two groups that are paid differently: the house kinds in four
+ * installments of Rs. 500,000 (INS-1), the land kinds in up to four of the amounts the purchase needs
+ * (INS-7). Every rule that depends on the group uses these, never a list of its own.
+ */
+export const HOUSE_KINDS = ["NEW_HOUSE", "RENOVATION"] as const;
+export type HouseKind = (typeof HOUSE_KINDS)[number];
+
+export const LAND_KINDS = ["LAND_ONLY", "LAND_AND_BUILD", "LAND_WITH_HOUSE"] as const;
+export type LandKind = (typeof LAND_KINDS)[number];
+
+/** Every kind, the house kinds first, as the form and the filters offer them. */
+export const KINDS = [...HOUSE_KINDS, ...LAND_KINDS] as const;
 export type KindValue = (typeof KINDS)[number];
+
+export function isHouseKind(kind: KindValue): kind is HouseKind {
+  return (HOUSE_KINDS as readonly KindValue[]).includes(kind);
+}
+
+/**
+ * The stage list a kind follows (STG-4, LST-4): a house kind its own, `LAND_AND_BUILD` the new-house one,
+ * and the other land kinds none, so they take only note-only updates.
+ */
+export function stageKind(kind: KindValue): HouseKind | null {
+  if (isHouseKind(kind)) return kind;
+  return kind === "LAND_AND_BUILD" ? "NEW_HOUSE" : null;
+}
+
+/**
+ * The kinds the case form takes until change 0007's installments for the land kinds are built (tasks 3
+ * and 4): until then a land case would be paid as a house. Task 3 replaces it with `KINDS`.
+ */
+export const FORM_KINDS = HOUSE_KINDS;
 
 /** The form's fields, in the order the form and its list of errors show them. */
 export const CASE_FIELDS = [
@@ -77,7 +108,7 @@ const choice = <T extends string>(values: readonly T[]) =>
 
 const FIELD_SCHEMAS: Record<CaseField, z.ZodType<string | null, string>> = {
   category: choice(CATEGORIES),
-  kind: choice(KINDS),
+  kind: choice(FORM_KINDS),
   applicationNumber: text(1, APPLICATION_NUMBER_MAX),
   childName: text(2, 100),
   name: text(2, 100),

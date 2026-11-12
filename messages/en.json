@@ -432,15 +432,24 @@
     },
     "kind": {
       "NEW_HOUSE": "Building a new house",
-      "RENOVATION": "Renovating a house"
+      "RENOVATION": "Renovating a house",
+      "LAND_ONLY": "Buying land only",
+      "LAND_AND_BUILD": "Buying land and building a house",
+      "LAND_WITH_HOUSE": "Buying land with a house"
     },
     "kindShort": {
       "NEW_HOUSE": "New house",
-      "RENOVATION": "Renovation"
+      "RENOVATION": "Renovation",
+      "LAND_ONLY": "Land only",
+      "LAND_AND_BUILD": "Land and building",
+      "LAND_WITH_HOUSE": "Land with a house"
     },
     "kindHint": {
       "NEW_HOUSE": "For building a new house",
-      "RENOVATION": "For renovating an existing house"
+      "RENOVATION": "For renovating an existing house",
+      "LAND_ONLY": "For buying a plot of land only",
+      "LAND_AND_BUILD": "For buying land and building a house on it",
+      "LAND_WITH_HOUSE": "For buying land that already has a house on it"
     },
     "noName": "Name not entered yet",
     "withChild": "{name} (child: {child})",

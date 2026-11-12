@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { type CaseField, parseBuildAnswer, parseCaseForm, parseOfficeId } from "./case";
+import {
+  type CaseField,
+  HOUSE_KINDS,
+  isHouseKind,
+  KINDS,
+  LAND_KINDS,
+  parseBuildAnswer,
+  parseCaseForm,
+  parseOfficeId,
+  stageKind,
+} from "./case";
 
 const COMPLETE: Record<CaseField, string> = {
   category: "CARE_LEAVER",
@@ -131,5 +141,26 @@ describe("parseOfficeId", () => {
   it("reads a positive whole number, and nothing else", () => {
     expect(parseOfficeId("12")).toBe(12);
     for (const raw of ["", "0", "-1", "1.5", "abc"]) expect(parseOfficeId(raw), raw).toBeNull();
+  });
+});
+
+describe("the kinds of help (CASE-17, INS-1, STG-4)", () => {
+  it("has five kinds, the house kinds first", () => {
+    expect(KINDS).toEqual(["NEW_HOUSE", "RENOVATION", "LAND_ONLY", "LAND_AND_BUILD", "LAND_WITH_HOUSE"]);
+    expect([...HOUSE_KINDS, ...LAND_KINDS].toSorted()).toEqual([...KINDS].toSorted());
+  });
+
+  it("tells the house kinds from the land kinds", () => {
+    expect(KINDS.filter(isHouseKind)).toEqual(["NEW_HOUSE", "RENOVATION"]);
+  });
+
+  it("gives buying land and building the new-house stages, and the other land kinds none", () => {
+    expect(KINDS.map(stageKind)).toEqual(["NEW_HOUSE", "RENOVATION", null, "NEW_HOUSE", null]);
+  });
+
+  it("takes only the house kinds on the form until the land kinds' installments are built", () => {
+    for (const kind of LAND_KINDS) {
+      expect(parseCaseForm(form({ ...COMPLETE, kind }))).toEqual({ ok: false, errors: { kind: "kindRequired" } });
+    }
   });
 });

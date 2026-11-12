@@ -10,6 +10,7 @@ import {
   CATEGORIES,
   type CaseErrors,
   type CaseField,
+  FORM_KINDS,
   KINDS,
   parseCaseForm,
   parseOfficeId,
@@ -270,7 +271,7 @@ export function CaseForm({
           <ChoiceCards
             name="kind"
             labelledBy="part-kind-title"
-            options={KINDS.map((value) => ({ value, label: t(`kind.${value}`), hint: t(`kindHint.${value}`) }))}
+            options={FORM_KINDS.map((value) => ({ value, label: t(`kind.${value}`), hint: t(`kindHint.${value}`) }))}
             value={values.kind}
             onChange={(value) => setValues((v) => ({ ...v, kind: value }))}
             error={errorText("kind")}

@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { Kind } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
+import { type HouseKind, isHouseKind } from "@/lib/validation/case";
 import { type CaseScope, caseScope, type Viewer } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 
@@ -81,13 +81,14 @@ export async function officesOfDistrict(
 
 export type StageRow = Names & { id: number; sortOrder: number; active: boolean };
 
-export async function stagesByKind(db: PrismaClient): Promise<Record<Kind, StageRow[]>> {
+/** The stage lists, which only the house kinds have (LST-4). */
+export async function stagesByKind(db: PrismaClient): Promise<Record<HouseKind, StageRow[]>> {
   const stages = await db.stageDefinition.findMany({
     orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
     select: { id: true, kind: true, ...NAMES, sortOrder: true, active: true },
   });
-  const byKind: Record<Kind, StageRow[]> = { NEW_HOUSE: [], RENOVATION: [] };
-  for (const { kind, ...stage } of stages) byKind[kind].push(stage);
+  const byKind: Record<HouseKind, StageRow[]> = { NEW_HOUSE: [], RENOVATION: [] };
+  for (const { kind, ...stage } of stages) if (isHouseKind(kind)) byKind[kind].push(stage);
   return byKind;
 }
 
