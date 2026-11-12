@@ -1,9 +1,19 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { CaseStatus, Category, InstallmentStatus, Kind } from "@/generated/prisma/enums";
+import type {
+  Aid,
+  CareGroup,
+  CaseStatus,
+  Category,
+  InstallmentStatus,
+  Kind,
+  MaritalStatus,
+  Relationship,
+} from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { addDays, colomboDay, colomboStartOf, dateToDay, dayToDate, daysBetween } from "@/lib/dates";
 import { localName, NAMES } from "@/lib/names";
 import { nicKey, normaliseNic } from "@/lib/nic";
+import type { PartialDate } from "@/lib/validation/case";
 import { latestDay } from "@/lib/validation/release";
 import {
   actingOffice,
@@ -15,6 +25,7 @@ import {
   type Viewer,
 } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
+import { CENTRE_SELECT, centreValues } from "./commands";
 import { applicationKey } from "./numbers";
 
 export type CaseDetails = {
@@ -31,16 +42,34 @@ export type CaseDetails = {
   mobile1: string | null;
   mobile2: string | null;
   remark: string | null;
+  // Change 0007's details (CASE-14 to CASE-17); empty on a case entered before it.
+  careGroup: CareGroup | null;
+  /** "YYYY-MM-DD" */
+  dateOfBirth: string | null;
+  maritalStatus: MaritalStatus | null;
+  relationship: Relationship | null;
+  relationshipOther: string | null;
+  familyMembers: number | null;
+  disabledChildren: boolean | null;
+  aid: Aid[];
+  aidOther: string | null;
+  /** The GN division where the land is (CASE-17). */
+  landGnDivision: string | null;
+  /** A care leaver's child development centres, in order (CASE-14). */
+  centres: CentreDetails[];
   dsOfficeId: number;
   officeName: string;
   officeActive: boolean;
   districtId: number;
   districtName: string;
+  /** The province of residence (CASE-3). */
+  provinceName: string;
   /** CASE-13: the DS office where the house is built or the land bought; the DS of residence by default. */
   buildDsOfficeId: number;
   buildOfficeName: string;
   buildDistrictId: number;
   buildDistrictName: string;
+  buildProvinceName: string;
   version: number;
   /** When the DS entered it: the allocation screen orders by it (REL-1). */
   createdAt: Date;
@@ -67,6 +96,15 @@ export type CaseDetails = {
    * The role and the status still decide the rest (rules.ts, transitions.ts).
    */
   actsOn: { edit: boolean; progress: boolean; release: boolean };
+};
+
+/** One child development centre, with its province's name in the screen's language (CASE-14). */
+export type CentreDetails = {
+  name: string;
+  provinceId: number;
+  provinceName: string;
+  from: PartialDate | null;
+  until: PartialDate | null;
 };
 
 /** Another case named on this one's page, with a link to it. */
@@ -168,6 +206,20 @@ export async function getCase(
       mobile1: true,
       mobile2: true,
       remark: true,
+      careGroup: true,
+      dateOfBirth: true,
+      maritalStatus: true,
+      relationship: true,
+      relationshipOther: true,
+      familyMembers: true,
+      disabledChildren: true,
+      aid: true,
+      aidOther: true,
+      landGnDivision: true,
+      centres: {
+        orderBy: { position: "asc" },
+        select: { ...CENTRE_SELECT, province: { select: NAMES } },
+      },
       dsOfficeId: true,
       buildDsOfficeId: true,
       version: true,
@@ -188,7 +240,11 @@ export async function getCase(
       replacedBy: { select: { ...LINK_SELECT, ...CASE_PLACES } },
       updatedAt: true,
       buildDsOffice: {
-        select: { ...OFFICE_PLACE.select, ...NAMES, district: { select: { id: true, provinceId: true, ...NAMES } } },
+        select: {
+          ...OFFICE_PLACE.select,
+          ...NAMES,
+          district: { select: { id: true, provinceId: true, ...NAMES, province: { select: NAMES } } },
+        },
       },
       dsOffice: {
         select: {
@@ -196,7 +252,7 @@ export async function getCase(
           districtId: true,
           ...NAMES,
           active: true,
-          district: { select: { id: true, provinceId: true, ...NAMES } },
+          district: { select: { id: true, provinceId: true, ...NAMES, province: { select: NAMES } } },
         },
       },
       files: {
@@ -252,7 +308,18 @@ export async function getCase(
     },
   });
   if (!found || !canSeeCase(viewer, found)) return null;
-  const { dsOffice, buildDsOffice, files, release, installments, replaces, replacedBy, ...fields } = found;
+  const {
+    dsOffice,
+    buildDsOffice,
+    files,
+    release,
+    installments,
+    replaces,
+    replacedBy,
+    centres,
+    dateOfBirth,
+    ...fields
+  } = found;
   const places = { dsOffice, buildDsOffice };
   const actsOn = {
     edit: canActOn(viewer, places, "edit"),
@@ -266,9 +333,13 @@ export async function getCase(
     officeActive: dsOffice.active,
     districtId: dsOffice.district.id,
     districtName: localName(dsOffice.district, locale),
+    provinceName: localName(dsOffice.district.province, locale),
     buildOfficeName: localName(buildDsOffice, locale),
     buildDistrictId: buildDsOffice.district.id,
     buildDistrictName: localName(buildDsOffice.district, locale),
+    buildProvinceName: localName(buildDsOffice.district.province, locale),
+    dateOfBirth: dateOfBirth && dateToDay(dateOfBirth),
+    centres: centres.map((centre) => ({ ...centreValues(centre), provinceName: localName(centre.province, locale) })),
     // Both cases were always of one office; the check keeps it that way for the viewer.
     replaces: replaces && canSeeCase(viewer, replaces) ? toReplaced(replaces) : null,
     replacedBy: replacedBy && canSeeCase(viewer, replacedBy) ? toLink(replacedBy) : null,
@@ -572,12 +643,17 @@ export async function officeSummary(
   db: PrismaClient,
   dsOfficeId: number,
   locale: Locale,
-): Promise<{ name: string; districtName: string; active: boolean } | null> {
+): Promise<{ name: string; districtName: string; provinceName: string; active: boolean } | null> {
   const office = await db.dsOffice.findUnique({
     where: { id: dsOfficeId },
-    select: { ...NAMES, active: true, district: { select: NAMES } },
+    select: { ...NAMES, active: true, district: { select: { ...NAMES, province: { select: NAMES } } } },
   });
   return office
-    ? { name: localName(office, locale), districtName: localName(office.district, locale), active: office.active }
+    ? {
+        name: localName(office, locale),
+        districtName: localName(office.district, locale),
+        provinceName: localName(office.district.province, locale),
+        active: office.active,
+      }
     : null;
 }

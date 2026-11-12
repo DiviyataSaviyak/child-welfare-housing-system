@@ -6,6 +6,7 @@ const districts: DistrictOptions[] = [
   {
     id: 1,
     name: "කොළඹ",
+    provinceName: "බස්නාහිර",
     offices: [
       { id: 10, name: "හෝමාගම", active: true },
       { id: 11, name: "මහරගම", active: true },
@@ -13,8 +14,8 @@ const districts: DistrictOptions[] = [
       { id: 13, name: "වසා දැමූ කාර්යාලය", active: false },
     ],
   },
-  { id: 2, name: "ගම්පහ", offices: [{ id: 20, name: "ගම්පහ", active: true }] },
-  { id: 3, name: "කළුතර", offices: [] },
+  { id: 2, name: "ගම්පහ", provinceName: "බස්නාහිර", offices: [{ id: 20, name: "ගම්පහ", active: true }] },
+  { id: 3, name: "කළුතර", provinceName: "බස්නාහිර", offices: [] },
 ];
 
 /** An office's figures from its cases in each status, with the money each status has. */

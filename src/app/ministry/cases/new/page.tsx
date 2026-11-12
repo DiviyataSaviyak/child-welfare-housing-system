@@ -4,7 +4,7 @@ import { buildSetting, formValues, PageHeader } from "@/components/cases/page-he
 import { CaseForm } from "@/components/forms/case-form";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { districtsWithOffices } from "@/server/lists/queries";
+import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAction } from "../actions";
 
 /**
@@ -14,7 +14,11 @@ import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAct
 export default async function MinistryNewCasePage() {
   await requireRole("MINISTRY_OFFICER");
   const locale = await getLocale();
-  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
+  const [t, districts, provinces] = await Promise.all([
+    getTranslations("cases"),
+    districtsWithOffices(db, locale),
+    provinceOptions(db, locale),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -26,6 +30,7 @@ export default async function MinistryNewCasePage() {
         initial={formValues(null)}
         office={{ kind: "choose", districts, districtId: null, dsOfficeId: null }}
         build={buildSetting(null, true, districts)}
+        provinces={provinces}
         documents={[]}
         mode="new"
         actions={{

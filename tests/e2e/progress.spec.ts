@@ -234,8 +234,8 @@ test("AC-56: a case Kaduwela enters, built in Biyagama, goes through Gampaha's D
   const name = `${TEST_CASE_NAME} බියගම ${Date.now()}`;
   await fillCase(kaduwela, { name, nic: randomNic() });
   await kaduwela.getByRole("radio", { name: /^වෙනත් ප්‍රාදේශීය ලේකම් කොට්ඨාසයක/ }).check();
-  await kaduwela.getByLabel("ඉදිකරන දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
-  await kaduwela.getByLabel("ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: "බියගම" });
+  await kaduwela.getByLabel("ඉඩම පිහිටි දිස්ත්‍රික්කය *").selectOption({ label: "ගම්පහ" });
+  await kaduwela.getByLabel("ඉඩම පිහිටි ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: "බියගම" });
   const { url } = await saveNew(kaduwela, "ds");
   const caseId = url.split("/").at(-1) ?? "";
 

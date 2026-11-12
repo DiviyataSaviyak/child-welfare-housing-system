@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import { seed } from "../../../prisma/seed-data";
-import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
+import { createTestClient, freeOfficeId, testApplicationNumber, CARE_LEAVER_DETAILS } from "../../../tests/db/client";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
@@ -52,6 +52,7 @@ let nicCounter = 0;
 const nextNic = () => `2003${String(++nicCounter).padStart(8, "0")}`;
 
 const values = (overrides: Partial<CaseValues> = {}): CaseValues => ({
+  ...CARE_LEAVER_DETAILS,
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
   applicationNumber: testApplicationNumber(),

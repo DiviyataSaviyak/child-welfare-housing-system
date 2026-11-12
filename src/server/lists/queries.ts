@@ -93,7 +93,14 @@ export async function stagesByKind(db: PrismaClient): Promise<Record<HouseKind, 
 }
 
 export type OfficeOption = { id: number; name: string; active: boolean };
-export type DistrictOptions = { id: number; name: string; offices: OfficeOption[] };
+/** A district with its DS offices; `provinceName` is the province it is in (CASE-3). */
+export type DistrictOptions = { id: number; name: string; provinceName: string; offices: OfficeOption[] };
+
+/** The nine provinces, in the screen's language, for the care leaver's centres (CASE-14). */
+export async function provinceOptions(db: PrismaClient, locale: Locale): Promise<{ id: number; name: string }[]> {
+  const provinces = await db.province.findMany({ orderBy: { id: "asc" }, select: { id: true, ...NAMES } });
+  return provinces.map((p) => ({ id: p.id, name: localName(p, locale) }));
+}
 
 /** Every district with its DS offices, for choosing a case's office (CASE-3) or filtering a list (FND-1). */
 export async function districtsWithOffices(
@@ -107,12 +114,14 @@ export async function districtsWithOffices(
     select: {
       id: true,
       ...NAMES,
+      province: { select: NAMES },
       dsOffices: { where: only.offices, orderBy: { id: "asc" }, select: { id: true, ...NAMES, active: true } },
     },
   });
   return districts.map((d) => ({
     id: d.id,
     name: localName(d, locale),
+    provinceName: localName(d.province, locale),
     offices: d.dsOffices.map((o) => ({ id: o.id, name: localName(o, locale), active: o.active })),
   }));
 }

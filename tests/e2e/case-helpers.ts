@@ -24,16 +24,34 @@ export function randomApplicationNumber(): string {
 
 export type CaseInput = { name: string; nic: string; atRisk?: boolean; applicationNumber?: string };
 
-/** Fills in a complete case, built in the DS division of residence (CASE-13). */
+/**
+ * Fills in a complete case, built in the DS division of residence (CASE-13), with change 0007's required
+ * details (CASE-14 to CASE-16): a care leaver who left care, with one centre, or a child at risk and their
+ * mother; a family of four with no children with disabilities.
+ */
 export async function fillCase(page: Page, input: CaseInput) {
   await page.getByRole("radio", { name: input.atRisk ? /^අවදානම් දරුවන්/ : /^නිවාසගත/ }).check();
+  if (!input.atRisk) await page.getByRole("radio", { name: /^වයස 18 පිරී සමාජගත වූ/ }).check();
   await page.getByRole("radio", { name: /^නව නිවසක් ඉදිකිරීම/ }).check();
   await page.getByLabel("ඉල්ලුම් අංකය *").fill(input.applicationNumber ?? randomApplicationNumber());
-  if (input.atRisk) await page.getByLabel("දරුවාගේ නම *").fill("පරීක්ෂණ දරුවා");
+  if (input.atRisk) {
+    await page.getByLabel("දරුවාගේ නම *").fill("පරීක්ෂණ දරුවා");
+    await page.getByLabel("දරුවාගේ උපන් දිනය *").fill("2012-04-03");
+  } else {
+    await page.getByLabel("උපන් දිනය *", { exact: true }).fill("2006-08-21");
+  }
   await page.getByLabel(input.atRisk ? "භාරකරුගේ නම *" : "නම *", { exact: true }).fill(input.name);
+  if (input.atRisk) await page.getByRole("radio", { name: "මව", exact: true }).check();
+  else await page.getByRole("radio", { name: "අවිවාහක", exact: true }).check();
   await page.getByLabel(input.atRisk ? "භාරකරුගේ ජාතික හැඳුනුම්පත් අංකය" : "ජාතික හැඳුනුම්පත් අංකය").fill(input.nic);
   await page.getByLabel("ලිපිනය", { exact: true }).fill("නො. 1, පරීක්ෂණ පාර, නගරය");
   await page.getByLabel("දුරකතන අංකය", { exact: true }).fill("071 000 0401");
+  if (!input.atRisk) {
+    await page.getByLabel("මධ්‍යස්ථානයේ නම *").first().fill("පරීක්ෂණ ළමා නිවාසය");
+    await page.getByLabel("පළාත *").first().selectOption({ label: "බස්නාහිර" });
+  }
+  await page.getByLabel("පවුලේ සාමාජිකයින් ගණන *").fill("4");
+  await page.getByRole("radio", { name: "නැත", exact: true }).check();
 }
 
 /**

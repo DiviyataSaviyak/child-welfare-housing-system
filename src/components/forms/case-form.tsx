@@ -4,16 +4,33 @@ import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { FormError, FormField, FormTextArea } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
+import { colomboDay, formatDate, parseDay } from "@/lib/dates";
 import { isValidNic, normaliseNic } from "@/lib/nic";
 import {
+  AIDS,
+  ageOn,
+  CARE_GROUPS,
   CASE_FIELDS,
   CATEGORIES,
+  type CaseErrorField,
   type CaseErrors,
   type CaseField,
+  type CaseFormValues,
+  CENTRE_FIELDS,
+  CENTRE_PARTS,
+  type CentreFormValues,
+  type CentrePart,
+  centreError,
+  centreInput,
   FORM_KINDS,
+  formatPartialDate,
+  formReader,
   KINDS,
+  MARITAL_STATUSES,
+  MAX_CENTRES,
   parseCaseForm,
   parseOfficeId,
+  RELATIONSHIPS,
 } from "@/lib/validation/case";
 import type { CaseCommandError } from "@/server/cases/commands";
 import type { NicMatch } from "@/server/cases/duplicates";
@@ -21,19 +38,22 @@ import type { DistrictOptions } from "@/server/lists/queries";
 import { CaseDocuments, type DocumentActions, type Upload } from "./case-documents";
 import { NicMatches } from "./nic-matches";
 
-export type CaseFormValues = Record<CaseField, string>;
+export type { CaseFormValues, CentreFormValues };
 export type CaseFormState = { errors: CaseErrors; error: CaseCommandError | null };
+
+/** The form's starting values: every field, and the centres (at least one box). */
+export type CaseFormStart = { values: CaseFormValues; centres: CentreFormValues[] };
 
 /** Where the beneficiary lives: the DS office of residence, which enters the case (CASE-3). */
 export type OfficeSetting =
   /** A DS officer's own office, from their account. */
-  | { kind: "own"; dsOfficeId: number; districtName: string; officeName: string }
+  | { kind: "own"; dsOfficeId: number; provinceName: string; districtName: string; officeName: string }
   /** The Ministry, once the case is allocated: the office stays. */
-  | { kind: "fixed"; dsOfficeId: number; districtName: string; officeName: string }
-  /** The Ministry chooses the district, then the DS office. */
+  | { kind: "fixed"; dsOfficeId: number; provinceName: string; districtName: string; officeName: string }
+  /** The Ministry chooses the district, then the DS office; the province follows the district. */
   | { kind: "choose"; districts: DistrictOptions[]; districtId: number | null; dsOfficeId: number | null };
 
-/** CASE-13: where the house is built or the land bought. */
+/** CASE-13, CASE-17: where the land is (the house, for a renovation). */
 export type BuildSetting =
   /** Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. */
   | { kind: "choose"; districts: DistrictOptions[]; districtId: number | null; dsOfficeId: number | null }
@@ -46,28 +66,68 @@ export type CaseFormActions = DocumentActions & {
 };
 
 type Built = "same" | "other";
+type Place = { province: string; district: string; office: string };
 
 const EMPTY: CaseFormState = { errors: {}, error: null };
-const DETAIL_FIELDS: CaseField[] = [
-  "applicationNumber",
-  "childName",
-  "name",
-  "nic",
-  "address",
-  "gnDivision",
-  "mobile1",
-  "mobile2",
-  "remark",
-];
+export const EMPTY_CENTRE: CentreFormValues = Object.fromEntries(
+  CENTRE_FIELDS.map((field) => [field, ""]),
+) as CentreFormValues;
+const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
+
+/** The beneficiary's details in the order part 3 shows them, for each category (CASE-14, CASE-15). */
+const DETAILS: Record<"CARE_LEAVER" | "CHILD_AT_RISK" | "none", CaseField[]> = {
+  CARE_LEAVER: [
+    "applicationNumber",
+    "name",
+    "dateOfBirth",
+    "nic",
+    "maritalStatus",
+    "address",
+    "gnDivision",
+    "mobile1",
+    "mobile2",
+  ],
+  CHILD_AT_RISK: [
+    "applicationNumber",
+    "childName",
+    "dateOfBirth",
+    "name",
+    "relationship",
+    "relationshipOther",
+    "nic",
+    "address",
+    "gnDivision",
+    "mobile1",
+    "mobile2",
+  ],
+  none: ["applicationNumber", "name", "dateOfBirth", "nic", "address", "gnDivision", "mobile1", "mobile2"],
+};
+const FAMILY: CaseField[] = ["familyMembers", "disabledChildren", "aid", "aidOther"];
+
+/** Where an error's link goes: the field, or the group of choices it belongs to. */
+const TARGET: Partial<Record<CaseField, string>> = {
+  category: "part-category",
+  careGroup: "careGroup",
+  kind: "part-kind",
+  maritalStatus: "maritalStatus",
+  relationship: "relationship",
+  disabledChildren: "disabledChildren",
+  aid: "aid",
+};
+const centreTarget = (index: number, part: CentrePart) =>
+  `centre-${index}-${part === "from" ? "fromYear" : part === "until" ? "untilYear" : part}`;
 
 /**
- * CASE-1: the case form on one page, in four numbered parts, as in the prototype. Everything typed is
+ * CASE-1: the case form on one page, in five numbered parts: the category, the kind of help and the land,
+ * the beneficiary's details, the family and the aid received, and other documents. Everything typed is
  * kept in state, so a refused save loses nothing (ERR-1, ERR-3). The browser runs the same checks as the
- * server before anything is sent. There are no drafts: every save needs every required field, and a new
- * case shows a summary to confirm first, then goes straight to "awaiting fund allocation" (CASE-5).
- * The kind of help is followed by where the house is built (CASE-13); the Application Number opens the
- * beneficiary's details (CASE-12). A saved case is changed with one save button (CASE-9); `intro` says
- * that every change is logged, for the Ministry's changes after the allocation.
+ * server before anything is sent, and asks only what belongs to the chosen category (CASE-14, CASE-15).
+ * There are no drafts: every save needs every required field, and a new case shows a summary to confirm
+ * first, then goes straight to "awaiting fund allocation" (CASE-5). The kind of help is followed by where
+ * the land is (CASE-13, CASE-17); the province, district and DS of residence open the beneficiary's details
+ * (CASE-3). A saved case is changed with one save button (CASE-9); `intro` says that every change is
+ * logged, for the Ministry's changes after the allocation.
  */
 export function CaseForm({
   caseId,
@@ -75,6 +135,7 @@ export function CaseForm({
   initial,
   office,
   build,
+  provinces,
   documents,
   actions,
   mode,
@@ -83,9 +144,11 @@ export function CaseForm({
   caseId: string;
   /** The version the form was opened with (CASE-10); null for a new case. */
   version: number | null;
-  initial: CaseFormValues;
+  initial: CaseFormStart;
   office: OfficeSetting;
   build: BuildSetting;
+  /** The nine provinces, for the centres (CASE-14). */
+  provinces: { id: number; name: string }[];
   documents: { id: string; name: string }[];
   actions: CaseFormActions;
   mode: "new" | "edit";
@@ -94,7 +157,8 @@ export function CaseForm({
   const t = useTranslations("cases");
   const [state, dispatch, pending] = useActionState(actions.save, EMPTY);
   const [, startTransition] = useTransition();
-  const [values, setValues] = useState(initial);
+  const [values, setValues] = useState(initial.values);
+  const [centres, setCentres] = useState(initial.centres.length > 0 ? initial.centres : [EMPTY_CENTRE]);
   const [districtId, setDistrictId] = useState(office.kind === "choose" ? String(office.districtId ?? "") : "");
   const [dsOfficeId, setDsOfficeId] = useState(office.kind === "choose" ? String(office.dsOfficeId ?? "") : "");
   const [built, setBuilt] = useState<Built>(build.dsOfficeId === null ? "same" : "other");
@@ -115,9 +179,12 @@ export function CaseForm({
     if (failedTries > 0) summary.current?.focus();
   }, [failedTries]);
 
+  const today = colomboDay(new Date());
   const category = CATEGORIES.find((c) => c === values.category);
   const kind = KINDS.find((k) => k === values.kind);
   const atRisk = category === "CHILD_AT_RISK";
+  const careLeaver = category === "CARE_LEAVER";
+  const ticked = new Set(values.aid.split(",").filter((aid) => aid !== ""));
   const errors = localErrors ?? state.errors;
   const serverError = localErrors === null ? state.error : null;
   const showOfficeError = officeMissing || serverError === "officeRequired";
@@ -125,16 +192,29 @@ export function CaseForm({
   const uploading = uploads.some((u) => u.state === "uploading");
   const documentCount = documents.length + uploads.filter((u) => u.state === "done").length;
   const chosenOffice = office.kind === "choose" ? parseOfficeId(dsOfficeId) : null;
-  // The DS of residence, which "the same DS division" means and the build office can't be (CASE-13).
+  // The DS of residence, which "the same DS division" means and the land's office can't be (CASE-13).
   const residence = office.kind === "choose" ? chosenOffice : office.dsOfficeId;
   const chosenBuildOffice = build.kind === "choose" && built === "other" ? parseOfficeId(buildOfficeId) : null;
+  const read = formReader(values, centres);
 
+  const setField = (field: CaseField, value: string) => setValues((current) => ({ ...current, [field]: value }));
   const set = (field: CaseField) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setValues((current) => ({ ...current, [field]: event.target.value }));
+    setField(field, event.target.value);
+  const toggleAid = (aid: string, on: boolean) => {
+    const next = new Set(ticked);
+    if (on) next.add(aid);
+    else next.delete(aid);
+    setField("aid", AIDS.filter((a) => next.has(a)).join(","));
+  };
 
-  const fieldLabel = (field: CaseField) =>
-    field === "name" && atRisk ? t("page.fields.guardianName") : t(`page.fields.${field}`);
-  const errorText = (field: CaseField) => {
+  const fieldLabel = (field: CaseField) => {
+    if (field === "name" && atRisk) return t("page.fields.guardianName");
+    if (field === "relationshipOther") return t("page.fields.relationship");
+    if (field === "aidOther") return t("page.fields.aid");
+    if (field === "dateOfBirth" && atRisk) return t("page.fields.childDateOfBirth");
+    return t(`page.fields.${field}`);
+  };
+  const errorText = (field: CaseErrorField) => {
     const key = errors[field];
     return key ? t(`form.errors.${key}`) : undefined;
   };
@@ -158,6 +238,9 @@ export function CaseForm({
     form.set("id", caseId);
     form.set("version", version === null ? "" : String(version));
     for (const field of CASE_FIELDS) form.set(field, values[field]);
+    centres.forEach((centre, index) => {
+      for (const field of CENTRE_FIELDS) form.set(centreInput(index, field), centre[field]);
+    });
     if (office.kind === "choose") form.set("dsOfficeId", dsOfficeId);
     if (build.kind === "choose") {
       form.set("built", built);
@@ -173,7 +256,7 @@ export function CaseForm({
   }
 
   async function attempt() {
-    const checked = parseCaseForm((field) => values[field]);
+    const checked = parseCaseForm(read, today);
     const noOffice = office.kind === "choose" && chosenOffice === null;
     const noBuild = build.kind === "choose" && built === "other" && chosenBuildOffice === null;
     if (!checked.ok || noOffice || noBuild) {
@@ -204,27 +287,63 @@ export function CaseForm({
       key === "tooShort" || key === "tooLong"
         ? t("form.errors.inField", { field: fieldLabel(field), message: text })
         : text;
-    const target = field === "category" || field === "kind" ? `part-${field}` : field;
-    return [{ key: field, target, message }];
+    return [{ key: field, target: TARGET[field] ?? field, message }];
   };
+  const centreErrors = careLeaver
+    ? [
+        ...(errors.centres
+          ? [{ key: "centres", target: "centre-0-name", message: t(`form.errors.${errors.centres}`) }]
+          : []),
+        ...centres.flatMap((_, index) =>
+          CENTRE_PARTS.flatMap((part) => {
+            const key = errors[centreError(index, part)];
+            if (!key) return [];
+            const text = t(`form.errors.${key}`);
+            const inName =
+              key === "tooShort" || key === "tooLong"
+                ? t("form.errors.inField", { field: t("form.centreName"), message: text })
+                : text;
+            return [
+              {
+                key: centreError(index, part),
+                target: centreTarget(index, part),
+                message: t("form.errors.inCentre", { number: index + 1, message: inName }),
+              },
+            ];
+          }),
+        ),
+      ]
+    : [];
+  const details = DETAILS[category ?? "none"];
   const errorList = [
     ...fieldError("category"),
+    ...fieldError("careGroup"),
     ...fieldError("kind"),
     ...(showBuildError
       ? [{ key: "built", target: "buildDsOfficeId", message: t("form.errors.buildOfficeRequired") }]
       : []),
-    ...CASE_FIELDS.filter((field) => field !== "category" && field !== "kind").flatMap(fieldError),
+    ...fieldError("landGnDivision"),
     ...(showOfficeError ? [{ key: "office", target: "dsOfficeId", message: t("form.errors.officeRequired") }] : []),
+    ...details.flatMap(fieldError),
+    ...centreErrors,
+    ...fieldError("remark"),
+    ...FAMILY.flatMap(fieldError),
   ];
 
-  const complete = parseCaseForm((field) => values[field]);
+  const complete = parseCaseForm(read, today);
   const incomplete: CaseErrors = complete.ok ? {} : complete.errors;
   const officeChosen = office.kind !== "choose" || chosenOffice !== null;
   const buildChosen = build.kind !== "choose" || built === "same" || chosenBuildOffice !== null;
+  const centresDone = Object.keys(incomplete).every((key) => !key.startsWith("centres"));
   const parts = [
-    { key: "category", done: !incomplete.category, optional: false },
-    { key: "kind", done: !incomplete.kind && buildChosen, optional: false },
-    { key: "details", done: DETAIL_FIELDS.every((f) => !incomplete[f]) && officeChosen, optional: false },
+    { key: "category", done: !incomplete.category && !incomplete.careGroup, optional: false },
+    { key: "kind", done: !incomplete.kind && !incomplete.landGnDivision && buildChosen, optional: false },
+    {
+      key: "details",
+      done: [...details, "remark" as const].every((f) => !incomplete[f]) && centresDone && officeChosen,
+      optional: false,
+    },
+    { key: "family", done: FAMILY.every((f) => !incomplete[f]), optional: false },
     { key: "documents", done: documentCount > 0, optional: true },
   ] as const;
 
@@ -233,10 +352,51 @@ export function CaseForm({
     office.kind === "choose"
       ? (district?.offices.find((o) => String(o.id) === dsOfficeId)?.name ?? "")
       : office.officeName;
+  // The place of residence, once known: "the same DS division" is this place (CASE-13, CASE-17).
+  const residencePlace: Place | null =
+    office.kind === "choose"
+      ? district && officeName
+        ? { province: district.provinceName, district: district.name, office: officeName }
+        : null
+      : { province: office.provinceName, district: office.districtName, office: office.officeName };
   const buildDistrict =
     build.kind === "choose" ? build.districts.find((d) => String(d.id) === buildDistrictId) : undefined;
   const buildOfficeName = buildDistrict?.offices.find((o) => String(o.id) === buildOfficeId)?.name ?? "";
+  const landPlace: Place | null =
+    built === "same"
+      ? residencePlace
+      : buildDistrict && buildOfficeName
+        ? { province: buildDistrict.provinceName, district: buildDistrict.name, office: buildOfficeName }
+        : null;
+  const house = kind === "RENOVATION";
   const busy = pending || uploading;
+  const birthDay = parseDay(values.dateOfBirth.trim());
+  const age = birthDay && birthDay <= today ? ageOn(birthDay, today) : null;
+  const placeText = (place: Place) => t("form.land.place", place);
+  const choice = (key: "yes" | "no") => t(key);
+
+  const centreLines = centres
+    .map((centre) => {
+      const province = provinces.find((p) => String(p.id) === centre.provinceId)?.name ?? "";
+      const date = (y: string, m: string, d: string) =>
+        y.trim() === ""
+          ? ""
+          : formatPartialDate({ year: Number(y), month: m ? Number(m) : null, day: d ? Number(d) : null });
+      const from = date(centre.fromYear, centre.fromMonth, centre.fromDay);
+      const until = date(centre.untilYear, centre.untilMonth, centre.untilDay);
+      if (centre.name.trim() === "") return null;
+      return from || until
+        ? t("page.centreLine", { name: centre.name.trim(), province, dates: `${from} – ${until}`.trim() })
+        : t("page.centreLineNoDates", { name: centre.name.trim(), province });
+    })
+    .filter((line) => line !== null);
+  const aidText = [...ticked]
+    .map((aid) =>
+      aid === "OTHER"
+        ? t("otherTyped", { label: t("aid.OTHER"), text: values.aidOther.trim() })
+        : t(`aid.${aid as (typeof AIDS)[number]}`),
+    )
+    .join(", ");
 
   return (
     <div className="flex items-start gap-7">
@@ -262,9 +422,25 @@ export function CaseForm({
               hint: t(`categoryHint.${value}`),
             }))}
             value={values.category}
-            onChange={(value) => setValues((v) => ({ ...v, category: value }))}
+            onChange={(value) => setField("category", value)}
             error={errorText("category")}
           />
+          {careLeaver && (
+            <div className="flex flex-col gap-3 border-t pt-4">
+              <h3 id="careGroup-title" className="text-lg font-bold">
+                {t("form.careGroup")}
+              </h3>
+              <ChoiceCards
+                id="careGroup"
+                name="careGroup"
+                labelledBy="careGroup-title"
+                options={CARE_GROUPS.map((value) => ({ value, label: t(`careGroup.${value}`) }))}
+                value={values.careGroup}
+                onChange={(value) => setField("careGroup", value)}
+                error={errorText("careGroup")}
+              />
+            </div>
+          )}
         </Part>
 
         <Part number={2} id="part-kind" title={t("form.partKind")}>
@@ -273,12 +449,12 @@ export function CaseForm({
             labelledBy="part-kind-title"
             options={FORM_KINDS.map((value) => ({ value, label: t(`kind.${value}`), hint: t(`kindHint.${value}`) }))}
             value={values.kind}
-            onChange={(value) => setValues((v) => ({ ...v, kind: value }))}
+            onChange={(value) => setField("kind", value)}
             error={errorText("kind")}
           />
           <div className="flex flex-col gap-3 border-t pt-4">
             <h3 id="built-title" className="text-lg font-bold">
-              {t("form.built.title")}
+              {house ? t("form.land.titleHouse") : t("form.land.title")}
             </h3>
             {build.kind === "choose" ? (
               <>
@@ -325,6 +501,11 @@ export function CaseForm({
                     />
                   </div>
                 )}
+                {landPlace && (
+                  <p data-testid="land-place" className="text-[15px] text-[#3F4843]">
+                    {placeText(landPlace)}
+                  </p>
+                )}
               </>
             ) : (
               <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
@@ -333,10 +514,62 @@ export function CaseForm({
                   : t("form.built.fixed", { district: build.districtName, office: build.officeName })}
               </p>
             )}
+            <div className="grid grid-cols-2 gap-5">
+              <FormField
+                id="landGnDivision"
+                label={house ? t("form.land.gnDivisionHouse") : t("form.land.gnDivision")}
+                value={values.landGnDivision}
+                onChange={set("landGnDivision")}
+                error={errorText("landGnDivision")}
+              />
+            </div>
           </div>
         </Part>
 
         <Part number={3} id="part-details" title={t("form.partDetails")}>
+          {office.kind === "choose" ? (
+            <div className="flex flex-col gap-3 rounded-lg bg-muted p-4">
+              <div className="grid grid-cols-2 gap-5">
+                <Select
+                  id="districtId"
+                  label={t("form.district")}
+                  value={districtId}
+                  onChange={(value) => {
+                    setDistrictId(value);
+                    setDsOfficeId("");
+                  }}
+                  placeholder={t("form.choose")}
+                  options={office.districts.map((d) => ({ value: String(d.id), label: d.name }))}
+                />
+                <Select
+                  id="dsOfficeId"
+                  label={t("form.office")}
+                  value={dsOfficeId}
+                  onChange={setDsOfficeId}
+                  placeholder={district ? t("form.choose") : t("form.chooseDistrictFirst")}
+                  disabled={!district}
+                  options={(district?.offices ?? [])
+                    .filter((o) => o.active || o.id === office.dsOfficeId)
+                    .map((o) => ({ value: String(o.id), label: o.name }))}
+                  error={showOfficeError ? t("form.errors.officeRequired") : undefined}
+                />
+              </div>
+              {district && (
+                <p data-testid="residence-province" className="text-[15px] text-[#3F4843]">
+                  {t("form.province", { province: district.provinceName })}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p data-testid="residence-place" className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
+              {t(office.kind === "own" ? "form.officeAuto" : "form.officeFixed", {
+                province: office.provinceName,
+                district: office.districtName,
+                office: office.officeName,
+              })}
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-5">
             <FormField
               id="applicationNumber"
@@ -357,6 +590,14 @@ export function CaseForm({
                 onChange={set("childName")}
                 error={errorText("childName")}
               />
+              <BirthDate
+                label={t("form.childDateOfBirth")}
+                age={age === null ? null : t("form.age", { years: age })}
+                value={values.dateOfBirth}
+                today={today}
+                onChange={set("dateOfBirth")}
+                error={errorText("dateOfBirth")}
+              />
             </div>
           )}
           <div className="grid grid-cols-2 gap-5">
@@ -367,6 +608,42 @@ export function CaseForm({
               onChange={set("name")}
               error={errorText("name")}
             />
+            {!atRisk && (
+              <BirthDate
+                label={t("form.dateOfBirth")}
+                age={age === null ? null : t("form.age", { years: age })}
+                value={values.dateOfBirth}
+                today={today}
+                onChange={set("dateOfBirth")}
+                error={errorText("dateOfBirth")}
+              />
+            )}
+          </div>
+          {atRisk && (
+            <div className="flex flex-col gap-3">
+              <Radios
+                id="relationship"
+                label={t("form.relationship")}
+                options={RELATIONSHIPS.map((value) => ({ value, label: t(`relationship.${value}`) }))}
+                value={values.relationship}
+                onChange={(value) => setField("relationship", value)}
+                error={errorText("relationship")}
+              />
+              {values.relationship === "OTHER" && (
+                <div className="grid grid-cols-2 gap-5">
+                  <FormField
+                    id="relationshipOther"
+                    label={t("form.relationshipOther")}
+                    help={t("form.relationshipOtherHelp")}
+                    value={values.relationshipOther}
+                    onChange={set("relationshipOther")}
+                    error={errorText("relationshipOther")}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-5">
             <FormField
               id="nic"
               label={atRisk ? t("form.guardianNic") : t("form.nic")}
@@ -379,6 +656,16 @@ export function CaseForm({
             />
           </div>
           {matches.length > 0 && <NicMatches matches={matches} />}
+          {careLeaver && (
+            <Radios
+              id="maritalStatus"
+              label={t("form.maritalStatus")}
+              options={MARITAL_STATUSES.map((value) => ({ value, label: t(`maritalStatus.${value}`) }))}
+              value={values.maritalStatus}
+              onChange={(value) => setField("maritalStatus", value)}
+              error={errorText("maritalStatus")}
+            />
+          )}
           <FormTextArea
             id="address"
             label={t("form.address")}
@@ -413,6 +700,42 @@ export function CaseForm({
               error={errorText("mobile2")}
             />
           </div>
+
+          {careLeaver && (
+            <fieldset aria-describedby="centres-help" className="flex flex-col gap-3 border-t pt-4">
+              <legend className="pt-4 text-lg font-bold">{t("form.centres")}</legend>
+              <p id="centres-help" className="text-[15px] text-muted-foreground">
+                {t("form.centresHelp")}
+              </p>
+              {errors.centres && (
+                <p id="centres-error" className="text-[15px] font-medium text-destructive">
+                  {t(`form.errors.${errors.centres}`)}
+                </p>
+              )}
+              {centres.map((centre, index) => (
+                <CentreBox
+                  // A box's place is its identity: the form shows them in order and names them by number.
+                  key={index}
+                  index={index}
+                  value={centre}
+                  provinces={provinces}
+                  errorText={(part) => errorText(centreError(index, part))}
+                  onChange={(next) => setCentres((all) => all.map((c, i) => (i === index ? next : c)))}
+                  onRemove={index === 0 ? null : () => setCentres((all) => all.filter((_, i) => i !== index))}
+                />
+              ))}
+              {centres.length < MAX_CENTRES && (
+                <button
+                  type="button"
+                  onClick={() => setCentres((all) => [...all, EMPTY_CENTRE])}
+                  className="h-11 self-start rounded-lg border border-primary px-5 font-semibold text-primary"
+                >
+                  {t("form.addCentre")}
+                </button>
+              )}
+            </fieldset>
+          )}
+
           <FormTextArea
             id="remark"
             label={t("form.remark")}
@@ -420,44 +743,60 @@ export function CaseForm({
             onChange={set("remark")}
             error={errorText("remark")}
           />
+        </Part>
 
-          {office.kind === "choose" ? (
-            <div className="grid grid-cols-2 gap-5 rounded-lg bg-muted p-4">
-              <Select
-                id="districtId"
-                label={t("form.district")}
-                value={districtId}
-                onChange={(value) => {
-                  setDistrictId(value);
-                  setDsOfficeId("");
-                }}
-                placeholder={t("form.choose")}
-                options={office.districts.map((d) => ({ value: String(d.id), label: d.name }))}
-              />
-              <Select
-                id="dsOfficeId"
-                label={t("form.office")}
-                value={dsOfficeId}
-                onChange={setDsOfficeId}
-                placeholder={district ? t("form.choose") : t("form.chooseDistrictFirst")}
-                disabled={!district}
-                options={(district?.offices ?? [])
-                  .filter((o) => o.active || o.id === office.dsOfficeId)
-                  .map((o) => ({ value: String(o.id), label: o.name }))}
-                error={showOfficeError ? t("form.errors.officeRequired") : undefined}
+        <Part number={4} id="part-family" title={t("form.partFamily")}>
+          <div className="grid grid-cols-2 gap-5">
+            <FormField
+              id="familyMembers"
+              inputMode="numeric"
+              label={t("form.familyMembers")}
+              value={values.familyMembers}
+              onChange={set("familyMembers")}
+              error={errorText("familyMembers")}
+            />
+          </div>
+          <Radios
+            id="disabledChildren"
+            label={t("form.disabledChildren")}
+            options={(["yes", "no"] as const).map((value) => ({ value, label: choice(value) }))}
+            value={values.disabledChildren}
+            onChange={(value) => setField("disabledChildren", value)}
+            error={errorText("disabledChildren")}
+          />
+          <fieldset id="aid" tabIndex={-1} aria-describedby="aid-help" className="flex flex-col gap-2.5">
+            <legend className="text-base font-semibold">{t("form.aid")}</legend>
+            <p id="aid-help" className="text-sm text-muted-foreground">
+              {t("form.aidHelp")}
+            </p>
+            <div className="grid grid-cols-2 gap-x-5 gap-y-2.5">
+              {AIDS.map((aid) => (
+                <label key={aid} className="flex cursor-pointer items-center gap-3 text-[17px]">
+                  <input
+                    type="checkbox"
+                    checked={ticked.has(aid)}
+                    onChange={(event) => toggleAid(aid, event.target.checked)}
+                    className="size-[22px] shrink-0 accent-primary"
+                  />
+                  {t(`aid.${aid}`)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {ticked.has("OTHER") && (
+            <div className="grid grid-cols-2 gap-5">
+              <FormField
+                id="aidOther"
+                label={t("form.aidOther")}
+                value={values.aidOther}
+                onChange={set("aidOther")}
+                error={errorText("aidOther")}
               />
             </div>
-          ) : (
-            <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
-              {t(office.kind === "own" ? "form.officeAuto" : "form.officeFixed", {
-                district: office.districtName,
-                office: office.officeName,
-              })}
-            </p>
           )}
         </Part>
 
-        <Part number={4} id="part-documents" title={t("form.partDocuments")}>
+        <Part number={5} id="part-documents" title={t("form.partDocuments")}>
           <CaseDocuments
             caseId={caseId}
             saved={documents}
@@ -542,25 +881,62 @@ export function CaseForm({
           {t("form.confirm.title")}
         </h2>
         <p className="text-[#3F4843]">{t("form.confirm.text")}</p>
-        <dl className="flex flex-col overflow-hidden rounded-lg border">
+        <dl className="flex max-h-[55vh] flex-col overflow-y-auto rounded-lg border">
           {[
             { label: t("form.confirm.category"), value: category ? t(`category.${category}`) : "" },
+            ...(careLeaver && complete.ok && complete.value.careGroup
+              ? [{ label: t("form.confirm.careGroup"), value: t(`careGroup.${complete.value.careGroup}`) }]
+              : []),
             { label: t("form.confirm.kind"), value: kind ? t(`kind.${kind}`) : "" },
-            {
-              label: t("form.confirm.built"),
-              value: built === "same" ? t("form.built.same") : buildOfficeName,
-            },
+            { label: t("form.confirm.land"), value: landPlace ? placeText(landPlace) : "" },
+            { label: t("form.confirm.landGnDivision"), value: values.landGnDivision.trim() },
             { label: t("form.confirm.applicationNumber"), value: values.applicationNumber.trim() },
             ...(atRisk ? [{ label: t("form.confirm.childName"), value: values.childName }] : []),
+            {
+              label: t("form.confirm.dateOfBirth"),
+              value: birthDay && age !== null ? t("page.dateWithAge", { date: formatDate(birthDay), years: age }) : "",
+            },
             { label: atRisk ? t("form.confirm.guardianName") : t("form.confirm.name"), value: values.name },
+            ...(atRisk && complete.ok && complete.value.relationship
+              ? [
+                  {
+                    label: t("form.confirm.relationship"),
+                    value:
+                      complete.value.relationship === "OTHER"
+                        ? t("otherTyped", {
+                            label: t("relationship.OTHER"),
+                            text: complete.value.relationshipOther ?? "",
+                          })
+                        : t(`relationship.${complete.value.relationship}`),
+                  },
+                ]
+              : []),
             { label: t("form.confirm.nic"), value: normaliseNic(values.nic) },
+            ...(careLeaver && complete.ok && complete.value.maritalStatus
+              ? [{ label: t("form.confirm.maritalStatus"), value: t(`maritalStatus.${complete.value.maritalStatus}`) }]
+              : []),
             { label: t("form.confirm.address"), value: values.address },
             { label: t("form.confirm.gnDivision"), value: values.gnDivision },
             {
               label: t("form.confirm.phones"),
               value: [values.mobile1, values.mobile2].filter((p) => p.trim() !== "").join(", "),
             },
-            { label: t("form.confirm.office"), value: officeName },
+            ...(careLeaver ? [{ label: t("form.confirm.centres"), value: centreLines.join("\n") }] : []),
+            ...(residencePlace
+              ? [
+                  { label: t("form.confirm.province"), value: residencePlace.province },
+                  { label: t("form.confirm.office"), value: `${residencePlace.office}, ${residencePlace.district}` },
+                ]
+              : []),
+            { label: t("form.confirm.familyMembers"), value: values.familyMembers.trim() },
+            {
+              label: t("form.confirm.disabledChildren"),
+              value:
+                values.disabledChildren === "yes" || values.disabledChildren === "no"
+                  ? choice(values.disabledChildren)
+                  : "",
+            },
+            { label: t("form.confirm.aid"), value: aidText || t("page.noAid") },
             { label: t("form.confirm.documents"), value: t("form.confirm.documentCount", { count: documentCount }) },
           ].map((row) => (
             <div
@@ -568,7 +944,7 @@ export function CaseForm({
               className="grid grid-cols-[200px_minmax(0,1fr)] gap-3 border-b px-4 py-2 last:border-b-0"
             >
               <dt className="text-[15px] text-muted-foreground">{row.label}</dt>
-              <dd className="font-semibold break-words">{row.value}</dd>
+              <dd className="font-semibold break-words whitespace-pre-line">{row.value}</dd>
             </div>
           ))}
         </dl>
@@ -631,8 +1007,9 @@ function Part({
   );
 }
 
-/** Large radio cards with a hint, as in the prototype. */
+/** Large radio cards, with a hint when given, as in the prototype. */
 function ChoiceCards({
+  id,
   name,
   labelledBy,
   options,
@@ -640,9 +1017,10 @@ function ChoiceCards({
   onChange,
   error,
 }: {
+  id?: string;
   name: string;
   labelledBy: string;
-  options: { value: string; label: string; hint: string }[];
+  options: { value: string; label: string; hint?: string }[];
   value: string;
   onChange: (value: string) => void;
   error?: string;
@@ -651,6 +1029,8 @@ function ChoiceCards({
   return (
     <>
       <div
+        id={id}
+        tabIndex={id ? -1 : undefined}
         role="radiogroup"
         aria-labelledby={labelledBy}
         aria-describedby={error ? errorId : undefined}
@@ -675,7 +1055,7 @@ function ChoiceCards({
               />
               <span className="flex flex-col gap-0.5">
                 <span className="text-lg font-bold">{option.label}</span>
-                <span className="text-[15px] text-muted-foreground">{option.hint}</span>
+                {option.hint && <span className="text-[15px] text-muted-foreground">{option.hint}</span>}
               </span>
             </label>
           );
@@ -687,6 +1067,252 @@ function ChoiceCards({
         </p>
       )}
     </>
+  );
+}
+
+/** A short row of radio buttons under a label, such as yes or no. None is chosen to start with. */
+function Radios({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+  error,
+}: {
+  id: string;
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span id={`${id}-label`} className="text-base font-semibold">
+        {label}
+      </span>
+      <div
+        id={id}
+        tabIndex={-1}
+        role="radiogroup"
+        aria-labelledby={`${id}-label`}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className="flex flex-wrap gap-x-7 gap-y-2"
+      >
+        {options.map((option) => (
+          <label key={option.value} className="flex cursor-pointer items-center gap-2.5 text-[17px]">
+            <input
+              type="radio"
+              name={id}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+              className="size-[22px] shrink-0 accent-primary"
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+      {error && (
+        <p id={`${id}-error`} className="text-[15px] font-medium text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The date of birth, with the age worked out from it beside the field (CASE-14, CASE-15). */
+function BirthDate({
+  label,
+  age,
+  value,
+  today,
+  onChange,
+  error,
+}: {
+  label: string;
+  age: string | null;
+  value: string;
+  today: string;
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  error?: string;
+}) {
+  return (
+    <div className="flex items-end gap-4">
+      <div className="min-w-0 flex-1">
+        <FormField
+          id="dateOfBirth"
+          type="date"
+          max={today}
+          label={label}
+          value={value}
+          onChange={onChange}
+          error={error}
+        />
+      </div>
+      {age && (
+        <p data-testid="age" className={`pb-3 text-[17px] font-semibold ${error ? "self-center" : ""}`}>
+          {age}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One child development centre (CASE-14): its name, its province, and "from" and "until", each a year, a
+ * month and a day, of which only the year is needed. The month waits for the year, the day for the month.
+ */
+function CentreBox({
+  index,
+  value,
+  provinces,
+  errorText,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  value: CentreFormValues;
+  provinces: { id: number; name: string }[];
+  errorText: (part: CentrePart) => string | undefined;
+  onChange: (value: CentreFormValues) => void;
+  onRemove: (() => void) | null;
+}) {
+  const t = useTranslations("cases");
+  const id = (field: string) => `centre-${index}-${field}`;
+  const update = (changes: Partial<CentreFormValues>) => onChange({ ...value, ...changes });
+
+  const datePart = (which: "from" | "until") => {
+    const year = which === "from" ? "fromYear" : "untilYear";
+    const month = which === "from" ? "fromMonth" : "untilMonth";
+    const day = which === "from" ? "fromDay" : "untilDay";
+    const error = errorText(which);
+    return (
+      <fieldset
+        aria-describedby={[which === "until" ? id("until-help") : "", error ? id(`${which}-error`) : ""]
+          .filter(Boolean)
+          .join(" ")}
+        className="flex flex-col gap-1.5"
+      >
+        <legend className="text-base font-semibold">{t(`form.${which}`)}</legend>
+        <div className="grid grid-cols-[6rem_minmax(0,1fr)_5rem] gap-2">
+          <div className="flex flex-col gap-1">
+            <label htmlFor={id(year)} className="text-sm text-muted-foreground">
+              {t("form.year")}
+            </label>
+            <input
+              id={id(year)}
+              inputMode="numeric"
+              maxLength={4}
+              value={value[year]}
+              aria-invalid={error ? true : undefined}
+              onChange={(event) => {
+                const next = event.target.value;
+                update(next.trim() === "" ? { [year]: "", [month]: "", [day]: "" } : { [year]: next });
+              }}
+              className="h-12 rounded-lg border border-input bg-card px-3 text-[17px] aria-invalid:border-destructive"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={id(month)} className="text-sm text-muted-foreground">
+              {t("form.month")}
+            </label>
+            <select
+              id={id(month)}
+              value={value[month]}
+              disabled={value[year].trim() === ""}
+              onChange={(event) =>
+                update(event.target.value === "" ? { [month]: "", [day]: "" } : { [month]: event.target.value })
+              }
+              className="h-12 rounded-lg border border-input bg-card px-2 text-[17px] disabled:opacity-60"
+            >
+              <option value="" />
+              {MONTHS.map((m) => (
+                <option key={m} value={String(m)}>
+                  {t(`month.${m}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={id(day)} className="text-sm text-muted-foreground">
+              {t("form.day")}
+            </label>
+            <select
+              id={id(day)}
+              value={value[day]}
+              disabled={value[month] === ""}
+              onChange={(event) => update({ [day]: event.target.value })}
+              className="h-12 rounded-lg border border-input bg-card px-2 text-[17px] disabled:opacity-60"
+            >
+              <option value="" />
+              {DAYS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {which === "until" && (
+          <span id={id("until-help")} className="text-sm text-muted-foreground">
+            {t("form.untilHelp")}
+          </span>
+        )}
+        {error && (
+          <p id={id(`${which}-error`)} className="text-[15px] font-medium text-destructive">
+            {error}
+          </p>
+        )}
+      </fieldset>
+    );
+  };
+
+  return (
+    <section
+      aria-labelledby={id("title")}
+      data-testid="centre"
+      className="flex flex-col gap-4 rounded-lg border bg-muted/40 p-4"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h4 id={id("title")} className="font-bold">
+          {t("form.centre", { number: index + 1 })}
+        </h4>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={t("form.removeCentre", { number: index + 1 })}
+            className="text-[15px] font-semibold text-destructive underline"
+          >
+            {t("form.remove")}
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-5">
+        <FormField
+          id={id("name")}
+          label={t("form.centreName")}
+          value={value.name}
+          onChange={(event) => update({ name: event.target.value })}
+          error={errorText("name")}
+        />
+        <Select
+          id={id("provinceId")}
+          label={t("form.centreProvince")}
+          value={value.provinceId}
+          onChange={(provinceId) => update({ provinceId })}
+          placeholder={t("form.choose")}
+          options={provinces.map((p) => ({ value: String(p.id), label: p.name }))}
+          error={errorText("provinceId")}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-5">
+        {datePart("from")}
+        {datePart("until")}
+      </div>
+    </section>
   );
 }
 

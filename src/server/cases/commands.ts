@@ -1,8 +1,16 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { MAX_DOCUMENTS } from "@/lib/file-types";
+import { dateToDay, dayToDate } from "@/lib/dates";
 import { nicKey } from "@/lib/nic";
-import { CASE_FIELDS, type CaseValues, type CompleteCaseValues, completeValues } from "@/lib/validation/case";
+import {
+  CASE_FIELDS,
+  type CaseValues,
+  type CentreValues,
+  type CompleteCaseValues,
+  completeValues,
+  type PartialDate,
+} from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import { writeAudit } from "../audit";
 import { deleteStoredFile } from "../files/storage";
@@ -76,6 +84,47 @@ type CompleteInput = SaveCaseInput & { values: CompleteCaseValues };
 /** `created` is false for a change to a saved case. */
 export type SavedCase = { id: string; applicationNumber: string; status: CaseStatus; created: boolean };
 
+/** A stored child development centre (CASE-14). */
+export const CENTRE_SELECT = {
+  name: true,
+  provinceId: true,
+  fromYear: true,
+  fromMonth: true,
+  fromDay: true,
+  untilYear: true,
+  untilMonth: true,
+  untilDay: true,
+} as const satisfies Prisma.CareCentreSelect;
+
+type StoredCentre = Prisma.CareCentreGetPayload<{ select: typeof CENTRE_SELECT }>;
+
+const partial = (year: number | null, month: number | null, day: number | null): PartialDate | null =>
+  year === null ? null : { year, month, day };
+
+/** A stored centre as the form's values: each date as precise as it was entered. */
+export function centreValues(row: StoredCentre): CentreValues {
+  return {
+    name: row.name,
+    provinceId: row.provinceId,
+    from: partial(row.fromYear, row.fromMonth, row.fromDay),
+    until: partial(row.untilYear, row.untilMonth, row.untilDay),
+  };
+}
+
+/** A centre's row, at its place in the list (1 to 10). */
+const centreRow = (caseId: string, centre: CentreValues, index: number): Prisma.CareCentreCreateManyInput => ({
+  caseId,
+  position: index + 1,
+  name: centre.name,
+  provinceId: centre.provinceId,
+  fromYear: centre.from?.year ?? null,
+  fromMonth: centre.from?.month ?? null,
+  fromDay: centre.from?.day ?? null,
+  untilYear: centre.until?.year ?? null,
+  untilMonth: centre.until?.month ?? null,
+  untilDay: centre.until?.day ?? null,
+});
+
 const CASE_SELECT = {
   id: true,
   dsOfficeId: true,
@@ -94,6 +143,17 @@ const CASE_SELECT = {
   mobile1: true,
   mobile2: true,
   remark: true,
+  careGroup: true,
+  landGnDivision: true,
+  dateOfBirth: true,
+  relationship: true,
+  relationshipOther: true,
+  maritalStatus: true,
+  familyMembers: true,
+  disabledChildren: true,
+  aid: true,
+  aidOther: true,
+  centres: { orderBy: { position: "asc" }, select: CENTRE_SELECT },
 } as const satisfies Prisma.CaseSelect & Record<(typeof CASE_FIELDS)[number], true>;
 
 type StoredCase = Prisma.CaseGetPayload<{ select: typeof CASE_SELECT }>;
@@ -172,6 +232,13 @@ async function checkSave(
     if (refusal) return refusal;
   }
 
+  // CASE-14: each centre's province is one of the list. The form offers nothing else.
+  const provinceIds = [...new Set(input.values.centres.map((centre) => centre.provinceId))];
+  if (provinceIds.length > 0) {
+    const known = await db.province.count({ where: { id: { in: provinceIds } } });
+    if (known !== provinceIds.length) return "incomplete";
+  }
+
   // A new case, or one moving to another office, needs an active office (LST-3).
   if (!current || office !== current.dsOfficeId) {
     const found = await db.dsOffice.findUnique({ where: { id: office }, select: { active: true } });
@@ -203,8 +270,10 @@ async function writeCase(
   dsOfficeId: number,
   buildDsOfficeId: number,
 ): Promise<SavedCase> {
+  const { centres, dateOfBirth, ...rest } = input.values;
   const fields = {
-    ...input.values,
+    ...rest,
+    dateOfBirth: dayToDate(dateOfBirth),
     applicationKey: applicationKey(input.values.applicationNumber),
     nicKey: input.values.nic ? nicKey(input.values.nic) : null,
     dsOfficeId,
@@ -217,27 +286,37 @@ async function writeCase(
       data: { ...fields, version: { increment: 1 } },
     });
     if (updated.count === 0) throw new Refusal("conflict");
+    // CASE-14: saving replaces the centres.
+    await tx.careCentre.deleteMany({ where: { caseId: current.id } });
   } else {
     // CASE-5: saved straight into AWAITING_ALLOCATION; no draft, no check, no generated number.
     await tx.case.create({
       data: { id: input.id, ...fields, status: "AWAITING_ALLOCATION", createdById: actor.userId },
     });
   }
+  if (centres.length > 0) {
+    await tx.careCentre.createMany({ data: centres.map((centre, index) => centreRow(input.id, centre, index)) });
+  }
   const documentIds = await attachDocuments(tx, actor, input.id, input.documentIds);
 
-  // CASE-9, HIS-1: the old and new value of every field that changed.
-  const changed = (["dsOfficeId", "buildDsOfficeId", ...CASE_FIELDS] as const).filter(
-    (field) => current?.[field] !== fields[field],
-  );
+  // CASE-9, HIS-1: the old and new value of every field that changed, the centres as one field.
+  const after: Record<Audited, unknown> = { ...input.values, dsOfficeId, buildDsOfficeId };
+  const before: Record<Audited, unknown> | null = current && {
+    ...current,
+    dateOfBirth: current.dateOfBirth && dateToDay(current.dateOfBirth),
+    centres: current.centres.map(centreValues),
+  };
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const changed = AUDITED.filter((field) => !before || !same(before[field], after[field]));
   const pick = (source: Record<string, unknown>) => Object.fromEntries(changed.map((f) => [f, source[f] ?? null]));
-  if (!current) {
+  if (!before) {
     await writeAudit(tx, {
       actorId: actor.userId,
       action: "case_created",
       entityType: "case",
       entityId: input.id,
       caseId: input.id,
-      after: { ...withoutEmpty(pick(fields)), status: "AWAITING_ALLOCATION", documentsAdded: documentIds },
+      after: { ...withoutEmpty(pick(after)), status: "AWAITING_ALLOCATION", documentsAdded: documentIds },
     });
   } else if (changed.length > 0 || documentIds.length > 0) {
     await writeAudit(tx, {
@@ -246,20 +325,26 @@ async function writeCase(
       entityType: "case",
       entityId: input.id,
       caseId: input.id,
-      before: pick(current),
-      after: { ...pick(fields), documentsAdded: documentIds },
+      before: pick(before),
+      after: { ...pick(after), documentsAdded: documentIds },
     });
   }
   return {
     id: input.id,
-    applicationNumber: fields.applicationNumber,
+    applicationNumber: input.values.applicationNumber,
     status: current?.status ?? "AWAITING_ALLOCATION",
     created: !current,
   };
 }
 
+/** The fields a save logs, with their old and new values (HIS-1). */
+const AUDITED = ["dsOfficeId", "buildDsOfficeId", ...CASE_FIELDS, "centres"] as const;
+type Audited = (typeof AUDITED)[number];
+
 const withoutEmpty = (values: Record<string, unknown>) =>
-  Object.fromEntries(Object.entries(values).filter(([, value]) => value !== null));
+  Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0)),
+  );
 
 /** Puts the actor's own new uploads on the case, up to 10 documents in all (CASE-2). */
 async function attachDocuments(

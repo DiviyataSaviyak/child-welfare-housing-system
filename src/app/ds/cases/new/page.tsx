@@ -6,7 +6,7 @@ import { CaseForm } from "@/components/forms/case-form";
 import { officeSummary } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { districtsWithOffices } from "@/server/lists/queries";
+import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAction } from "../actions";
 
 /** CASE-1: a new case, in the officer's own office (CASE-3), built there or in another DS division (CASE-13). */
@@ -15,7 +15,11 @@ export default async function NewCasePage() {
   const locale = await getLocale();
   const office = viewer.dsOfficeId ? await officeSummary(db, viewer.dsOfficeId, locale) : null;
   if (!viewer.dsOfficeId || !office) notFound();
-  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
+  const [t, districts, provinces] = await Promise.all([
+    getTranslations("cases"),
+    districtsWithOffices(db, locale),
+    provinceOptions(db, locale),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -29,10 +33,12 @@ export default async function NewCasePage() {
           office={{
             kind: "own",
             dsOfficeId: viewer.dsOfficeId,
+            provinceName: office.provinceName,
             districtName: office.districtName,
             officeName: office.name,
           }}
           build={buildSetting(null, true, districts)}
+          provinces={provinces}
           documents={[]}
           mode="new"
           actions={{
