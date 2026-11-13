@@ -2,8 +2,9 @@ import { ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { colomboDay, formatDate } from "@/lib/dates";
-import { ageOn, formatPartialDate } from "@/lib/validation/case";
-import type { CaseDetails, CentreDetails } from "@/server/cases/queries";
+import { ageOn } from "@/lib/validation/case";
+import { centreLine } from "@/server/cases/centre-line";
+import type { CaseDetails } from "@/server/cases/queries";
 import { caseName } from "./page-header";
 
 /**
@@ -13,15 +14,6 @@ import { caseName } from "./page-header";
 export type Audience = "ds" | "ministry" | "oversight";
 
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
-
-/** A centre as one line: "name, province (from – until)", each date as precise as it was entered (CASE-14). */
-export function centreLine(t: CasesT, centre: CentreDetails): string {
-  const from = centre.from ? formatPartialDate(centre.from) : "";
-  const until = centre.until ? formatPartialDate(centre.until) : "";
-  return from || until
-    ? t("page.centreLine", { name: centre.name, province: centre.provinceName, dates: `${from} – ${until}`.trim() })
-    : t("page.centreLineNoDates", { name: centre.name, province: centre.provinceName });
-}
 
 /**
  * Every field of a case as label and value, for the case page: the land under the kind of help (CASE-17),
