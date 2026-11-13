@@ -180,11 +180,34 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     expect(rows.some((r) => r.progress[0] !== null)).toBe(true);
   });
 
+  /** Change 0007's details of a case (CASE-14 to CASE-17), and the same left empty, as on an older case. */
+  const DETAILS = {
+    dateOfBirth: true,
+    careGroup: true,
+    maritalStatus: true,
+    familyMembers: true,
+    disabledChildren: true,
+    aid: true,
+    aidOther: true,
+    landGnDivision: true,
+  } as const;
+  const NO_DETAILS = {
+    dateOfBirth: null,
+    careGroup: null,
+    maritalStatus: null,
+    familyMembers: null,
+    disabledChildren: null,
+    aid: [],
+    aidOther: null,
+    landGnDivision: null,
+  };
+
   it("reads the registration form's details and centres, and leaves them empty on an older case (change 0007)", async () => {
     const found = await db.case.findFirstOrThrow({
       where: { dsOfficeId: busiestOffice, category: "CARE_LEAVER", id: { startsWith: LOAD_ID_PREFIX } },
-      select: { id: true, applicationNumber: true },
+      select: { id: true, applicationNumber: true, ...DETAILS, centres: true },
     });
+    const { id, applicationNumber, centres, ...details } = found;
     const [western, central] = await db.province.findMany({
       orderBy: { id: "asc" },
       take: 2,
@@ -192,11 +215,13 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     });
     // The search also finds longer numbers that start with this one.
     const row = async (locale: "si" | "en") =>
-      (await caseListRows(db, ho, { q: found.applicationNumber, dsOfficeId: busiestOffice }, locale))!.find(
-        (r) => r.applicationNumber === found.applicationNumber,
+      (await caseListRows(db, ho, { q: applicationNumber, dsOfficeId: busiestOffice }, locale))!.find(
+        (r) => r.applicationNumber === applicationNumber,
       )!;
 
-    // The load-test data has none of the new details yet: such a case reads as entered before the change.
+    // A case entered before the change has none of the new details.
+    await db.careCentre.deleteMany({ where: { caseId: id } });
+    await db.case.update({ where: { id }, data: NO_DETAILS });
     expect(await row("si")).toMatchObject({
       dateOfBirth: null,
       careGroup: null,
@@ -209,7 +234,7 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     });
 
     await db.case.update({
-      where: { id: found.id },
+      where: { id },
       data: {
         dateOfBirth: new Date("2004-08-09T00:00:00Z"),
         careGroup: "IN_CARE",
@@ -266,20 +291,10 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
         },
       ]);
     } finally {
-      await db.careCentre.deleteMany({ where: { caseId: found.id } });
-      await db.case.update({
-        where: { id: found.id },
-        data: {
-          dateOfBirth: null,
-          careGroup: null,
-          maritalStatus: null,
-          familyMembers: null,
-          disabledChildren: null,
-          aid: [],
-          aidOther: null,
-          landGnDivision: null,
-        },
-      });
+      // The load-test case as it was made, for the tests after this one.
+      await db.careCentre.deleteMany({ where: { caseId: id } });
+      await db.case.update({ where: { id }, data: details });
+      await db.careCentre.createMany({ data: centres });
     }
   });
 
