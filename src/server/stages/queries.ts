@@ -3,6 +3,7 @@ import type { Kind } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { dateToDay } from "@/lib/dates";
 import { localName, NAMES, type Names } from "@/lib/names";
+import { stageKind } from "@/lib/validation/case";
 
 export type Photo = { id: string; name: string };
 
@@ -30,6 +31,11 @@ export type StageProgress = {
   current: { id: number; reachedOn: string } | null;
   /** What a new update may choose (STG-1): the active stages later than the current one. */
   choices: { id: number; name: string; names: Names }[];
+  /**
+   * False for `LAND_ONLY` and `LAND_WITH_HOUSE`, which follow no stage list and take only note-only
+   * updates (STG-4); true for every other kind, even while its list is empty.
+   */
+  hasStageList: boolean;
 };
 
 type Definition = Names & { id: number; sortOrder: number; active: boolean };
@@ -43,7 +49,7 @@ export function stageProgress(
   definitions: readonly Definition[],
   updates: readonly Reached[],
   locale: Locale,
-): StageProgress {
+): Omit<StageProgress, "hasStageList"> {
   const ordered = [...definitions].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const byStage = new Map(updates.flatMap((u) => (u.stageId === null ? [] : [[u.stageId, u] as const])));
   const stages = ordered
@@ -76,17 +82,21 @@ export function stageProgress(
   };
 }
 
-/** A case's building progress. The caller has already checked that the viewer may see the case (PRM-1). */
+/**
+ * A case's building progress, on the stage list its kind follows (`stageKind`: `LAND_AND_BUILD` the new-house
+ * one, STG-4). The caller has already checked that the viewer may see the case (PRM-1).
+ */
 export async function getStageProgress(
   db: PrismaClient,
   caseId: string,
-  kind: Kind | null,
+  kind: Kind,
   locale: Locale,
 ): Promise<StageProgress> {
+  const list = stageKind(kind);
   const [definitions, updates] = await Promise.all([
-    kind
+    list
       ? db.stageDefinition.findMany({
-          where: { kind },
+          where: { kind: list },
           select: { id: true, ...NAMES, sortOrder: true, active: true },
         })
       : Promise.resolve([]),
@@ -106,7 +116,7 @@ export async function getStageProgress(
       },
     }),
   ]);
-  return stageProgress(
+  const progress = stageProgress(
     definitions,
     updates.map((u) => ({
       ...u,
@@ -115,4 +125,5 @@ export async function getStageProgress(
     })),
     locale,
   );
+  return { ...progress, hasStageList: list !== null };
 }

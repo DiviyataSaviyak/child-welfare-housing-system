@@ -42,8 +42,9 @@ const refused = (error: StageError): StageResult => ({ ok: false, error, errors:
  * STG-1 to STG-5: the DS office records building progress: a stage later than the current one, or a
  * note-only visit, on a day no later than today and on or after the District's release, with a note and up to
  * 10 photos. Choosing a stage further ahead marks the stages it skips as reached on the same day
- * (STG-2). A renovation case with no stages defined takes note-only updates (STG-4). Reaching the last
- * stage may finish the case (CLS-1).
+ * (STG-2). A `LAND_AND_BUILD` case follows the new-house stages; `LAND_ONLY` and `LAND_WITH_HOUSE`, and a
+ * renovation case with no stages defined, take note-only updates (STG-4). Reaching the last stage may
+ * finish the case (CLS-1).
  */
 export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: StageInput): Promise<StageResult> {
   const found = await db.case.findUnique({

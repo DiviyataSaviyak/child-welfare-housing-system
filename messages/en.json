@@ -1114,6 +1114,7 @@
       "next": "Next stage",
       "inactive": "A stage no longer in use",
       "allDone": "All stages finished.",
+      "noStageList": "This kind of help has no building stages. Only notes and photos from site visits can be added.",
       "update": "Update the physical progress",
       "addNote": "Add a note",
       "visits": "Other site visits",

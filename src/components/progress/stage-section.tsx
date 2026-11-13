@@ -6,7 +6,8 @@ import { PhotoGallery } from "./photo-gallery";
 
 /**
  * "භෞතික ප්‍රගතිය" as in the prototype: each stage with the day it was reached, its note and photo
- * thumbnails (STG-6), the next stage marked, and the visits that added only a note. `update` is the
+ * thumbnails (STG-6), the next stage marked, and the visits that added only a note. A kind that follows
+ * no stage list (`LAND_ONLY`, `LAND_WITH_HOUSE`) says so, and takes notes only (STG-4). `update` is the
  * DS office's button to record progress (STG-1).
  */
 export async function StageSection({ progress, update }: { progress: StageProgress; update?: React.ReactNode }) {
@@ -56,6 +57,7 @@ export async function StageSection({ progress, update }: { progress: StageProgre
         </ol>
       )}
       {allDone && <p className="font-semibold text-primary">{t("allDone")}</p>}
+      {!progress.hasStageList && <p className="text-[15px] text-[#4F5752]">{t("noStageList")}</p>}
 
       {progress.visits.length > 0 && (
         <div className="flex flex-col gap-2 border-t pt-3">

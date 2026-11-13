@@ -146,9 +146,10 @@ describe("load-test data (PRF-1)", { timeout: 120_000 }, () => {
         if (u.stageId === null) expect(u.note).not.toBeNull();
       }
 
-      // CLS-1: completed exactly when installment 4 is paid and the last active stage is reached.
+      // CLS-1: completed exactly when the money is paid in full and the last active stage is reached.
       const done = isComplete({
-        lastInstallmentPaid: c.installments[3].status === "RELEASED",
+        kind: c.kind,
+        installments: c.installments,
         lastActiveStageId: kindStages.at(-1) ?? null,
         reachedStageIds: reached.map((u) => u.stageId!),
       });

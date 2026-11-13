@@ -847,10 +847,11 @@ describe("a land case's installments (REL-7, INS-7, INS-8, AC-62)", () => {
     const both = await Promise.all([startLand(once.id, shown, 2, "500000"), startLand(once.id, shown, 2, "500000")]);
     expect(both.filter((result) => result.ok)).toHaveLength(1);
     expect(both.find((result) => !result.ok)).toEqual({ ok: false, error: "conflict", errors: {} });
-    expect(await pay(dsA, once.id, await version(once.id), 2)).toMatchObject({ ok: true });
+    // Rs. 2,000,000 paid completes a case to buy land only (CLS-1), so nothing more can start.
+    expect(await pay(dsA, once.id, await version(once.id), 2)).toEqual({ ok: true, completed: true });
     expect(await startLand(once.id, await version(once.id), 3, "1")).toEqual({
       ok: false,
-      error: "notFound",
+      error: "caseNotRunning",
       errors: {},
     });
 
@@ -911,5 +912,91 @@ describe("a land case's installments (REL-7, INS-7, INS-8, AC-62)", () => {
     const land = await running({ kind: "LAND_AND_BUILD" });
     expect(await edit(land.id, ho, "NEW_HOUSE")).toEqual({ ok: false, error: "kindGroupLocked" });
     expect(await edit(land.id, ho, "LAND_ONLY")).toMatchObject({ ok: true });
+  });
+});
+
+describe("a land case's stages and completion (STG-4, CLS-1, AC-63)", () => {
+  function startLand(caseId: string, caseVersion: number, number: number, amount: string) {
+    return startInstallment(db, dsA, {
+      caseId,
+      version: caseVersion,
+      number,
+      form: { amount, expectedOn: daysAgo(40), purpose: "ඉඩම මිලදී ගැනීම", note: "" },
+    });
+  }
+
+  /** Starts a land case's next installment with its amount and pays it; gives the payment's result. */
+  async function payLand(caseId: string, number: number, amount: string) {
+    const started = await startLand(caseId, await version(caseId), number, amount);
+    if (!started.ok) throw new Error(JSON.stringify(started));
+    return pay(dsA, caseId, await version(caseId), number);
+  }
+
+  it("is completed by its money alone, to buy land only, with no stage; nothing more can start", async () => {
+    const c = await running({ kind: "LAND_ONLY" });
+    expect(await payLand(c.id, 1, "1,500,000")).toEqual({ ok: true, completed: false });
+    expect((await load(c.id)).status).toBe("IN_PROGRESS");
+    expect(await payLand(c.id, 2, "500,000")).toEqual({ ok: true, completed: true });
+    const done = await load(c.id);
+    expect(done.status).toBe("COMPLETED");
+    expect(done.completedAt).not.toBeNull();
+    expect(await db.stageUpdate.count({ where: { caseId: c.id } })).toBe(0);
+    expect(await db.notification.count({ where: { caseId: c.id, userId: dsA.userId, type: "COMPLETED" } })).toBe(1);
+    expect(await startLand(c.id, await version(c.id), 3, "1")).toEqual({
+      ok: false,
+      error: "caseNotRunning",
+      errors: {},
+    });
+
+    const whole = await running({ kind: "LAND_WITH_HOUSE" });
+    expect(await payLand(whole.id, 1, "2,000,000")).toEqual({ ok: true, completed: true });
+  });
+
+  it("takes only note-only updates to buy land only or land with a house (STG-4)", async () => {
+    const [anyStage] = await newHouseStages();
+    for (const kind of ["LAND_ONLY", "LAND_WITH_HOUSE"] as const) {
+      const c = await running({ kind });
+      const progress = await getStageProgress(db, c.id, kind, "si");
+      expect(progress).toMatchObject({ stages: [], choices: [], current: null, hasStageList: false });
+      expect(await stage(c.id, c.version, anyStage!.id)).toMatchObject({ errors: { stageId: "stageNotLater" } });
+      expect(await stage(c.id, c.version, null)).toEqual({ ok: true, completed: false });
+      expect((await getStageProgress(db, c.id, kind, "si")).visits).toHaveLength(1);
+    }
+  });
+
+  it("follows the new-house stages to buy land and build, and completes only at the last one (AC-63)", async () => {
+    const c = await running({ kind: "LAND_AND_BUILD" });
+    const stages = await newHouseStages();
+    const progress = await getStageProgress(db, c.id, "LAND_AND_BUILD", "si");
+    expect(progress.hasStageList).toBe(true);
+    expect(progress.choices.map((choice) => choice.id)).toEqual(stages.map((s) => s.id));
+
+    expect(await payLand(c.id, 1, "900,000")).toEqual({ ok: true, completed: false });
+    expect(await payLand(c.id, 2, "1,100,000")).toEqual({ ok: true, completed: false });
+    expect(await stage(c.id, await version(c.id), stages.at(-2)!.id)).toEqual({ ok: true, completed: false });
+    expect((await load(c.id)).status).toBe("IN_PROGRESS");
+    expect(await stage(c.id, await version(c.id), stages.at(-1)!.id, daysAgo(10))).toEqual({
+      ok: true,
+      completed: true,
+    });
+    expect((await load(c.id)).status).toBe("COMPLETED");
+  });
+
+  it("completes a case paid in full when the Ministry changes it to a kind with no stages (CLS-1)", async () => {
+    const c = await running({ kind: "LAND_AND_BUILD" });
+    expect(await payLand(c.id, 1, "2,000,000")).toEqual({ ok: true, completed: false });
+    const current = await load(c.id);
+    const saved = await saveCase(db, ho, {
+      id: c.id,
+      version: current.version,
+      dsOfficeId: null,
+      buildDsOfficeId: null,
+      values: { ...values(), applicationNumber: current.applicationNumber, nic: current.nic, kind: "LAND_ONLY" },
+      documentIds: [],
+    });
+    expect(saved).toMatchObject({ ok: true, value: { status: "COMPLETED" } });
+    expect((await load(c.id)).status).toBe("COMPLETED");
+    const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: c.id, action: "case_completed" } });
+    expect(audit.actorId).toBeNull();
   });
 });

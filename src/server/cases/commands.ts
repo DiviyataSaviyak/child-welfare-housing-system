@@ -13,6 +13,7 @@ import {
 } from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import { writeAudit } from "../audit";
+import { completeIfDone } from "./complete";
 import { deleteStoredFile } from "../files/storage";
 import { logError } from "../log";
 import { CASE_PLACES, canActOn, canSeeCase, caseScope, type Viewer } from "../permissions";
@@ -333,12 +334,14 @@ async function writeCase(
       after: { ...pick(after), documentsAdded: documentIds },
     });
   }
-  return {
-    id: input.id,
-    applicationNumber: input.values.applicationNumber,
-    status: current?.status ?? "AWAITING_ALLOCATION",
-    created: !current,
-  };
+  // CLS-1: a case paid in full may follow no stage list under its new kind, such as `LAND_AND_BUILD`
+  // changed to `LAND_ONLY` before any stage was reached; then nothing else would ever complete it.
+  let status = current?.status ?? "AWAITING_ALLOCATION";
+  if (current && current.kind !== input.values.kind) {
+    const moving = { id: current.id, status: current.status, version: current.version + 1, kind: input.values.kind };
+    if (await completeIfDone(tx, moving, new Date())) status = "COMPLETED";
+  }
+  return { id: input.id, applicationNumber: input.values.applicationNumber, status, created: !current };
 }
 
 /** The fields a save logs, with their old and new values (HIS-1). */
