@@ -20,6 +20,7 @@
  *   District releases it to each DS office a few days later. Each District officer of the district gets
  *   a notice of each letter.
  * - A few cases are built in another office that has an officer (CASE-13), so it pays them.
+ * - Each office's cases include each of the land kinds (CASE-17), paid in amounts of their own (INS-7).
  *
  * Every name, NIC and phone number is made up (SEC-11). It runs on development, test and staging
  * databases only, never in production. The cases' ids start with "demo-", which is how --remove finds
@@ -31,10 +32,10 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
 import type { PrismaClient } from "../src/generated/prisma/client";
-import type { Category } from "../src/generated/prisma/enums";
+import type { Category, Kind } from "../src/generated/prisma/enums";
 import { addDays, colomboDay } from "../src/lib/dates";
 import { createPrismaClient } from "../src/server/db";
-import { generator, madeUpPhone, type Random } from "./made-up";
+import { generator, madeUpPhone, MEN_RELATIVES, type Random, SIDES, WOMEN_RELATIVES } from "./made-up";
 import {
   buildOfficeAmong,
   type Cast,
@@ -45,6 +46,7 @@ import {
   type Person,
   planCase,
   readOffices,
+  readProvinceIds,
   readStages,
   removeMadeUp,
   writePlanned,
@@ -78,6 +80,18 @@ const STATUSES: Path[] = [
   "IN_PROGRESS",
   "COMPLETED",
 ];
+/**
+ * The kind of help of each office's cases in turn, beside `STATUSES`: a few of each land kind (CASE-17), one
+ * being paid, one completed and one waiting for its District; the rest houses, chosen at random.
+ */
+const KINDS: (Kind | undefined)[] = [];
+KINDS[6] = "LAND_AND_BUILD";
+KINDS[8] = "LAND_ONLY";
+KINDS[9] = "LAND_WITH_HOUSE";
+KINDS[12] = "LAND_ONLY";
+
+/** The kinds of help a demo house case has, at random. */
+const HOUSE_SHARE_NEW = 0.8;
 
 // --- Made-up people (SEC-11) ----------------------------------------------------------------------
 
@@ -147,13 +161,11 @@ const VILLAGES = [
   "නාගොඩ",
   "කොස්ගම",
 ];
-const SIDES = ["උතුර", "දකුණ", "නැගෙනහිර", "බටහිර"];
 const ROADS = ["පාසල් මාවත", "පන්සල් පාර", "ප්‍රධාන පාර", "විහාර මාවත", "ගංගා පාර", "දෙවන පටුමග", "මල් පාර"];
 const REMARKS = [
-  "පවුලේ සාමාජිකයින් හතර දෙනෙකි.",
   "මව පමණක් රැකියාවක නියුතුය.",
   "දැනට කුලී නිවසක පදිංචිව සිටී.",
-  "ඉඩම පවුලට අයත්ය.",
+  "වර්ෂා කාලයේදී ගංවතුරට ලක් වේ.",
   "ළඟම පාසල කි.මී. තුනක් දුරින්.",
 ];
 
@@ -165,24 +177,31 @@ function nicFor(r: Random, year: number, female: boolean): string {
 }
 
 /**
- * A care leaver is a young adult; a child at risk has a guardian, most often the mother. The address
- * is in a village of the office's area, which is also the Grama Niladhari division, as in
+ * A care leaver is a young adult, whose NIC carries the year they were born (`born`); a child at risk has a
+ * guardian, most often the mother, and now and then a grandmother, an uncle or another relative (CASE-15).
+ * The address is in a village of the office's area, which is also the Grama Niladhari division, as in
  * "අංක 16, පාසල් මාවත, කුරුවිට, රත්නපුර".
  */
-function demoPerson(r: Random, office: Office, category: Category): Person {
+function demoPerson(r: Random, office: Office, category: Category, born: string): Person {
   let name: string;
   let nic: string;
   let childName: string | null = null;
+  let relationship: Person["relationship"] = "MOTHER";
+  let relationshipOther: string | null = null;
   if (category === "CARE_LEAVER") {
     const female = r.chance(0.5);
     name = `${r.pick(female ? GIRLS : BOYS)} ${r.pick(SURNAMES)}`;
-    nic = nicFor(r, r.int(2000, 2007), female);
+    nic = nicFor(r, Number(born.slice(0, 4)), female);
   } else {
-    const mother = r.chance(0.8);
-    name = mother
+    const woman = r.chance(0.8);
+    name = woman
       ? `${r.pick(WOMEN)} ${r.chance(0.6) ? r.pick(WOMEN_SECOND) : r.pick(SURNAMES)}`
       : `${r.pick(MEN)} ${r.pick(SURNAMES)}`;
-    nic = nicFor(r, r.int(1965, 1992), mother);
+    const parent = r.chance(0.85);
+    relationship = parent ? (woman ? "MOTHER" : "FATHER") : "OTHER";
+    if (!parent) relationshipOther = r.pick(woman ? WOMEN_RELATIVES : MEN_RELATIVES);
+    // A grandparent is older than a parent.
+    nic = nicFor(r, parent ? r.int(1965, 1992) : r.int(1950, 1975), woman);
     childName = r.chance(0.5) ? `${r.pick(BOYS)} ${r.pick(BOYS_SECOND)}` : `${r.pick(GIRLS)} ${r.pick(GIRLS_SECOND)}`;
   }
   const byOffice = r.chance(0.35);
@@ -190,6 +209,8 @@ function demoPerson(r: Random, office: Office, category: Category): Person {
   return {
     name,
     childName,
+    relationship,
+    relationshipOther,
     nic,
     address: `අංක ${r.int(1, 220)}, ${r.pick(ROADS)}, ${village}, ${office.districtSi}`,
     gnDivision: byOffice ? `${office.nameSi} ${r.pick(SIDES)}` : village,
@@ -279,9 +300,23 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
       return day > today ? today : day;
     },
   };
-  const ctx: Context = { r, now, today: colomboDay(now), stages: await readStages(db), cast };
+  const ctx: Context = {
+    r,
+    now,
+    today: colomboDay(now),
+    stages: await readStages(db),
+    provinceIds: await readProvinceIds(db),
+    cast,
+  };
   const planned = offices.flatMap((office) =>
-    Array.from({ length: perOffice }, (_, index) => planCase(ctx, office, STATUSES[index % STATUSES.length])),
+    Array.from({ length: perOffice }, (_, index) =>
+      planCase(
+        ctx,
+        office,
+        STATUSES[index % STATUSES.length],
+        KINDS[index % STATUSES.length] ?? (r.chance(HOUSE_SHARE_NEW) ? "NEW_HOUSE" : "RENOVATION"),
+      ),
+    ),
   );
   await writePlanned(db, r, planned, {
     idPrefix: DEMO_ID_PREFIX,

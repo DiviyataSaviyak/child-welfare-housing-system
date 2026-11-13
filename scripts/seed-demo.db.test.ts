@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { colomboDay, dateToDay } from "@/lib/dates";
+import { INSTALLMENT_AMOUNT } from "@/lib/money";
+import { isHouseKind, LAND_KINDS } from "@/lib/validation/case";
 import { caseHistory } from "@/server/history/queries";
 import { seed } from "../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../tests/db/client";
@@ -76,9 +78,20 @@ describe("demo data", { timeout: 120_000 }, () => {
         release: { include: { letter: true, dsRelease: true } },
         installments: true,
         stageUpdates: true,
+        centres: true,
       },
     });
     expect(cases).toHaveLength(15);
+    // CASE-17: a few cases of each land kind, among the houses.
+    for (const kind of LAND_KINDS) expect(cases.some((c) => c.kind === kind)).toBe(true);
+    // INS-7: a land case paid is paid in amounts of its own.
+    expect(
+      cases.some(
+        (c) =>
+          !isHouseKind(c.kind) &&
+          c.installments.some((i) => i.amount !== INSTALLMENT_AMOUNT && i.status === "RELEASED"),
+      ),
+    ).toBe(true);
     // STS-1: every one of the five statuses.
     expect(new Set(cases.map((c) => c.status))).toEqual(
       new Set(["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED", "IN_PROGRESS", "COMPLETED"]),
@@ -109,6 +122,14 @@ describe("demo data", { timeout: 120_000 }, () => {
       expect(history[0]).toMatchObject({ action: "case_created", actor: { role: "DS_OFFICER" } });
       // CASE-12: entered with its Application Number, as saveCase logs it.
       expect(history[0].after.applicationNumber).toBe(c.applicationNumber);
+      // CASE-14 to CASE-16: and with change 0007's details, the centres as one field.
+      expect(history[0].after).toMatchObject({
+        dateOfBirth: dateToDay(c.dateOfBirth!),
+        familyMembers: c.familyMembers,
+        disabledChildren: c.disabledChildren,
+      });
+      expect(history[0].after.centres ?? []).toHaveLength(c.centres.length);
+      expect(c.centres.length > 0).toBe(c.category === "CARE_LEAVER");
       for (const [index, entry] of history.entries()) {
         if (index > 0) expect(entry.at.getTime()).toBeGreaterThanOrEqual(history[index - 1].at.getTime());
         expect(entry.at.getTime()).toBeLessThanOrEqual(now.getTime());
@@ -151,6 +172,8 @@ describe("demo data", { timeout: 120_000 }, () => {
       for (const i of c.installments.filter((i) => i.status !== "NOT_STARTED")) {
         const started = history.find((e) => e.action === "installment_started" && e.after.number === i.number);
         expect(started?.after.expectedOn).toBe(dateToDay(i.expectedOn!));
+        // INS-7: started with its amount, as the command logs it.
+        expect(started?.after.amount).toBe(i.amount);
         if (i.status === "RELEASED") {
           const paid = history.find((e) => e.action === "installment_paid" && e.after.number === i.number)!;
           expect(paid.after.releasedOn).toBe(dateToDay(i.releasedOn!));

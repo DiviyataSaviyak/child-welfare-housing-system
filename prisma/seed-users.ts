@@ -54,6 +54,9 @@ export const SAMPLE_USERS: SampleUser[] = [
   // Biyagama's CRPO pays it. The admin tests add their officers to the other Gampaha offices.
   { username: "dt0104", name: "එච්. ප්‍රේමරත්න", designation: "DISTRICT_CRPO", district: "Gampaha" },
   { username: "ds0105", name: "ඩබ්ලිව්. කරුණාරත්න", designation: "DS_CRPO", officeCode: "BYG" },
+  // AC-62 (change 0007): Mahara's CRPO enters and pays a land case of its own, so its money panel counts only
+  // that case's installments.
+  { username: "ds0106", name: "කේ. සෙනෙවිරත්න", designation: "DS_CRPO", officeCode: "MHR" },
   { username: "pv0101", name: "ජී. දිසානායක", designation: "PROVINCE_COMMISSIONER", province: "Western" },
   { username: "pd0101", name: "යූ. කුමාරි", designation: "DEPARTMENT_COMMISSIONER" },
   { username: "ho0101", name: "පී. අබේසේකර", designation: "MINISTRY_SECRETARY" },

@@ -27,17 +27,48 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import type { Prisma, PrismaClient } from "../src/generated/prisma/client";
-import type { CaseStatus, Category, Kind, NotificationType } from "../src/generated/prisma/enums";
+import type {
+  Aid,
+  CareGroup,
+  CaseStatus,
+  Category,
+  Kind,
+  MaritalStatus,
+  NotificationType,
+  Relationship,
+} from "../src/generated/prisma/enums";
 import { addDays, colomboDay, colomboStartOf, dayToDate } from "../src/lib/dates";
 import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "../src/lib/money";
 import { NAMES, type Names } from "../src/lib/names";
 import { nicKey } from "../src/lib/nic";
-import { type HouseKind, isHouseKind, stageKind } from "../src/lib/validation/case";
+import {
+  type CentreValues,
+  type HouseKind,
+  isHouseKind,
+  type LandKind,
+  type PartialDate,
+  stageKind,
+} from "../src/lib/validation/case";
 import { placeholderEmail } from "../src/server/auth/accounts";
 import { applicationKey } from "../src/server/cases/numbers";
 import { createPrismaClient } from "../src/server/db";
 import { deleteStoredFile } from "../src/server/files/storage";
-import { generator, GIVEN_NAMES, madeUpNic, madeUpPhone, type Random, ROADS, type Share, SURNAMES } from "./made-up";
+import {
+  generator,
+  GIVEN_NAMES,
+  madeUpBirthday,
+  madeUpCentreName,
+  madeUpNic,
+  madeUpPhone,
+  MEN_RELATIVES,
+  OTHER_AIDS,
+  type Random,
+  ROADS,
+  type Share,
+  SIDES,
+  SURNAMES,
+  WOMEN_RELATIVES,
+} from "./made-up";
 
 /** Every load-test case's id starts with this. */
 export const LOAD_ID_PREFIX = "load-";
@@ -65,7 +96,7 @@ export function loadDataAllowed(appEnv = process.env.APP_ENV ?? "development"): 
 
 // --- Made-up text (the people are in made-up.ts) ---------------------------------------------------
 
-const REMARKS = ["ඉඩම පවුලට අයත්ය.", "පවුලේ සාමාජිකයින් පස් දෙනෙකි.", "ළඟම පාසල කි.මී. දෙකක් දුරින්."];
+const REMARKS = ["දැනට කුලී නිවසක පදිංචිව සිටී.", "මව පමණක් රැකියාවක නියුතුය.", "ළඟම පාසල කි.මී. දෙකක් දුරින්."];
 const VISIT_NOTES = [
   "වැඩ හොඳින් සිදු වේ.",
   "ද්‍රව්‍ය ලැබීම ප්‍රමාදයි.",
@@ -100,17 +131,93 @@ const NOTE_SHARES: Share<number> = [
   [1, 35],
   [2, 15],
 ];
+/** The kinds of help (CASE-17): most cases build or mend a house, a few buy land. */
+const KIND_SHARES: Share<Kind> = [
+  ["NEW_HOUSE", 64],
+  ["RENOVATION", 16],
+  ["LAND_ONLY", 7],
+  ["LAND_AND_BUILD", 8],
+  ["LAND_WITH_HOUSE", 5],
+];
+/** How many installments a land case is paid in (INS-7): buying land and building takes more. */
+const LAND_INSTALLMENT_SHARES: Record<LandKind, Share<number>> = {
+  LAND_ONLY: [
+    [1, 30],
+    [2, 50],
+    [3, 20],
+  ],
+  LAND_AND_BUILD: [
+    [2, 25],
+    [3, 40],
+    [4, 35],
+  ],
+  LAND_WITH_HOUSE: [
+    [1, 35],
+    [2, 45],
+    [3, 20],
+  ],
+};
+/** A land case's first installment buys the land: between these many Rs. 10,000 (INS-7). */
+const LAND_FIRST: Record<LandKind, readonly [number, number]> = {
+  LAND_ONLY: [100, 180],
+  LAND_AND_BUILD: [60, 120],
+  LAND_WITH_HOUSE: [120, 190],
+};
+/** What a land case's first installment pays for (INS-7). */
+const LAND_PURPOSES: Record<LandKind, string> = {
+  LAND_ONLY: "ඉඩම මිලදී ගැනීම",
+  LAND_AND_BUILD: "ඉඩම මිලදී ගැනීම",
+  LAND_WITH_HOUSE: "ඉඩම සහ නිවස මිලදී ගැනීම",
+};
+/** How many kinds of aid a family receives (CASE-16). */
+const AID_COUNT_SHARES: Share<number> = [
+  [0, 35],
+  [1, 45],
+  [2, 20],
+];
+const AID_SHARES: Share<Aid> = [
+  ["ASWESUMA", 35],
+  ["SAMURDHI", 30],
+  ["ELDERLY", 10],
+  ["ARTHA", 8],
+  ["DISABILITY", 7],
+  ["KIDNEY", 5],
+  ["OTHER", 5],
+];
+/** How many child development centres a care leaver lived in (CASE-14). */
+const CENTRE_COUNT_SHARES: Share<number> = [
+  [1, 55],
+  [2, 30],
+  [3, 15],
+];
+/** How precisely a centre's date is known (CASE-14). */
+const PRECISION_SHARES: Share<"year" | "month" | "day"> = [
+  ["year", 45],
+  ["month", 35],
+  ["day", 20],
+];
 
 // --- Planning the cases -------------------------------------------------------------------------
 
 /** A DS office that gets made-up cases. */
-export type Office = { id: number; code: string; nameSi: string; districtId: number; districtSi: string };
+export type Office = {
+  id: number;
+  code: string;
+  nameSi: string;
+  districtId: number;
+  districtSi: string;
+  provinceId: number;
+};
 
 /** The made-up person on a case (SEC-11). */
 export type Person = {
   name: string;
   /** Only used for a child at risk. */
   childName: string | null;
+  /** Only used for a child at risk: how the guardian named on the case is related to the child (CASE-15). */
+  relationship: Relationship;
+  /** Set only with `relationship` OTHER. */
+  relationshipOther: string | null;
   nic: string;
   address: string;
   gnDivision: string | null;
@@ -139,7 +246,8 @@ export type Cast = {
   districtOfficer: (r: Random, office: Office) => string;
   /** The District officers told of each of the district's letters (NTF-1). */
   districtOfficers: (districtId: number) => string[];
-  person: (r: Random, office: Office, category: Category) => Person;
+  /** The person on a case; `born` is the care leaver's date of birth, or the child's (CASE-14, CASE-15). */
+  person: (r: Random, office: Office, category: Category, born: string) => Person;
   /** How many days ago a case on its way to `path` was entered; at least `minAge`. */
   age: (r: Random, path: Path, minAge: number) => number;
   /**
@@ -158,6 +266,8 @@ export type Context = {
   today: string;
   /** The active stages of each house kind, in order (LST-4), with their Sinhala name and all three (UI-9). */
   stages: Record<HouseKind, { id: number; name: string; names: Names }[]>;
+  /** The nine provinces, for the child development centres (CASE-14). */
+  provinceIds: number[];
   cast: Cast;
 };
 
@@ -200,6 +310,8 @@ export type Planned = {
   /** The DS office where it is built, which the money follows (CASE-13). */
   build: Office;
   case: PlannedCase;
+  /** A care leaver's child development centres, in order (CASE-14). */
+  centres: Prisma.CareCentreCreateManyInput[];
   release: PlannedRelease | null;
   installments: Prisma.InstallmentCreateManyInput[];
   stageUpdates: Prisma.StageUpdateCreateManyInput[];
@@ -229,10 +341,83 @@ function interleave<T>(r: Random, chains: T[][]): T[] {
 }
 
 /**
- * One case and everything that hangs off it, with a story that follows the application spec's Case
- * statuses and transitions.
+ * INS-7: the amounts a land case is paid in, adding up to Rs. 2,000,000, each a whole Rs. 10,000 and at least
+ * Rs. 50,000. The first buys the land; the last is whatever is left.
  */
-export function planCase(ctx: Context, office: Office, path: Path): Planned {
+export function landAmounts(r: Random, kind: LandKind, count: number): number[] {
+  const unit = 10_000;
+  const least = 5;
+  if (count <= 1) return [RELEASE_AMOUNT];
+  const [low, high] = LAND_FIRST[kind];
+  let left = RELEASE_AMOUNT / unit - Math.min(r.int(low, high), RELEASE_AMOUNT / unit - least * (count - 1));
+  const amounts = [RELEASE_AMOUNT - left * unit];
+  for (let index = 1; index < count - 1; index++) {
+    const still = count - index;
+    const share = Math.round((left / still) * (0.7 + r.int(0, 60) / 100));
+    const amount = Math.min(Math.max(share, least), left - least * (still - 1));
+    amounts.push(amount * unit);
+    left -= amount;
+  }
+  amounts.push(left * unit);
+  return amounts;
+}
+
+/** CASE-16: the aid a family receives, none to two of them, each once. */
+function madeUpAid(r: Random): Aid[] {
+  const count = r.weighted(AID_COUNT_SHARES);
+  const aid = new Set<Aid>();
+  while (aid.size < count) aid.add(r.weighted(AID_SHARES));
+  return [...aid];
+}
+
+/** A centre's date, as precisely as an officer might know it; only the year when it could be in the future. */
+function partialDate(r: Random, year: number, yearOnly: boolean): PartialDate {
+  const precision = yearOnly ? "year" : r.weighted(PRECISION_SHARES);
+  return {
+    year,
+    month: precision === "year" ? null : r.int(1, 12),
+    day: precision === "day" ? r.int(1, 28) : null,
+  };
+}
+
+/**
+ * CASE-14: the child development centres a care leaver lived in, one after another, from a few years
+ * old until they left at 18, or until now for one still in care. Most are in the province they live in.
+ * Now and then a centre's dates aren't known.
+ */
+function madeUpCentres(
+  r: Random,
+  input: { born: string; group: CareGroup; enteredDay: string; provinceId: number; provinceIds: number[] },
+): CentreValues[] {
+  const count = r.weighted(CENTRE_COUNT_SHARES);
+  const entered = Number(input.enteredDay.slice(0, 4));
+  const left = input.group === "IN_CARE" ? null : Math.min(Number(input.born.slice(0, 4)) + 18, entered);
+  const lastYear = left ?? entered;
+  let year = Math.min(Number(input.born.slice(0, 4)) + r.int(4, 10), lastYear);
+  const centres: CentreValues[] = [];
+  for (let index = 0; index < count; index++) {
+    const last = index === count - 1;
+    const span = Math.max(1, Math.floor((lastYear - year) / (count - index)));
+    const until = last ? left : Math.min(lastYear, year + r.int(1, span));
+    // Within one year the month and day could cross, and this year's could be after today: keep the year.
+    const sameYear = until === year;
+    const known = r.chance(0.85);
+    centres.push({
+      name: madeUpCentreName(r),
+      provinceId: r.chance(0.7) ? input.provinceId : r.pick(input.provinceIds),
+      from: known ? partialDate(r, year, sameYear || year >= entered) : null,
+      until: known && until !== null ? partialDate(r, until, sameYear || until >= entered) : null,
+    });
+    if (until !== null) year = until;
+  }
+  return centres;
+}
+
+/**
+ * One case and everything that hangs off it, with a story that follows the application spec's Case
+ * statuses and transitions. The kind of help is chosen at random unless `kind` names it.
+ */
+export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind): Planned {
   const { r, today, cast } = ctx;
   const upToToday = (day: string) => (day > today ? today : day);
   // A moment during office hours on `day`, after `after`, and never after now.
@@ -250,22 +435,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
   const told = [...new Set([...cast.officers(office), ...cast.officers(build)])];
   const ministry = cast.ministry(r);
   const category: Category = r.chance(1 / 3) ? "CARE_LEAVER" : "CHILD_AT_RISK";
-  const kind: Kind = r.chance(0.8) ? "NEW_HOUSE" : "RENOVATION";
-  const person = cast.person(r, office, category);
-  const nic = person.nic;
-  const fields = {
-    dsOfficeId: office.id,
-    category,
-    kind,
-    name: person.name,
-    childName: category === "CHILD_AT_RISK" ? person.childName : null,
-    nic,
-    address: person.address,
-    gnDivision: person.gnDivision,
-    mobile1: person.mobile1,
-    mobile2: person.mobile2,
-    remark: person.remark,
-  };
+  kind ??= r.weighted(KIND_SHARES);
 
   const allocated = path !== "AWAITING_ALLOCATION";
   const received = allocated && path !== "ALLOCATED_TO_DISTRICT";
@@ -274,6 +444,64 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
   const createdDay = addDays(today, -cast.age(r, path, minAge));
   const createdAt = moment(createdDay, null);
   let last = createdAt;
+
+  // CASE-14, CASE-15: a care leaver still in care is 16 or 17 when entered, one who left 18 to 25; a child at
+  // risk is under 18.
+  const careLeaver = category === "CARE_LEAVER";
+  const careGroup: CareGroup | null = careLeaver ? (r.chance(0.3) ? "IN_CARE" : "LEFT_CARE") : null;
+  const dateOfBirth =
+    careGroup === "IN_CARE"
+      ? madeUpBirthday(r, createdDay, 16, 17)
+      : careLeaver
+        ? madeUpBirthday(r, createdDay, 18, 25)
+        : madeUpBirthday(r, createdDay, 2, 17);
+  const person = cast.person(r, office, category, dateOfBirth);
+  const nic = person.nic;
+  const aid = madeUpAid(r);
+  const centres = careGroup
+    ? madeUpCentres(r, {
+        born: dateOfBirth,
+        group: careGroup,
+        enteredDay: createdDay,
+        provinceId: office.provinceId,
+        provinceIds: ctx.provinceIds,
+      })
+    : [];
+  const maritalStatus: MaritalStatus | null = !careLeaver
+    ? null
+    : careGroup === "LEFT_CARE" && r.chance(0.2)
+      ? "MARRIED"
+      : "UNMARRIED";
+  // What the form takes (CASE-2), as saveCase stores and logs it.
+  const values = {
+    dsOfficeId: office.id,
+    category,
+    careGroup,
+    kind,
+    // CASE-17: the land's GN division, mostly known.
+    landGnDivision: !r.chance(0.7)
+      ? null
+      : build.id === office.id && person.gnDivision
+        ? person.gnDivision
+        : `${build.nameSi} ${r.pick(SIDES)}`,
+    name: person.name,
+    childName: careLeaver ? null : person.childName,
+    dateOfBirth,
+    relationship: careLeaver ? null : person.relationship,
+    relationshipOther: careLeaver ? null : person.relationshipOther,
+    maritalStatus,
+    nic,
+    address: person.address,
+    gnDivision: person.gnDivision,
+    mobile1: person.mobile1,
+    mobile2: person.mobile2,
+    remark: person.remark,
+    familyMembers: careLeaver ? r.int(1, 5) : r.int(2, 8),
+    disabledChildren: r.chance(0.1),
+    aid,
+    aidOther: aid.includes("OTHER") ? r.pick(OTHER_AIDS) : null,
+  };
+  const fields = { ...values, dateOfBirth: dayToDate(dateOfBirth) };
 
   const history: Step[] = [];
   const notifications: Prisma.NotificationCreateManyInput[] = [];
@@ -309,7 +537,11 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     actorId: officer,
     action: "case_created",
     after: {
-      ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
+      ...Object.fromEntries(
+        Object.entries({ ...values, centres }).filter(
+          ([, value]) => value !== null && !(Array.isArray(value) && value.length === 0),
+        ),
+      ),
       buildDsOfficeId: build.id,
       status: "AWAITING_ALLOCATION",
       documentsAdded: [],
@@ -365,27 +597,34 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
       "RELEASED",
     );
 
+    // STG-4: a land case to build follows the new-house stages; one that only buys follows none.
     const list = stageKind(kind);
     const stages = list ? ctx.stages[list] : [];
+    // INS-1, INS-7: four of Rs. 500,000 for a house; a land case's Rs. 2,000,000 in amounts of its own.
+    const house = isHouseKind(kind);
+    let count = house ? INSTALLMENT_COUNT : r.weighted(LAND_INSTALLMENT_SHARES[kind as LandKind]);
+    // In progress means installment 1 is paid but not all the money, which takes two with no stages to wait for.
+    if (path === "IN_PROGRESS" && stages.length === 0) count = Math.max(count, 2);
+    const amounts = house ? Array<number>(count).fill(INSTALLMENT_AMOUNT) : landAmounts(r, kind as LandKind, count);
     let paid: number;
     let reached: number;
     if (path === "COMPLETED") {
-      paid = INSTALLMENT_COUNT;
+      paid = count;
       reached = stages.length;
     } else if (path === "ALLOCATION_RECEIVED") {
       // Nothing paid yet (INS-5); some have installment 1 on its way, and visits with notes.
       paid = 0;
       reached = 0;
     } else {
-      paid = r.weighted(PAID_SHARES);
+      paid = Math.min(r.weighted(PAID_SHARES), count);
       reached = r.int(0, stages.length);
       // Both finished would have completed it (CLS-1).
-      if (paid === INSTALLMENT_COUNT && reached === stages.length) {
+      if (paid === count && reached === stages.length) {
         if (stages.length > 0) reached -= 1;
         else paid -= 1;
       }
     }
-    const processing = path !== "COMPLETED" && paid < INSTALLMENT_COUNT && r.chance(0.5);
+    const processing = path !== "COMPLETED" && paid < count && r.chance(0.5);
 
     // INS-2: each payment after the one before, and a payment starts only once the one before is paid.
     const events = interleave<Event>(r, [
@@ -452,8 +691,15 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
     }
     steps = events.length;
 
-    // As src/server/installments/commands.ts records them.
-    const recordStart = (at: Date, installmentId: string, number: number, expectedOn: string, purpose: Json) =>
+    // As src/server/installments/commands.ts records them, with the amount (INS-7).
+    const recordStart = (
+      at: Date,
+      installmentId: string,
+      number: number,
+      amount: number,
+      expectedOn: string,
+      purpose: Json,
+    ) =>
       record({
         at,
         actorId: builder,
@@ -461,12 +707,15 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
         entityType: "installment",
         entityId: installmentId,
         before: { number, status: "NOT_STARTED" },
-        after: { number, status: "PROCESSING", expectedOn, purpose, note: null },
+        after: { number, status: "PROCESSING", amount, expectedOn, purpose, note: null },
       });
-    for (let number = 1; number <= INSTALLMENT_COUNT; number++) {
+    for (let number = 1; number <= count; number++) {
       const payment = payments[number - 1];
-      const base = { id: randomUUID(), caseId: id, number, amount: INSTALLMENT_AMOUNT };
-      const purpose = r.chance(0.3) ? r.pick(PURPOSES) : null;
+      const amount = amounts[number - 1];
+      const base = { id: randomUUID(), caseId: id, number, amount };
+      // INS-7: a land case's first installment buys the land.
+      const purpose =
+        !house && number === 1 ? LAND_PURPOSES[kind as LandKind] : r.chance(0.3) ? r.pick(PURPOSES) : null;
       if (payment) {
         // Started a few days before it was paid, and after the one before was paid (INS-2).
         const after = number === 1 ? releaseAt : payments[number - 2].at;
@@ -483,7 +732,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
           purpose,
           updatedAt: payment.at,
         });
-        recordStart(startedAt, base.id, number, expectedOn, purpose);
+        recordStart(startedAt, base.id, number, amount, expectedOn, purpose);
         record({
           at: payment.at,
           actorId: builder,
@@ -491,7 +740,7 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
           entityType: "installment",
           entityId: base.id,
           before: { number, status: "PROCESSING", note: null },
-          after: { number, status: "RELEASED", releasedOn: payment.day, note: null },
+          after: { number, status: "RELEASED", amount, releasedOn: payment.day, note: null },
         });
         if (number === 1) {
           // INS-5: paying installment 1 moves the case on, as the system, in the same step.
@@ -508,8 +757,9 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
           purpose,
           updatedAt: start.at,
         });
-        recordStart(start.at, base.id, number, expectedOn, purpose);
-      } else {
+        recordStart(start.at, base.id, number, amount, expectedOn, purpose);
+      } else if (house) {
+        // REL-7: a house's four are made at the District's release; a land case's only when started (INS-7).
         installments.push({ ...base, status: "NOT_STARTED", updatedAt: releaseAt });
       }
     }
@@ -537,6 +787,18 @@ export function planCase(ctx: Context, office: Office, path: Path): Planned {
       completedAt,
       version: 1 + moves + steps,
     },
+    centres: centres.map((centre, index) => ({
+      caseId: id,
+      position: index + 1,
+      name: centre.name,
+      provinceId: centre.provinceId,
+      fromYear: centre.from?.year ?? null,
+      fromMonth: centre.from?.month ?? null,
+      fromDay: centre.from?.day ?? null,
+      untilYear: centre.until?.year ?? null,
+      untilMonth: centre.until?.month ?? null,
+      untilDay: centre.until?.day ?? null,
+    })),
     release,
     installments,
     stageUpdates,
@@ -552,9 +814,24 @@ export async function readOffices(db: PrismaClient, where: Prisma.DsOfficeWhereI
   const rows = await db.dsOffice.findMany({
     where: { active: true, ...where },
     orderBy: { id: "asc" },
-    select: { id: true, code: true, nameSi: true, districtId: true, district: { select: { nameSi: true } } },
+    select: {
+      id: true,
+      code: true,
+      nameSi: true,
+      districtId: true,
+      district: { select: { nameSi: true, provinceId: true } },
+    },
   });
-  return rows.map(({ district, ...office }) => ({ ...office, districtSi: district.nameSi }));
+  return rows.map(({ district, ...office }) => ({
+    ...office,
+    districtSi: district.nameSi,
+    provinceId: district.provinceId,
+  }));
+}
+
+/** The nine provinces' ids, for the child development centres (CASE-14). */
+export async function readProvinceIds(db: PrismaClient): Promise<number[]> {
+  return (await db.province.findMany({ orderBy: { id: "asc" }, select: { id: true } })).map((p) => p.id);
 }
 
 /** The active stages of each kind, in order (LST-4). */
@@ -722,6 +999,7 @@ export async function writePlanned(
         });
       }
       for (const rows of chunks(cases)) await tx.case.createMany({ data: rows });
+      for (const rows of chunks(planned.flatMap((p) => p.centres))) await tx.careCentre.createMany({ data: rows });
       for (const rows of chunks([...letters.values()])) await tx.releaseLetter.createMany({ data: rows });
       for (const rows of chunks([...dsReleases.values()])) await tx.dsRelease.createMany({ data: rows });
       for (const rows of chunks(releases)) await tx.release.createMany({ data: rows });
@@ -825,9 +1103,16 @@ const loadCast = (offices: Office[]): Cast => ({
   districtOfficers: () => [],
   person: (r, office, category) => {
     const surname = r.pick(SURNAMES);
+    const relationship = r.weighted<Relationship>([
+      ["MOTHER", 65],
+      ["FATHER", 20],
+      ["OTHER", 15],
+    ]);
     return {
       name: `${r.pick(GIVEN_NAMES)} ${surname}`,
       childName: category === "CHILD_AT_RISK" ? `${r.pick(GIVEN_NAMES)} ${surname}` : null,
+      relationship,
+      relationshipOther: relationship === "OTHER" ? r.pick([...WOMEN_RELATIVES, ...MEN_RELATIVES]) : null,
       nic: madeUpNic(r),
       address: `${r.int(1, 250)}, ${r.pick(ROADS)}, ${office.nameSi}`,
       gnDivision: null,
@@ -866,7 +1151,14 @@ export async function addLoadData(db: PrismaClient, options: LoadOptions = {}): 
 
   const offices = await readOffices(db);
   if (offices.length === 0) throw new Error("There are no active DS offices: run the seed first.");
-  const ctx: Context = { r, now, today: colomboDay(now), stages: await readStages(db), cast: loadCast(offices) };
+  const ctx: Context = {
+    r,
+    now,
+    today: colomboDay(now),
+    stages: await readStages(db),
+    provinceIds: await readProvinceIds(db),
+    cast: loadCast(offices),
+  };
   // Every office gets at least one case, then the rest go to offices of different sizes.
   const officeShares: Share<Office> = offices.map((office) => [office, r.int(5, 15)]);
   const planned = Array.from({ length: count }, (_, index) =>

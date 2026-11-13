@@ -143,7 +143,8 @@ test("AC-11 to AC-13: the DS office pays in order, records progress with a photo
   await viewer.getByRole("button", { name: "වසන්න" }).click();
   const history = ho.getByRole("region", { name: HISTORY });
   await expect(history).toContainText(`ළඟා වූ මට්ටම: ${first}, ${second}, ${third} (${SHOWN_TODAY})`);
-  await expect(history).toContainText(`පළමු වාරිකය ගෙවන ලදී (ගෙවූ දිනය ${SHOWN_TODAY})`);
+  // Since change 0007 the history names each installment's amount (INS-7).
+  await expect(history).toContainText(`පළමු වාරිකය ගෙවන ලදී: රු. 500,000 (ගෙවූ දිනය ${SHOWN_TODAY})`);
   await expect(history).toContainText("පළමු වාරිකය ගෙවූ බැවින් ව්‍යාපෘතිය වැඩ සිදුවෙමින් තත්ත්වයට පත් විය");
   await expect(history).toContainText("(ප්‍රා.ලේ.)");
   await expect(history).toContainText("(අමාත්‍යංශය)");
