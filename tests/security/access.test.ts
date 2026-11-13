@@ -181,6 +181,7 @@ const RULES: Record<string, Record<string, Rule>> = {
   },
   "src/app/ds/cases/[id]/actions.ts": {
     startInstallmentAction: DS,
+    correctInstallmentAction: DS,
     payInstallmentAction: DS,
     stageUpdateAction: DS,
     uploadPhotoAction: DS,

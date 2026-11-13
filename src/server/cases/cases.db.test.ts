@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
-import { createTestClient, freeOfficeId } from "../../../tests/db/client";
+import { createTestClient, freeOfficeId, CARE_LEAVER_DETAILS } from "../../../tests/db/client";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
@@ -36,6 +36,7 @@ let numberSeq = 0;
 
 /** A complete, made-up case (SEC-11). Each test gives its own NIC so tests don't match each other. */
 const values = (nic: string, overrides: Partial<CaseValues> = {}): CaseValues => ({
+  ...CARE_LEAVER_DETAILS,
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
   applicationNumber: `CT/${(numberSeq += 1)}`,
@@ -75,6 +76,7 @@ async function change(actor: Actor, id: string, changes: Partial<CaseValues> = {
     dsOfficeId: null,
     buildDsOfficeId: current.buildDsOfficeId === current.dsOfficeId ? null : current.buildDsOfficeId,
     values: {
+      ...CARE_LEAVER_DETAILS,
       category: current.category,
       kind: current.kind,
       applicationNumber: current.applicationNumber,
@@ -609,5 +611,151 @@ describe("lists, to-do and money (HOME-1 to HOME-4, FND-1)", () => {
     });
     const items = (await todoItems(db, dsB)).filter((item) => item.id === row.id);
     expect(items).toEqual([expect.objectContaining({ type: "due", number: 1, overdue: false })]);
+  });
+});
+
+describe("the registration form's details (CASE-14 to CASE-17, AC-60, AC-61)", () => {
+  const centre = (name: string, provinceId: number, from: CaseValues["centres"][number]["from"] = null) => ({
+    name,
+    provinceId,
+    from,
+    until: null,
+  });
+
+  it("saves a care leaver's details and centres in order, and shows them with their provinces", async () => {
+    const row = await saved(
+      dsA,
+      newCase("200100000070", {
+        values: values("200100000070", {
+          careGroup: "IN_CARE",
+          dateOfBirth: "2009-05-20",
+          maritalStatus: "UNMARRIED",
+          familyMembers: 4,
+          disabledChildren: false,
+          aid: ["SAMURDHI", "OTHER"],
+          aidOther: "ගම් ආධාර",
+          landGnDivision: "ඉඹුල්ගොඩ",
+          centres: [
+            {
+              name: "පළමු නිවාසය",
+              provinceId: 1,
+              from: { year: 2012, month: null, day: null },
+              until: { year: 2015, month: 6, day: null },
+            },
+            centre("දෙවන නිවාසය", 2),
+            centre("තෙවන නිවාසය", 3, { year: 2016, month: 2, day: 29 }),
+          ],
+        }),
+      }),
+    );
+    const details = await getCase(db, dsA, row.id, "si");
+    expect(details).toMatchObject({
+      careGroup: "IN_CARE",
+      dateOfBirth: "2009-05-20",
+      maritalStatus: "UNMARRIED",
+      familyMembers: 4,
+      disabledChildren: false,
+      aid: ["SAMURDHI", "OTHER"],
+      aidOther: "ගම් ආධාර",
+      landGnDivision: "ඉඹුල්ගොඩ",
+    });
+    expect(details?.centres.map((c) => [c.name, c.from, c.until])).toEqual([
+      ["පළමු නිවාසය", { year: 2012, month: null, day: null }, { year: 2015, month: 6, day: null }],
+      ["දෙවන නිවාසය", null, null],
+      ["තෙවන නිවාසය", { year: 2016, month: 2, day: 29 }, null],
+    ]);
+    expect(details?.centres.every((c) => c.provinceName.length > 0)).toBe(true);
+    expect(details?.provinceName).toBeTruthy();
+    expect(details?.buildProvinceName).toBe(details?.provinceName);
+
+    const created = await db.auditLog.findFirstOrThrow({ where: { caseId: row.id, action: "case_created" } });
+    expect(created.after).toMatchObject({
+      dateOfBirth: "2009-05-20",
+      aid: ["SAMURDHI", "OTHER"],
+      disabledChildren: false,
+    });
+    expect((created.after as { centres: unknown[] }).centres).toHaveLength(3);
+  });
+
+  it("replaces the centres on a change, and logs them as one field with the old and new lists", async () => {
+    const row = await saved(
+      dsA,
+      newCase("200100000071", {
+        values: values("200100000071", {
+          centres: [centre("අ නිවාසය", 1), centre("ආ නිවාසය", 2), centre("ඉ නිවාසය", 3)],
+        }),
+      }),
+    );
+    const two = [centre("ආ නිවාසය", 2), centre("ඊ නිවාසය", 4)];
+    expect(await change(dsA, row.id, { centres: two })).toMatchObject({ ok: true });
+
+    const stored = await db.careCentre.findMany({ where: { caseId: row.id }, orderBy: { position: "asc" } });
+    expect(stored.map((c) => [c.position, c.name])).toEqual([
+      [1, "ආ නිවාසය"],
+      [2, "ඊ නිවාසය"],
+    ]);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: row.id, action: "case_updated" } });
+    expect(Object.keys(audit.before as object)).toEqual(["centres"]);
+    expect((audit.before as { centres: unknown[] }).centres).toHaveLength(3);
+    expect((audit.after as { centres: unknown }).centres).toEqual(two);
+  });
+
+  it("stores no care leaver's details on a child at risk, even when a caller sends them (AC-61)", async () => {
+    const row = await saved(
+      dsA,
+      newCase("200100000072", {
+        values: values("200100000072", {
+          category: "CHILD_AT_RISK",
+          childName: "පරීක්ෂණ දරුවා",
+          relationship: "OTHER",
+          relationshipOther: "ආච්චි",
+        }),
+      }),
+    );
+    expect(row).toMatchObject({
+      careGroup: null,
+      maritalStatus: null,
+      relationship: "OTHER",
+      relationshipOther: "ආච්චි",
+    });
+    expect(await db.careCentre.count({ where: { caseId: row.id } })).toBe(0);
+  });
+
+  it("refuses a child at risk without the relationship, and a care leaver without a centre", async () => {
+    const atRisk = values("200100000073", { category: "CHILD_AT_RISK", childName: "පරීක්ෂණ දරුවා" });
+    expect(await saveCase(db, dsA, newCase("200100000073", { values: atRisk }))).toEqual({
+      ok: false,
+      error: "incomplete",
+    });
+    const noCentre = values("200100000074", { centres: [] });
+    expect(await saveCase(db, dsA, newCase("200100000074", { values: noCentre }))).toEqual({
+      ok: false,
+      error: "incomplete",
+    });
+  });
+
+  it("refuses a centre whose province doesn't exist", async () => {
+    const input = newCase("200100000075", { values: values("200100000075", { centres: [centre("x නිවාසය", 999)] }) });
+    expect(await saveCase(db, dsA, input)).toEqual({ ok: false, error: "incomplete" });
+  });
+
+  it("asks a case entered before the change for its new details on the next save (CASE-9, AC-64)", async () => {
+    const row = await saved(dsA, newCase("200100000076"));
+    // As the migration left an older case: the new columns empty.
+    await db.careCentre.deleteMany({ where: { caseId: row.id } });
+    await db.case.update({
+      where: { id: row.id },
+      data: { careGroup: null, maritalStatus: null, dateOfBirth: null, familyMembers: null, disabledChildren: null },
+    });
+    const empty = {
+      careGroup: null,
+      maritalStatus: null,
+      dateOfBirth: null,
+      familyMembers: null,
+      disabledChildren: null,
+      centres: [],
+    };
+    expect(await change(dsA, row.id, { ...empty, name: "නව නම" })).toEqual({ ok: false, error: "incomplete" });
+    expect(await change(dsA, row.id, { name: "නව නම" })).toMatchObject({ ok: true });
   });
 });

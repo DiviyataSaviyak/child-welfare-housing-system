@@ -98,3 +98,37 @@ export const SURNAMES = [
   "ශිවලිංගම්",
 ];
 export const ROADS = ["ප්‍රධාන පාර", "පන්සල් පාර", "පාසල් මාවත", "දෙවන පටුමග", "ගංගා පාර", "මල් පාර"];
+
+// --- Change 0007's details (CASE-14 to CASE-16) ----------------------------------------------------
+
+/**
+ * A made-up date of birth, "YYYY-MM-DD", for someone `minAge` to `maxAge` years old on `onDay` (CASE-14,
+ * CASE-15): `age` years before `onDay`, less 1 to 364 days, so they had their birthday this year already.
+ */
+export function madeUpBirthday(r: Random, onDay: string, minAge: number, maxAge: number): string {
+  const born = new Date(`${onDay}T00:00:00Z`);
+  born.setUTCFullYear(born.getUTCFullYear() - r.int(minAge, maxAge));
+  born.setUTCDate(born.getUTCDate() - r.int(1, 364));
+  return born.toISOString().slice(0, 10);
+}
+
+/** How a guardian who is not the mother or father is related to the child (CASE-15). */
+export const WOMEN_RELATIVES = ["ආච්චි", "නැන්දා", "ලොකු අම්මා", "අක්කා"];
+export const MEN_RELATIVES = ["සීයා", "මාමා", "බාප්පා", "අයියා"];
+
+/**
+ * Made-up child development centres (CASE-14): a place word and a kind of home, such as
+ * "සෙත්සරණ ළමා නිවාසය", made up here rather than taken from a list of real centres.
+ */
+const CENTRE_WORDS = ["සෙත්සරණ", "සුවසෙත", "මෙත්සඳ", "කරුණා", "සිසිලස", "නැණසර", "සුබසෙත", "පිළිසරණ"];
+const CENTRE_KINDS = ["ළමා නිවාසය", "ළමා සංවර්ධන මධ්‍යස්ථානය", "බාලිකා නිවාසය", "බාලක නිවාසය", "පරිවාස නිවාසය"];
+
+export function madeUpCentreName(r: Random): string {
+  return `${r.pick(CENTRE_WORDS)} ${r.pick(CENTRE_KINDS)}`;
+}
+
+/** Aid typed under "other" (CASE-16). */
+export const OTHER_AIDS = ["පාසල් ශිෂ්‍යත්ව දීමනාව", "ප්‍රාදේශීය සභා ආධාර", "පන්සලෙන් ලැබෙන ආධාර", "පෝෂණ මල්ල"];
+
+/** The parts of a GN division named after its DS division, as in "කඩුවෙල උතුර". */
+export const SIDES = ["උතුර", "දකුණ", "නැගෙනහිර", "බටහිර"];

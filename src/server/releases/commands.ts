@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
+import { isHouseKind } from "@/lib/validation/case";
 import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "@/lib/money";
 import {
   type DsReleaseErrors,
@@ -328,8 +329,9 @@ const dsRefused = (error: DsReleaseCommandError) => ({ ok: false as const, error
  * REL-6, REL-7, REL-9: records a District officer's release to one DS office of the district, of cases the
  * Ministry allocated to the district, all of them built in that DS office (CASE-13). In one transaction the
  * release is saved with its scan, each case moves to ALLOCATION_RECEIVED (its DS offices are told,
- * transitions.ts), its allocation gets the release and its date, and its four NOT_STARTED installments are
- * made. The amounts are never typed in. If any case can't be released, nothing is.
+ * transitions.ts), its allocation gets the release and its date, and, for a house kind, its four NOT_STARTED
+ * installments of Rs. 500,000 are made. A land kind's are made one at a time as the DS starts them (INS-7).
+ * The amounts are never typed in here. If any case can't be released, nothing is.
  */
 export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsReleaseInput): Promise<DsReleaseResult> {
   const ids = [...new Set(input.cases.map((c) => c.id))].sort();
@@ -348,6 +350,7 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
         status: true,
         version: true,
         buildDsOfficeId: true,
+        kind: true,
         ...CASE_PLACES,
         release: { select: { id: true, releasedOn: true } },
       },
@@ -426,6 +429,7 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
           where: { id: c.release!.id },
           data: { dsReleaseId, dsReleasedOn: dayToDate(release.releasedOn) },
         });
+        if (!isHouseKind(c.kind)) continue;
         await tx.installment.createMany({
           data: Array.from({ length: INSTALLMENT_COUNT }, (_, index) => ({
             id: randomUUID(),

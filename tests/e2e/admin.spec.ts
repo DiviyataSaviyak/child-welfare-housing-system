@@ -26,9 +26,9 @@ const NAME = "නම (අවශ්‍ය නම් පමණි)";
 const MOBILE = "ජංගම දුරකතන අංකය (අවශ්‍ය නම් පමණි)";
 
 /**
- * These Gampaha offices have no sample officer (Biyagama has `ds0105`, for AC-56). Each test that creates
- * one uses its own office, so it sees only its own officers; tests/e2e/cleanup.ts deletes them again before
- * each run.
+ * These Gampaha offices have no sample officer (Biyagama has `ds0105`, for AC-56, and Mahara `ds0106`, for
+ * AC-62). Each test that creates one uses its own office, so it sees only its own officers; tests/e2e/cleanup.ts
+ * deletes them again before each run.
  */
 const OFFICES = {
   signIn: "ගම්පහ",

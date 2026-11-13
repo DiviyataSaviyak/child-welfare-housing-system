@@ -13,19 +13,33 @@ import { ReasonAction } from "@/components/progress/reason-action";
 import { StageSection } from "@/components/progress/stage-section";
 import { StageUpdate } from "@/components/progress/stage-update";
 import { colomboDay } from "@/lib/dates";
+import { isHouseKind } from "@/lib/validation/case";
 import { paidLimits, stageLimits, startLimits } from "@/lib/validation/progress";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
 import { canDeleteCase, canEditDetails, takesProgress } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { caseHistory } from "@/server/history/queries";
-import { nextInstallment, previousPaidOn } from "@/server/installments/rules";
+import {
+  isUpcoming,
+  landAmountLimit,
+  nextInstallment,
+  previousPaidOn,
+  schedule,
+  type Upcoming,
+} from "@/server/installments/rules";
 import { getStageProgress } from "@/server/stages/queries";
 import { deleteCaseAction } from "../actions";
-import { payInstallmentAction, stageUpdateAction, startInstallmentAction, uploadPhotoAction } from "./actions";
+import {
+  correctInstallmentAction,
+  payInstallmentAction,
+  stageUpdateAction,
+  startInstallmentAction,
+  uploadPhotoAction,
+} from "./actions";
 
 /** What a progress action leaves on the page, by its key under "progress.notices". */
-const NOTICES = ["started", "paid", "stage", "completed"] as const;
+const NOTICES = ["started", "corrected", "paid", "stage", "completed"] as const;
 const isNotice = (value: unknown): value is (typeof NOTICES)[number] =>
   typeof value === "string" && (NOTICES as readonly string[]).includes(value);
 
@@ -61,7 +75,9 @@ export default async function DsCasePage({
   const receivedOn = details.release?.dsRelease?.releasedOn ?? null;
   const running = takesProgress(details.status) && receivedOn !== null && details.actsOn.progress;
   const today = colomboDay(new Date());
-  const next = running ? nextInstallment(details.installments) : null;
+  // A land case's next installment has no row until it is started (INS-7).
+  const next = running ? nextInstallment(schedule(details.kind, details.installments)) : null;
+  const house = isHouseKind(details.kind);
   // CASE-8, CASE-9: while it awaits its allocation, the DS of residence corrects or deletes it.
   const canEdit = details.actsOn.edit && canEditDetails(viewer.role, details.status);
   const remove = details.actsOn.edit && canDeleteCase(viewer.role, details.status) && (
@@ -84,8 +100,11 @@ export default async function DsCasePage({
     />
   );
 
-  /** The next installment's button (INS-2); a later one says which it waits for. */
-  const installmentStep = (item: InstallmentDetails) => {
+  /**
+   * The next installment's button (INS-2); a later one says which it waits for. A land case's installment
+   * being paid can also be corrected (INS-8).
+   */
+  const installmentStep = (item: InstallmentDetails | Upcoming) => {
     if (!running || !receivedOn || item.status === "RELEASED") return null;
     const name = t(`installment.name.${item.number as 1 | 2 | 3 | 4}`);
     if (item.number !== next?.number) {
@@ -94,23 +113,53 @@ export default async function DsCasePage({
         <span className="text-[15px] text-[#4F5752]">{tp("installments.waitFor", { installment: previous })}</span>
       );
     }
-    const starting = item.status === "NOT_STARTED";
-    return (
+    const shared = { caseId: details.id, version: details.version, number: item.number, installmentName: name };
+    if (isUpcoming(item) || item.status === "NOT_STARTED") {
+      const limit = isUpcoming(item) ? landAmountLimit(details.installments, item.number) : null;
+      return (
+        <InstallmentAction
+          key={`${details.version}-${item.number}`}
+          step="start"
+          {...shared}
+          limits={startLimits(receivedOn)}
+          amount={item.amount}
+          amountLimit={limit}
+          initial={{ amount: limit ? String(limit.max) : "", day: "", purpose: "", note: "" }}
+          action={startInstallmentAction}
+        />
+      );
+    }
+    const pay = (
       <InstallmentAction
         key={`${details.version}-${item.number}`}
-        step={starting ? "start" : "pay"}
-        caseId={details.id}
-        version={details.version}
-        number={item.number}
-        installmentName={name}
-        limits={
-          starting
-            ? startLimits(receivedOn)
-            : paidLimits(today, receivedOn, previousPaidOn(details.installments, item.number))
-        }
-        initial={{ day: starting ? "" : today, purpose: item.purpose ?? "", note: item.note ?? "" }}
-        action={starting ? startInstallmentAction : payInstallmentAction}
+        step="pay"
+        {...shared}
+        limits={paidLimits(today, receivedOn, previousPaidOn(details.installments, item.number))}
+        amount={item.amount}
+        initial={{ amount: "", day: today, purpose: item.purpose ?? "", note: item.note ?? "" }}
+        action={payInstallmentAction}
       />
+    );
+    if (house) return pay;
+    return (
+      <span className="flex flex-wrap justify-end gap-2">
+        <InstallmentAction
+          key={`${details.version}-${item.number}-correct`}
+          step="correct"
+          {...shared}
+          limits={startLimits(receivedOn)}
+          amount={item.amount}
+          amountLimit={landAmountLimit(details.installments, item.number)}
+          initial={{
+            amount: String(item.amount),
+            day: item.expectedOn ?? "",
+            purpose: item.purpose ?? "",
+            note: item.note ?? "",
+          }}
+          action={correctInstallmentAction}
+        />
+        {pay}
+      </span>
     );
   };
 
@@ -155,6 +204,7 @@ export default async function DsCasePage({
             {details.release && (
               <MoneySection
                 audience="ds"
+                kind={details.kind}
                 release={details.release}
                 installments={details.installments}
                 actions={installmentStep}

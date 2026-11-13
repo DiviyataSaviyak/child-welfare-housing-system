@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createTranslator } from "next-intl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../prisma/seed-data";
-import { createTestClient } from "../../tests/db/client";
+import { createTestClient, CARE_LEAVER_DETAILS } from "../../tests/db/client";
 import { releaseToDsForTests } from "../../tests/db/ds-release";
 import messages from "../../messages/si.json";
 import { colomboDay, dateToDay } from "@/lib/dates";
@@ -42,6 +42,7 @@ let documentId: string; // on the case in the other province
 const PDF = new TextEncoder().encode("%PDF-1.4\n%made-up test file\n");
 
 const values = (nic: string): CaseValues => ({
+  ...CARE_LEAVER_DETAILS,
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
   applicationNumber: `S/${nic}`,
@@ -455,7 +456,7 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
         caseId,
         version,
         number: 1,
-        form: { expectedOn: today, purpose: "", note: "" },
+        form: { amount: "", expectedOn: today, purpose: "", note: "" },
       });
     const visit = (actor: Actor, version: number) =>
       recordStageUpdate(db, actor, {

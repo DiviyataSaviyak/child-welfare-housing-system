@@ -7,7 +7,7 @@ import { getCase } from "@/server/cases/queries";
 import { canChangeBuildOffice, canEditDetails } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { districtsWithOffices } from "@/server/lists/queries";
+import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAction } from "../../actions";
 
 /** CASE-9: the DS of residence corrects a case while it awaits its allocation, every detail included. */
@@ -21,7 +21,11 @@ export default async function EditCasePage({ params }: { params: Promise<{ id: s
   // Ministry's allocation (CASE-9).
   if (!details.actsOn.edit || !canEditDetails(viewer.role, details.status)) redirect(`/ds/cases/${id}`);
 
-  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
+  const [t, districts, provinces] = await Promise.all([
+    getTranslations("cases"),
+    districtsWithOffices(db, locale),
+    provinceOptions(db, locale),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -45,10 +49,12 @@ export default async function EditCasePage({ params }: { params: Promise<{ id: s
         office={{
           kind: "own",
           dsOfficeId: details.dsOfficeId,
+          provinceName: details.provinceName,
           districtName: details.districtName,
           officeName: details.officeName,
         }}
         build={buildSetting(details, canChangeBuildOffice(details.status), districts)}
+        provinces={provinces}
         documents={details.documents}
         mode="edit"
         actions={{

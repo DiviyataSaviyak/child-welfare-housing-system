@@ -1,7 +1,9 @@
 import { ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { formatDate } from "@/lib/dates";
+import { colomboDay, formatDate } from "@/lib/dates";
+import { ageOn } from "@/lib/validation/case";
+import { centreLine } from "@/server/cases/centre-line";
 import type { CaseDetails } from "@/server/cases/queries";
 import { caseName } from "./page-header";
 
@@ -13,28 +15,85 @@ export type Audience = "ds" | "ministry" | "oversight";
 
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 
-/** Every field of a case as label and value, for the case page. */
-export function caseFieldRows(t: CasesT, details: CaseDetails): { label: string; value: string }[] {
+/**
+ * Every field of a case as label and value, for the case page: the land under the kind of help (CASE-17),
+ * then the beneficiary, the family and the aid (CASE-14 to CASE-16). A detail a case entered before change
+ * 0007 doesn't have reads "none".
+ */
+export function caseFieldRows(
+  t: CasesT,
+  details: CaseDetails,
+  today: string = colomboDay(new Date()),
+): { label: string; value: string }[] {
   const atRisk = details.category === "CHILD_AT_RISK";
+  const careLeaver = details.category === "CARE_LEAVER";
   const none = t("none");
+  const typed = (label: string, text: string | null) => t("otherTyped", { label, text: text ?? "" });
+  const relationship =
+    details.relationship === "OTHER"
+      ? typed(t("relationship.OTHER"), details.relationshipOther)
+      : details.relationship && t(`relationship.${details.relationship}`);
+  const aid = details.aid
+    .map((a) => (a === "OTHER" ? typed(t("aid.OTHER"), details.aidOther) : t(`aid.${a}`)))
+    .join(", ");
+  const yesNo = details.disabledChildren === null ? none : t(details.disabledChildren ? "yes" : "no");
   return [
     { label: t("page.fields.number"), value: details.applicationNumber },
     { label: t("page.fields.category"), value: t(`category.${details.category}`) },
+    ...(careLeaver
+      ? [{ label: t("page.fields.careGroup"), value: details.careGroup ? t(`careGroup.${details.careGroup}`) : none }]
+      : []),
     { label: t("page.fields.kind"), value: t(`kind.${details.kind}`) },
+    {
+      label: details.kind === "RENOVATION" ? t("page.fields.landHouse") : t("page.fields.land"),
+      value: t("form.land.place", {
+        province: details.buildProvinceName,
+        district: details.buildDistrictName,
+        office: details.buildOfficeName,
+      }),
+    },
+    { label: t("page.fields.landGnDivision"), value: details.landGnDivision ?? none },
     ...(atRisk ? [{ label: t("page.fields.childName"), value: details.childName ?? none }] : []),
+    {
+      label: atRisk ? t("page.fields.childDateOfBirth") : t("page.fields.dateOfBirth"),
+      value: details.dateOfBirth
+        ? t("page.dateWithAge", { date: formatDate(details.dateOfBirth), years: ageOn(details.dateOfBirth, today) })
+        : none,
+    },
     { label: atRisk ? t("page.fields.guardianName") : t("page.fields.name"), value: details.name ?? none },
+    ...(atRisk ? [{ label: t("page.fields.relationship"), value: relationship || none }] : []),
     { label: t("page.fields.nic"), value: details.nic ?? none },
+    ...(careLeaver
+      ? [
+          {
+            label: t("page.fields.maritalStatus"),
+            value: details.maritalStatus ? t(`maritalStatus.${details.maritalStatus}`) : none,
+          },
+        ]
+      : []),
     { label: t("page.fields.address"), value: details.address ?? none },
     { label: t("page.fields.gnDivision"), value: details.gnDivision ?? none },
     { label: t("page.fields.mobile1"), value: details.mobile1 ?? none },
     { label: t("page.fields.mobile2"), value: details.mobile2 ?? none },
-    { label: t("page.fields.remark"), value: details.remark ?? none },
-    { label: t("page.fields.office"), value: details.officeName },
-    { label: t("page.fields.district"), value: details.districtName },
-    // CASE-13: only when it is built in another DS division.
-    ...(details.buildDsOfficeId !== details.dsOfficeId
-      ? [{ label: t("page.fields.built"), value: `${details.buildOfficeName}, ${details.buildDistrictName}` }]
+    ...(careLeaver
+      ? [
+          {
+            label: t("page.fields.centres"),
+            value: details.centres.length > 0 ? details.centres.map((c) => centreLine(t, c)).join("\n") : none,
+          },
+        ]
       : []),
+    {
+      label: t("page.fields.familyMembers"),
+      value: details.familyMembers === null ? none : String(details.familyMembers),
+    },
+    { label: t("page.fields.disabledChildren"), value: yesNo },
+    // An empty list is "none received"; an older case that was never asked reads the same.
+    { label: t("page.fields.aid"), value: aid || t("page.noAid") },
+    { label: t("page.fields.remark"), value: details.remark ?? none },
+    { label: t("page.fields.province"), value: details.provinceName },
+    { label: t("page.fields.district"), value: details.districtName },
+    { label: t("page.fields.office"), value: details.officeName },
     { label: t("page.fields.createdAt"), value: formatDate(details.createdAt) },
   ];
 }

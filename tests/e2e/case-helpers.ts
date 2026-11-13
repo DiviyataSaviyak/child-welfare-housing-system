@@ -22,18 +22,46 @@ export function randomApplicationNumber(): string {
   return `E2E/${Date.now()}/${Math.floor(Math.random() * 1000)}`;
 }
 
-export type CaseInput = { name: string; nic: string; atRisk?: boolean; applicationNumber?: string };
+/** The kinds of help as the form names them (CASE-17). */
+export const KIND = {
+  NEW_HOUSE: "නව නිවසක් ඉදිකිරීම",
+  RENOVATION: "නිවස අලුත්වැඩියා කිරීම",
+  LAND_ONLY: "ඉඩමක් පමණක් මිලදී ගැනීම",
+  LAND_AND_BUILD: "ඉඩමක් මිලදී ගෙන නිවසක් ඉදිකිරීම",
+  LAND_WITH_HOUSE: "ඉඩමක් සහ නිවසක් එකවර මිලදී ගැනීම",
+} as const;
+export type KindName = keyof typeof KIND;
 
-/** Fills in a complete case, built in the DS division of residence (CASE-13). */
+export type CaseInput = { name: string; nic: string; atRisk?: boolean; applicationNumber?: string; kind?: KindName };
+
+/**
+ * Fills in a complete case, built in the DS division of residence (CASE-13), with change 0007's required
+ * details (CASE-14 to CASE-16): a care leaver who left care, with one centre, or a child at risk and their
+ * mother; a family of four with no children with disabilities. A new house unless `kind` says otherwise.
+ */
 export async function fillCase(page: Page, input: CaseInput) {
   await page.getByRole("radio", { name: input.atRisk ? /^අවදානම් දරුවන්/ : /^නිවාසගත/ }).check();
-  await page.getByRole("radio", { name: /^නව නිවසක් ඉදිකිරීම/ }).check();
+  if (!input.atRisk) await page.getByRole("radio", { name: /^වයස 18 පිරී සමාජගත වූ/ }).check();
+  await page.getByRole("radio", { name: new RegExp(`^${KIND[input.kind ?? "NEW_HOUSE"]}`) }).check();
   await page.getByLabel("ඉල්ලුම් අංකය *").fill(input.applicationNumber ?? randomApplicationNumber());
-  if (input.atRisk) await page.getByLabel("දරුවාගේ නම *").fill("පරීක්ෂණ දරුවා");
+  if (input.atRisk) {
+    await page.getByLabel("දරුවාගේ නම *").fill("පරීක්ෂණ දරුවා");
+    await page.getByLabel("දරුවාගේ උපන් දිනය *").fill("2012-04-03");
+  } else {
+    await page.getByLabel("උපන් දිනය *", { exact: true }).fill("2006-08-21");
+  }
   await page.getByLabel(input.atRisk ? "භාරකරුගේ නම *" : "නම *", { exact: true }).fill(input.name);
+  if (input.atRisk) await page.getByRole("radio", { name: "මව", exact: true }).check();
+  else await page.getByRole("radio", { name: "අවිවාහක", exact: true }).check();
   await page.getByLabel(input.atRisk ? "භාරකරුගේ ජාතික හැඳුනුම්පත් අංකය" : "ජාතික හැඳුනුම්පත් අංකය").fill(input.nic);
   await page.getByLabel("ලිපිනය", { exact: true }).fill("නො. 1, පරීක්ෂණ පාර, නගරය");
   await page.getByLabel("දුරකතන අංකය", { exact: true }).fill("071 000 0401");
+  if (!input.atRisk) {
+    await page.getByLabel("මධ්‍යස්ථානයේ නම *").first().fill("පරීක්ෂණ ළමා නිවාසය");
+    await page.getByLabel("පළාත *").first().selectOption({ label: "බස්නාහිර" });
+  }
+  await page.getByLabel("පවුලේ සාමාජිකයින් ගණන *").fill("4");
+  await page.getByRole("radio", { name: "නැත", exact: true }).check();
 }
 
 /**
@@ -58,6 +86,7 @@ export async function newSavedCase(page: Page, input: CaseInput) {
 /** Where each sample account lands after signing in. */
 function landing(username: string): RegExp {
   if (username.startsWith("ho")) return /\/ministry$/;
+  if (username.startsWith("ad")) return /\/admin\/users$/;
   if (username.startsWith("dt") || username.startsWith("pv") || username.startsWith("pd")) return /\/oversight$/;
   return /\/ds$/;
 }
@@ -118,19 +147,34 @@ export async function recordDsReleaseFor(district: Page, names: string[], refere
 }
 
 /**
- * A case of Homagama (ds0101), allocated today on its district's allocation letter, which the
- * Ministry opens from the case's own page, then released to the DS by the District CRPO from the release
- * screen: its allocation received, ready for its installments and building progress (INS-5, STG-5).
+ * A saved case allocated today on its district's allocation letter, which the Ministry opens from the case's
+ * own page, then released to its DS office (named as the release screen names it, such as "හෝමාගම") by the
+ * District CRPO from the release screen: its allocation received (REL-2, REL-6).
  */
-export async function releasedCase(ds: Page, ho: Page, district: Page, label: string) {
-  const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
-  const { url, number } = await newSavedCase(ds, { name, nic: randomNic() });
-  const caseId = url.split("/").at(-1) ?? "";
-  await ho.goto(`/ministry/cases/${caseId}`);
+export async function allocateAndRelease(
+  ho: Page,
+  district: Page,
+  saved: { caseId: string; name: string },
+  office: string,
+  label: string,
+) {
+  await ho.goto(`/ministry/cases/${saved.caseId}`);
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();
-  await recordLetterFor(ho, [name], `MWCA/E2E/${label}`);
+  await recordLetterFor(ho, [saved.name], `MWCA/E2E/${label}`);
   await district.goto("/oversight/release");
-  await district.getByRole("link", { name: /^හෝමාගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
-  await recordDsReleaseFor(district, [name], `DS/E2E/${label}`);
+  await district.getByRole("link", { name: new RegExp(`^${office} ප්‍රා\\.ලේ\\. කාර්යාලය`) }).click();
+  await recordDsReleaseFor(district, [saved.name], `DS/E2E/${label}`);
+}
+
+/**
+ * A case of Homagama (ds0101), a new house unless `kind` says otherwise, allocated and released to the DS
+ * (`allocateAndRelease`): its allocation received, ready for its installments and building progress (INS-5,
+ * STG-5).
+ */
+export async function releasedCase(ds: Page, ho: Page, district: Page, label: string, kind?: KindName) {
+  const name = `${TEST_CASE_NAME} ${label} ${Date.now()}`;
+  const { url, number } = await newSavedCase(ds, { name, nic: randomNic(), kind });
+  const caseId = url.split("/").at(-1) ?? "";
+  await allocateAndRelease(ho, district, { caseId, name }, "හෝමාගම", label);
   return { caseId, url, name, number };
 }

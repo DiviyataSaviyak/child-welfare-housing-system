@@ -1,12 +1,24 @@
 import ExcelJS from "exceljs";
 import type { getTranslations } from "next-intl/server";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { CaseStatus, Category, InstallmentStatus, Kind } from "@/generated/prisma/enums";
+import type {
+  Aid,
+  CareGroup,
+  CaseStatus,
+  Category,
+  InstallmentStatus,
+  Kind,
+  MaritalStatus,
+  Relationship,
+} from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { colomboDay, dateToDay, formatDate } from "@/lib/dates";
+import { formatRupees } from "@/lib/money";
 import { localName, NAMES } from "@/lib/names";
-import { KINDS } from "@/lib/validation/case";
+import { isHouseKind, KINDS, stageKind } from "@/lib/validation/case";
 import { writeAudit } from "../audit";
+import { type CentreLineValues, centreLine } from "../cases/centre-line";
+import { CENTRE_SELECT, centreValues } from "../cases/commands";
 import { type CaseFilter, caseWhere } from "../cases/queries";
 import { caseScope, type Viewer } from "../permissions";
 import { addSheet, type CellValue, type Column, workbookBytes } from "./workbook";
@@ -31,6 +43,23 @@ export type ExportRow = {
   gnDivision: string | null;
   mobile1: string | null;
   mobile2: string | null;
+  /**
+   * The registration form's details (CASE-14 to CASE-16), each null or empty on a case entered before
+   * change 0007. The date of birth is "YYYY-MM-DD": the care leaver's, or the child's.
+   */
+  dateOfBirth: string | null;
+  careGroup: CareGroup | null;
+  maritalStatus: MaritalStatus | null;
+  relationship: Relationship | null;
+  relationshipOther: string | null;
+  /** A care leaver's child development centres, in the form's order, with their provinces in the file's language. */
+  centres: CentreLineValues[];
+  familyMembers: number | null;
+  disabledChildren: boolean | null;
+  aid: Aid[];
+  aidOther: string | null;
+  /** CASE-17: the GN division where the land (or a renovation's house) is. */
+  landGnDivision: string | null;
   /** CASE-13: the district and DS office where it is built, which the money follows (EXP-1). */
   districtName: string;
   officeName: string;
@@ -60,6 +89,8 @@ export type ExportAllocation = {
 
 export type ExportInstallment = {
   status: InstallmentStatus;
+  /** Rs. 500,000 for a house kind; a land kind's own amount (INS-7). */
+  amount: number;
   /** "YYYY-MM-DD" */
   expectedOn: string | null;
   /** "YYYY-MM-DD" */
@@ -111,6 +142,17 @@ export async function caseListRows(
         gnDivision: true,
         mobile1: true,
         mobile2: true,
+        dateOfBirth: true,
+        careGroup: true,
+        maritalStatus: true,
+        relationship: true,
+        relationshipOther: true,
+        familyMembers: true,
+        disabledChildren: true,
+        aid: true,
+        aidOther: true,
+        landGnDivision: true,
+        centres: { orderBy: { position: "asc" }, select: { ...CENTRE_SELECT, province: { select: NAMES } } },
         remark: true,
         createdAt: true,
         completedAt: true,
@@ -135,14 +177,19 @@ export async function caseListRows(
     }),
   ]);
 
-  const byKind = new Map(KINDS.map((kind) => [kind, progressStages(stages.filter((stage) => stage.kind === kind))]));
+  // LAND_AND_BUILD follows the new-house stages; the other land kinds have none (STG-4).
+  const byKind = new Map(
+    KINDS.map((kind) => [kind, progressStages(stages.filter((stage) => stage.kind === stageKind(kind)))]),
+  );
 
-  return found.map(({ dsOffice, buildDsOffice, release, installments, stageUpdates, ...row }) => {
+  return found.map(({ dsOffice, buildDsOffice, release, installments, stageUpdates, centres, ...row }) => {
     const paid = installments.filter((item) => item.status === "RELEASED");
     const byNumber = new Map(installments.map((item) => [item.number, item]));
     const reached = new Map(stageUpdates.map((update) => [update.stageId, dateToDay(update.visitedOn)]));
     return {
       ...row,
+      dateOfBirth: row.dateOfBirth && dateToDay(row.dateOfBirth),
+      centres: centres.map((centre) => ({ ...centreValues(centre), provinceName: localName(centre.province, locale) })),
       officeName: localName(buildDsOffice, locale),
       districtName: localName(buildDsOffice.district, locale),
       residenceOfficeName: localName(dsOffice, locale),
@@ -161,6 +208,7 @@ export async function caseListRows(
         return item
           ? {
               status: item.status,
+              amount: item.amount,
               expectedOn: item.expectedOn && dateToDay(item.expectedOn),
               releasedOn: item.releasedOn && dateToDay(item.releasedOn),
             }
@@ -176,26 +224,48 @@ const day = (date: Date | null): CellValue => (date ? { day: colomboDay(date) } 
 
 /**
  * An installment's short note, dated, as the old sheet's cells read: the day it was paid, or the day
- * it is expected. One not started yet stays empty.
+ * it is expected. One not started yet stays empty. A land kind's note also gives its amount, which is
+ * its own (INS-7), such as "2026.03.12 දින රු. 850,000 ගෙවා ඇත"; a house kind's is always Rs. 500,000.
  */
-function installmentNote(t: CasesT, item: ExportInstallment | null): string | null {
-  if (item?.status === "RELEASED" && item.releasedOn)
-    return t("export.progress.paid", { date: formatDate(item.releasedOn) });
-  if (item?.status === "PROCESSING" && item.expectedOn)
-    return t("export.progress.expected", { date: formatDate(item.expectedOn) });
+function installmentNote(t: CasesT, locale: Locale, kind: Kind, item: ExportInstallment | null): string | null {
+  const amount = isHouseKind(kind) ? null : item && formatRupees(item.amount, locale);
+  if (item?.status === "RELEASED" && item.releasedOn) {
+    const date = formatDate(item.releasedOn);
+    return amount ? t("export.progress.paidAmount", { date, amount }) : t("export.progress.paid", { date });
+  }
+  if (item?.status === "PROCESSING" && item.expectedOn) {
+    const date = formatDate(item.expectedOn);
+    return amount ? t("export.progress.expectedAmount", { date, amount }) : t("export.progress.expected", { date });
+  }
   return null;
 }
 
+/** A choice with its typed text when it is "other", as the case page shows it. */
+const typed = (t: CasesT, label: string, text: string | null) => t("otherTyped", { label, text: text ?? "" });
+
 /**
- * EXP-1's columns, with headers in the language of the screen it was asked from (UI-9). The places are
- * where it is built, then the DS of residence (CASE-13). A case leaves empty what it hasn't reached yet:
+ * The aids received in the file's language, separated by commas, with the typed one (CASE-16). A case
+ * entered on the registration form always has a date of birth, so an empty list there means none was
+ * received; a case entered before change 0007 was never asked, and its cell stays empty.
+ */
+function aidCell(t: CasesT, r: ExportRow): string | null {
+  if (r.aid.length > 0)
+    return r.aid.map((aid) => (aid === "OTHER" ? typed(t, t("aid.OTHER"), r.aidOther) : t(`aid.${aid}`))).join(", ");
+  return r.dateOfBirth ? t("page.noAid") : null;
+}
+
+/**
+ * EXP-1's columns, with headers in the language of the screen it was asked from (UI-9). The registration
+ * form's details follow the phones (change 0007), and are empty on a case entered before it. The places
+ * are where it is built, with the land's GN division, then the DS of residence (CASE-13, CASE-17).
+ * A case leaves empty what it hasn't reached yet:
  * the Ministry's letter and the amount allocated until its allocation, the District's release, the
  * installments, what was paid and the balance until the District releases it to the DS.
  * The Ministry's progress report adds two groups, each cell a short dated note: its financial progress,
  * when each installment was paid or is expected, follows the amount allocated; its physical progress,
  * when each building stage was finished, follows the balance.
  */
-export function caseListColumns(t: CasesT): Column<ExportRow>[] {
+export function caseListColumns(t: CasesT, locale: Locale): Column<ExportRow>[] {
   return [
     { header: t("export.columns.number"), width: 16, value: (r) => r.applicationNumber },
     { header: t("export.columns.category"), width: 16, value: (r) => t(`category.${r.category}`) },
@@ -207,8 +277,41 @@ export function caseListColumns(t: CasesT): Column<ExportRow>[] {
     { header: t("export.columns.address"), width: 40, value: (r) => r.address },
     { header: t("export.columns.mobile1"), width: 14, value: (r) => r.mobile1 },
     { header: t("export.columns.mobile2"), width: 14, value: (r) => r.mobile2 },
+    { header: t("export.columns.dateOfBirth"), width: 14, value: (r) => r.dateOfBirth && { day: r.dateOfBirth } },
+    {
+      header: t("export.columns.careGroup"),
+      width: 18,
+      value: (r) => r.careGroup && t(`careGroup.${r.careGroup}`),
+    },
+    {
+      header: t("export.columns.maritalStatus"),
+      width: 14,
+      value: (r) => r.maritalStatus && t(`maritalStatus.${r.maritalStatus}`),
+    },
+    {
+      header: t("export.columns.relationship"),
+      width: 18,
+      value: (r) =>
+        r.relationship === "OTHER"
+          ? typed(t, t("relationship.OTHER"), r.relationshipOther)
+          : r.relationship && t(`relationship.${r.relationship}`),
+    },
+    {
+      header: t("export.columns.centres"),
+      width: 40,
+      wrap: true,
+      value: (r) => (r.centres.length > 0 ? r.centres.map((centre) => centreLine(t, centre)).join("\n") : null),
+    },
+    { header: t("export.columns.familyMembers"), width: 12, value: (r) => r.familyMembers },
+    {
+      header: t("export.columns.disabledChildren"),
+      width: 12,
+      value: (r) => (r.disabledChildren === null ? null : t(r.disabledChildren ? "yes" : "no")),
+    },
+    { header: t("export.columns.aid"), width: 30, wrap: true, value: (r) => aidCell(t, r) },
     { header: t("export.columns.district"), width: 16, value: (r) => r.districtName },
     { header: t("export.columns.office"), width: 22, value: (r) => r.officeName },
+    { header: t("export.columns.landGnDivision"), width: 22, value: (r) => r.landGnDivision },
     { header: t("export.columns.residenceOffice"), width: 22, value: (r) => r.residenceOfficeName },
     { header: t("export.columns.gnDivision"), width: 22, value: (r) => r.gnDivision },
     { header: t("export.columns.enteredOn"), width: 14, value: (r) => day(r.createdAt) },
@@ -230,7 +333,7 @@ export function caseListColumns(t: CasesT): Column<ExportRow>[] {
       group: t("export.progress.money"),
       width: 20,
       wrap: true,
-      value: (r) => installmentNote(t, r.installments[number - 1]),
+      value: (r) => installmentNote(t, locale, r.kind, r.installments[number - 1]),
     })),
     {
       header: t("export.columns.paidOut"),
@@ -298,7 +401,7 @@ export async function exportCaseList(
 
   const workbook = new ExcelJS.Workbook();
   workbook.created = now;
-  addSheet(workbook, t("export.sheet"), caseListColumns(t), rows);
+  addSheet(workbook, t("export.sheet"), caseListColumns(t, locale), rows);
   const bytes = await workbookBytes(workbook);
 
   await writeAudit(db, {

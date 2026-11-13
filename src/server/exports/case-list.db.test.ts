@@ -6,6 +6,7 @@ import { seed } from "../../../prisma/seed-data";
 import { addLoadData, LOAD_ID_PREFIX, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
 import { dateToDay } from "@/lib/dates";
+import { NAMES } from "@/lib/names";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { countCases, listCases, PAGE_SIZE } from "../cases/queries";
 import type { Viewer } from "../permissions";
@@ -148,7 +149,7 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       where: { OR: [{ dsOfficeId: busiestOffice }, { buildDsOfficeId: busiestOffice }], kind: "NEW_HOUSE" },
       select: {
         applicationNumber: true,
-        installments: { select: { number: true, status: true, expectedOn: true, releasedOn: true } },
+        installments: { select: { number: true, amount: true, status: true, expectedOn: true, releasedOn: true } },
         stageUpdates: { where: { stageId: { not: null } }, select: { stageId: true, visitedOn: true } },
       },
     });
@@ -160,6 +161,7 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
         return item
           ? {
               status: item.status,
+              amount: item.amount,
               expectedOn: item.expectedOn && dateToDay(item.expectedOn),
               releasedOn: item.releasedOn && dateToDay(item.releasedOn),
             }
@@ -176,6 +178,162 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
     expect(rows.some((r) => r.installments[0]?.status === "RELEASED")).toBe(true);
     expect(rows.some((r) => r.installments.some((i) => i?.status === "PROCESSING"))).toBe(true);
     expect(rows.some((r) => r.progress[0] !== null)).toBe(true);
+  });
+
+  /** Change 0007's details of a case (CASE-14 to CASE-17), and the same left empty, as on an older case. */
+  const DETAILS = {
+    dateOfBirth: true,
+    careGroup: true,
+    maritalStatus: true,
+    familyMembers: true,
+    disabledChildren: true,
+    aid: true,
+    aidOther: true,
+    landGnDivision: true,
+  } as const;
+  const NO_DETAILS = {
+    dateOfBirth: null,
+    careGroup: null,
+    maritalStatus: null,
+    familyMembers: null,
+    disabledChildren: null,
+    aid: [],
+    aidOther: null,
+    landGnDivision: null,
+  };
+
+  it("reads the registration form's details and centres, and leaves them empty on an older case (change 0007)", async () => {
+    const found = await db.case.findFirstOrThrow({
+      where: { dsOfficeId: busiestOffice, category: "CARE_LEAVER", id: { startsWith: LOAD_ID_PREFIX } },
+      select: { id: true, applicationNumber: true, ...DETAILS, centres: true },
+    });
+    const { id, applicationNumber, centres, ...details } = found;
+    const [western, central] = await db.province.findMany({
+      orderBy: { id: "asc" },
+      take: 2,
+      select: { id: true, ...NAMES },
+    });
+    // The search also finds longer numbers that start with this one.
+    const row = async (locale: "si" | "en") =>
+      (await caseListRows(db, ho, { q: applicationNumber, dsOfficeId: busiestOffice }, locale))!.find(
+        (r) => r.applicationNumber === applicationNumber,
+      )!;
+
+    // A case entered before the change has none of the new details.
+    await db.careCentre.deleteMany({ where: { caseId: id } });
+    await db.case.update({ where: { id }, data: NO_DETAILS });
+    expect(await row("si")).toMatchObject({
+      dateOfBirth: null,
+      careGroup: null,
+      maritalStatus: null,
+      centres: [],
+      familyMembers: null,
+      disabledChildren: null,
+      aid: [],
+      landGnDivision: null,
+    });
+
+    await db.case.update({
+      where: { id },
+      data: {
+        dateOfBirth: new Date("2004-08-09T00:00:00Z"),
+        careGroup: "IN_CARE",
+        maritalStatus: "MARRIED",
+        familyMembers: 3,
+        disabledChildren: true,
+        aid: ["ASWESUMA", "OTHER"],
+        aidOther: "පරීක්ෂණ ආධාරය",
+        landGnDivision: "පරීක්ෂණ වසම",
+        centres: {
+          create: [
+            { position: 2, name: "දෙවන පරීක්ෂණ නිවාසය", provinceId: central.id, fromYear: 2016 },
+            {
+              position: 1,
+              name: "පරීක්ෂණ ළමා නිවාසය",
+              provinceId: western.id,
+              fromYear: 2010,
+              fromMonth: 3,
+              untilYear: 2016,
+              untilMonth: 1,
+              untilDay: 31,
+            },
+          ],
+        },
+      },
+    });
+    try {
+      const read = await row("en");
+      expect(read).toMatchObject({
+        dateOfBirth: "2004-08-09",
+        careGroup: "IN_CARE",
+        maritalStatus: "MARRIED",
+        familyMembers: 3,
+        disabledChildren: true,
+        aid: ["ASWESUMA", "OTHER"],
+        aidOther: "පරීක්ෂණ ආධාරය",
+        landGnDivision: "පරීක්ෂණ වසම",
+      });
+      // In the form's order, each date as precise as it was entered, each province in the file's language.
+      expect(read.centres).toEqual([
+        {
+          name: "පරීක්ෂණ ළමා නිවාසය",
+          provinceId: western.id,
+          provinceName: western.nameEn,
+          from: { year: 2010, month: 3, day: null },
+          until: { year: 2016, month: 1, day: 31 },
+        },
+        {
+          name: "දෙවන පරීක්ෂණ නිවාසය",
+          provinceId: central.id,
+          provinceName: central.nameEn,
+          from: { year: 2016, month: null, day: null },
+          until: null,
+        },
+      ]);
+    } finally {
+      // The load-test case as it was made, for the tests after this one.
+      await db.careCentre.deleteMany({ where: { caseId: id } });
+      await db.case.update({ where: { id }, data: details });
+      await db.careCentre.createMany({ data: centres });
+    }
+  });
+
+  it("gives a land case its installments' own amounts, and LAND_AND_BUILD the new-house stages (INS-7, STG-4)", async () => {
+    const found = await db.case.findFirstOrThrow({
+      where: {
+        buildDsOfficeId: busiestOffice,
+        kind: "NEW_HOUSE",
+        id: { startsWith: LOAD_ID_PREFIX },
+        installments: { some: { number: 1, status: "RELEASED" } },
+        stageUpdates: { some: { stageId: { not: null } } },
+      },
+      select: { id: true, applicationNumber: true },
+    });
+    const row = async () =>
+      (await caseListRows(db, ho, { q: found.applicationNumber, dsOfficeId: busiestOffice }, "si"))!.find(
+        (r) => r.applicationNumber === found.applicationNumber,
+      )!;
+    const house = await row();
+    expect(house.progress.some((day) => day !== null)).toBe(true);
+
+    await db.$transaction([
+      db.case.update({ where: { id: found.id }, data: { kind: "LAND_AND_BUILD" } }),
+      db.installment.updateMany({ where: { caseId: found.id, number: 1 }, data: { amount: 900_000 } }),
+    ]);
+    try {
+      const land = await row();
+      expect(land.installments[0]).toMatchObject({ status: "RELEASED", amount: 900_000 });
+      expect(land.progress).toEqual(house.progress);
+
+      await db.case.update({ where: { id: found.id }, data: { kind: "LAND_ONLY" } });
+      const landOnly = await row();
+      expect(landOnly.progress).toEqual([null, null, null, null]);
+    } finally {
+      await db.$transaction([
+        db.case.update({ where: { id: found.id }, data: { kind: "NEW_HOUSE" } }),
+        db.installment.updateMany({ where: { caseId: found.id, number: 1 }, data: { amount: 500_000 } }),
+      ]);
+    }
   });
 
   it("keeps a DS officer to their own office, and gives an admin nothing (PRM-1, PRM-2)", async () => {

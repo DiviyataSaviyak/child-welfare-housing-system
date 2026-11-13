@@ -5,8 +5,9 @@ import { useActionState, useState, useTransition } from "react";
 import { FormError, FormField, FormTextArea } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
 import { formatDate } from "@/lib/dates";
-import { formatRupees, INSTALLMENT_AMOUNT } from "@/lib/money";
+import { formatRupees } from "@/lib/money";
 import {
+  type AmountLimit,
   type DayLimits,
   PAID_FIELDS,
   parsePaidForm,
@@ -16,12 +17,14 @@ import {
 } from "@/lib/validation/progress";
 import type { ProgressAction } from "./types";
 
-type Field = "expectedOn" | "releasedOn" | "purpose" | "note";
+type Field = "amount" | "expectedOn" | "releasedOn" | "purpose" | "note";
 
 /**
  * The DS office's button on the next installment, as in the prototype: "start the payment" with the
- * day it expects to pay (INS-3), then "mark paid" with the day paid (INS-4). Each opens a pop-up whose
- * form the browser checks as the server does; what was typed stays after a refusal (ERR-1).
+ * day it expects to pay (INS-3), then "mark paid" with the day paid (INS-4). For a land kind, starting it
+ * also asks its amount, offering the balance (fixed for installment 4), and "correct" changes a started one
+ * while it is being paid (INS-7, INS-8). Each opens a pop-up whose form the browser checks as the server
+ * does; what was typed stays after a refusal (ERR-1).
  */
 export function InstallmentAction({
   step,
@@ -30,17 +33,23 @@ export function InstallmentAction({
   number,
   installmentName,
   limits,
+  amount,
+  amountLimit = null,
   initial,
   action,
 }: {
-  step: "start" | "pay";
+  step: "start" | "pay" | "correct";
   caseId: string;
   version: number;
   number: number;
   installmentName: string;
   /** From startLimits() or paidLimits(). */
   limits: DayLimits;
-  initial: { day: string; purpose: string; note: string };
+  /** The installment's amount: shown when it isn't typed. */
+  amount: number;
+  /** A land kind's amount, typed when starting or correcting (INS-7, INS-8); null when it is fixed by the kind. */
+  amountLimit?: AmountLimit | null;
+  initial: { amount: string; day: string; purpose: string; note: string };
   action: ProgressAction;
 }) {
   const t = useTranslations("progress");
@@ -48,17 +57,22 @@ export function InstallmentAction({
   const [state, dispatch, pending] = useActionState(action, { error: null, errors: {} });
   const [, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
-  const dayField = step === "start" ? "expectedOn" : "releasedOn";
+  const paying = step === "pay";
+  const dayField = paying ? "releasedOn" : "expectedOn";
   const [values, setValues] = useState<Record<Field, string>>({
-    expectedOn: step === "start" ? initial.day : "",
-    releasedOn: step === "pay" ? initial.day : "",
+    amount: initial.amount,
+    expectedOn: paying ? "" : initial.day,
+    releasedOn: paying ? initial.day : "",
     purpose: initial.purpose,
     note: initial.note,
   });
+  const typed = !paying && amountLimit !== null;
   // The browser's own checks; null once the form has gone to the server, whose answer then shows.
   const [checkErrors, setCheckErrors] = useState<Partial<Record<Field, ProgressErrorKey>> | null>(null);
   const errors: Partial<Record<Field, ProgressErrorKey>> = checkErrors ?? state.errors;
-  const id = (field: Field) => `installment-${number}-${field}`;
+  // "Mark paid" and "correct" can share a row, so the correction's ids differ.
+  const prefix = step === "correct" ? `installment-${number}-correct` : `installment-${number}`;
+  const id = (field: Field) => `${prefix}-${field}`;
   // The release day comes first in the limits; the date picker starts at the latest earliest day.
   const releaseDay = limits.earliest[0]?.day ?? null;
   const minDay = limits.earliest
@@ -68,7 +82,7 @@ export function InstallmentAction({
 
   function submit() {
     const read = (field: Field) => values[field];
-    const checked = step === "start" ? parseStartForm(read, limits) : parsePaidForm(read, limits);
+    const checked = paying ? parsePaidForm(read, limits) : parseStartForm(read, limits, typed ? amountLimit : null);
     if (!checked.ok) {
       setCheckErrors(checked.errors);
       return;
@@ -78,7 +92,7 @@ export function InstallmentAction({
     form.set("caseId", caseId);
     form.set("version", String(version));
     form.set("number", String(number));
-    for (const field of step === "start" ? START_FIELDS : PAID_FIELDS) form.set(field, values[field]);
+    for (const field of paying ? PAID_FIELDS : START_FIELDS) form.set(field, values[field]);
     startTransition(() => dispatch(form));
   }
 
@@ -88,23 +102,24 @@ export function InstallmentAction({
     const key = errors[field];
     return key ? t(`errors.${key}`) : undefined;
   };
-  const title = t(step === "start" ? "installments.startTitle" : "installments.payTitle", {
-    installment: installmentName,
-  });
+  const title = t(`installments.${step}Title`, { installment: installmentName });
+  const buttonLook = {
+    start: "border border-primary bg-card text-primary",
+    pay: "bg-primary text-primary-foreground",
+    correct: "border border-input bg-card text-foreground",
+  }[step];
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`h-11.5 rounded-lg px-4.5 text-base font-semibold ${
-          step === "start" ? "border border-primary bg-card text-primary" : "bg-primary text-primary-foreground"
-        }`}
+        className={`h-11.5 rounded-lg px-4.5 text-base font-semibold ${buttonLook}`}
       >
-        {t(step === "start" ? "installments.start" : "installments.pay")}
+        {t(`installments.${step}`)}
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} labelledBy={`installment-${number}-title`}>
-        <h2 id={`installment-${number}-title`} className="text-[22px] font-bold">
+      <Modal open={open} onClose={() => setOpen(false)} labelledBy={`${prefix}-title`}>
+        <h2 id={`${prefix}-title`} className="text-[22px] font-bold">
           {title}
         </h2>
         <form
@@ -115,16 +130,31 @@ export function InstallmentAction({
           }}
           className="flex flex-col gap-4"
         >
-          <div className="flex items-center justify-between gap-4 rounded-lg bg-background px-4.5 py-3">
-            <span className="font-semibold">{t("installments.amount")}</span>
-            <span className="text-[22px] font-bold">{formatRupees(INSTALLMENT_AMOUNT, locale)}</span>
-          </div>
+          {typed ? (
+            <FormField
+              id={id("amount")}
+              inputMode="numeric"
+              label={t("installments.amountLand")}
+              help={t(amountLimit.fixed ? "installments.amountFixedHelp" : "installments.amountHelp", {
+                balance: formatRupees(amountLimit.max, locale),
+              })}
+              readOnly={amountLimit.fixed}
+              value={values.amount}
+              onChange={set("amount")}
+              error={errorText("amount")}
+            />
+          ) : (
+            <div className="flex items-center justify-between gap-4 rounded-lg bg-background px-4.5 py-3">
+              <span className="font-semibold">{t("installments.amount")}</span>
+              <span className="text-[22px] font-bold">{formatRupees(amount, locale)}</span>
+            </div>
+          )}
           <FormField
             id={id(dayField)}
             type="date"
-            label={t(step === "start" ? "installments.expectedOn" : "installments.paidOn")}
+            label={t(paying ? "installments.paidOn" : "installments.expectedOn")}
             help={
-              step === "start" && releaseDay
+              !paying && releaseDay
                 ? t("installments.expectedOnHelp", { date: formatDate(releaseDay) })
                 : t("installments.paidOnHelp")
             }
@@ -134,7 +164,7 @@ export function InstallmentAction({
             onChange={set(dayField)}
             error={errorText(dayField)}
           />
-          {step === "start" && (
+          {!paying && (
             <FormField
               id={id("purpose")}
               label={t("installments.purpose")}
@@ -152,7 +182,7 @@ export function InstallmentAction({
             error={errorText("note")}
           />
           {checkErrors === null && state.error && (
-            <FormError id={`installment-${number}-error`} message={t(`errors.${state.error}`)} />
+            <FormError id={`${prefix}-error`} message={t(`errors.${state.error}`)} />
           )}
           <div className="flex justify-end gap-3">
             <button

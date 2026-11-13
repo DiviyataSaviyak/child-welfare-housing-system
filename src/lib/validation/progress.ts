@@ -9,7 +9,10 @@ import { parseDay } from "@/lib/dates";
 export type DayError =
   "dateRequired" | "dateInvalid" | "dateInFuture" | "dateBeforeRelease" | "dateBeforePrevious" | "dateBeforeStage";
 
-export type ProgressErrorKey = DayError | "purposeTooLong" | "noteTooLong" | "stageRequired" | "stageNotLater";
+export type AmountError = "amountRequired" | "amountInvalid" | "amountOverBalance" | "amountNotBalance";
+
+export type ProgressErrorKey =
+  DayError | AmountError | "purposeTooLong" | "noteTooLong" | "stageRequired" | "stageNotLater";
 
 /** A day must be no later than `latest` (when there is one), and on or after each earliest day, checked in order. */
 export type DayLimits = {
@@ -60,26 +63,64 @@ function parse<F extends string, V>(
   return { ok: true, value: { ...(result.data as object), [dateField]: (raw[dateField] ?? "").trim() } as V };
 }
 
-// --- Starting an installment's payment (INS-3) ------------------------------------------------
+// --- An installment's amount, for a land kind (INS-7, INS-8) --------------------------------------
 
-export const START_FIELDS = ["expectedOn", "purpose", "note"] as const;
+/** The most a land case's installment may be (the balance), and whether it must be exactly that (installment 4). */
+export type AmountLimit = { max: number; fixed: boolean };
+
+/**
+ * INS-7: a whole number of rupees, at least Rs. 1 and no more than the balance; installment 4 is the whole
+ * balance. Spaces and the thousands' commas are allowed, as in "850,000".
+ */
+export function parseAmount(
+  text: string,
+  limit: AmountLimit,
+): { ok: true; value: number } | { ok: false; error: AmountError } {
+  const value = text.replace(/[\s,]/g, "");
+  if (!value) return { ok: false, error: "amountRequired" };
+  if (!/^\d{1,9}$/.test(value) || Number(value) < 1) return { ok: false, error: "amountInvalid" };
+  const amount = Number(value);
+  if (amount > limit.max) return { ok: false, error: "amountOverBalance" };
+  if (limit.fixed && amount !== limit.max) return { ok: false, error: "amountNotBalance" };
+  return { ok: true, value: amount };
+}
+
+// --- Starting an installment's payment (INS-3), or correcting a land case's (INS-8) ------------
+
+export const START_FIELDS = ["amount", "expectedOn", "purpose", "note"] as const;
 export type StartField = (typeof START_FIELDS)[number];
-export type StartValues = { expectedOn: string; purpose: string | null; note: string | null };
+/** `amount` is null for a house kind, whose installments are always Rs. 500,000 (INS-1). */
+export type StartValues = { amount: number | null; expectedOn: string; purpose: string | null; note: string | null };
 
 /** INS-3: the expected date is on or after the District's release of the Rs. 2,000,000 to the DS (change 0006); it may be in the future. */
 export function startLimits(releasedOn: string): DayLimits {
   return { latest: null, earliest: [{ day: releasedOn, error: "dateBeforeRelease" }] };
 }
 
+/** `amount` is the land case's limit (INS-7); null for a house kind, whose form sends no amount. */
 export function parseStartForm(
   read: (field: StartField) => string,
   limits: DayLimits,
+  amount: AmountLimit | null = null,
 ): Parsed<StartField, StartValues> {
   const texts = z.object({
     purpose: optionalText(PURPOSE_MAX, "purposeTooLong"),
     note: optionalText(INSTALLMENT_NOTE_MAX, "noteTooLong"),
   });
-  return parse(START_FIELDS, read, texts, "expectedOn", dayProblem(read("expectedOn"), limits));
+  const fields = START_FIELDS.filter((field) => field !== "amount");
+  const parsed = parse<StartField, Omit<StartValues, "amount">>(
+    fields,
+    read,
+    texts,
+    "expectedOn",
+    dayProblem(read("expectedOn"), limits),
+  );
+  const checked = amount ? parseAmount(read("amount"), amount) : null;
+  if (checked && !checked.ok) {
+    return { ok: false, errors: { amount: checked.error, ...(parsed.ok ? {} : parsed.errors) } };
+  }
+  if (!parsed.ok) return parsed;
+  return { ok: true, value: { amount: checked?.value ?? null, ...parsed.value } };
 }
 
 // --- Marking an installment paid (INS-4) ------------------------------------------------------

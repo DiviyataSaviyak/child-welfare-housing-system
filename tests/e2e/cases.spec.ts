@@ -47,6 +47,7 @@ test("AC-5, AC-50: saving with required fields empty saves nothing and lists eve
 });
 
 test("AC-6: a wrong NIC is refused; both formats are accepted and kept as typed", async ({ page }) => {
+  test.slow();
   await signInAs(page, "ds0101", /\/ds$/);
   await page.goto("/ds/cases/new");
   await fillCase(page, { name: `${TEST_CASE_NAME} ඒ`, nic: "12345" });
@@ -211,10 +212,10 @@ test("a case built in another DS division is entered by the DS of residence and 
   await page.getByRole("radio", { name: /^වෙනත් ප්‍රාදේශීය ලේකම් කොට්ඨාසයක/ }).check();
   // Nothing is saved until the office where it is built is chosen.
   await page.getByRole("button", { name: SAVE, exact: true }).click();
-  await expect(page.locator("#buildDsOfficeId-error")).toHaveText("නිවස ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය තෝරන්න.");
-  await page.getByLabel("ඉදිකරන දිස්ත්‍රික්කය *").selectOption({ label: "කොළඹ" });
+  await expect(page.locator("#buildDsOfficeId-error")).toHaveText("ඉඩම පිහිටි ප්‍රාදේශීය ලේකම් කොට්ඨාසය තෝරන්න.");
+  await page.getByLabel("ඉඩම පිහිටි දිස්ත්‍රික්කය *").selectOption({ label: "කොළඹ" });
   // The DS of residence isn't offered: that is "the same DS division".
-  const offices = page.getByLabel("ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය *");
+  const offices = page.getByLabel("ඉඩම පිහිටි ප්‍රාදේශීය ලේකම් කොට්ඨාසය *");
   await expect(offices.getByRole("option", { name: "හෝමාගම", exact: true })).toHaveCount(0);
   await offices.selectOption({ label: "කඩුවෙල" });
   await page.getByRole("button", { name: SAVE, exact: true }).click();

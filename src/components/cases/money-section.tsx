@@ -1,9 +1,11 @@
 import { FileText } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
-import type { InstallmentStatus } from "@/generated/prisma/enums";
+import type { InstallmentStatus, Kind } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
 import { formatRupees, paidOut } from "@/lib/money";
+import { isHouseKind } from "@/lib/validation/case";
 import type { InstallmentDetails, ReleaseDetails } from "@/server/cases/queries";
+import { isUpcoming, landBalance, schedule, type Upcoming } from "@/server/installments/rules";
 import type { Audience } from "./case-view";
 
 /** Installment status colours from the prototype; each pair meets WCAG AA contrast (UI-6). */
@@ -32,7 +34,9 @@ async function ScanLink({ id }: { id: string }) {
  * "මූල්‍ය ප්‍රගතිය" as in the prototype: the Rs. 2,000,000 the Ministry allocated to the district by an
  * allocation letter and the District released to the DS office, what has been paid to the beneficiary, what
  * the office still holds, the Ministry's letter and the District's release under it, and the four
- * installments (REL-3, REL-7, INS-1). While the Ministry's allocation waits for the District's release
+ * installments (REL-3, REL-7, INS-1). A land kind's installments are the ones started, each with its own
+ * amount, then the next one to start while some of the Rs. 2,000,000 is left, or a line saying the whole
+ * allocation is paid or being paid (INS-7). While the Ministry's allocation waits for the District's release
  * (`ALLOCATED_TO_DISTRICT`, no installments yet), it shows only the letter and says so (change 0006). The
  * Ministry and the view-only area read the money as released to the District Secretary, the DS office as
  * received from the District Secretariat. `correction` is the Ministry's button to correct the letter
@@ -41,6 +45,7 @@ async function ScanLink({ id }: { id: string }) {
  */
 export async function MoneySection({
   audience,
+  kind,
   release,
   installments,
   correction,
@@ -48,17 +53,22 @@ export async function MoneySection({
   actions,
 }: {
   audience: Audience;
+  kind: Kind;
   release: ReleaseDetails;
   installments: InstallmentDetails[];
   correction?: React.ReactNode;
   dsCorrection?: React.ReactNode;
-  actions?: (item: InstallmentDetails) => React.ReactNode;
+  actions?: (item: InstallmentDetails | Upcoming) => React.ReactNode;
 }) {
   const [t, tp, locale] = await Promise.all([getTranslations("cases"), getTranslations("progress"), getLocale()]);
   const paid = installments.filter((i) => i.status === "RELEASED");
   const paidAmount = paidOut(installments);
   const { letter, dsRelease } = release;
-  const waiting = installments.length === 0;
+  // A land case has no installment until the DS starts one (INS-7), so the District's release decides.
+  const waiting = !dsRelease;
+  const house = isHouseKind(kind);
+  const rows = schedule(kind, installments);
+  const allStarted = !house && landBalance(installments) <= 0;
   const tiles = [
     audience !== "ds"
       ? {
@@ -80,7 +90,7 @@ export async function MoneySection({
     {
       label: t("money.left"),
       amount: release.amount - paidAmount,
-      detail: t("money.count", { count: installments.length - paid.length }),
+      detail: house ? t("money.count", { count: installments.length - paid.length }) : "",
     },
   ];
 
@@ -174,7 +184,7 @@ export async function MoneySection({
             </tr>
           </thead>
           <tbody>
-            {installments.map((item) => (
+            {rows.map((item) => (
               <tr key={item.number} className="border-b last:border-b-0">
                 <td className="py-2.5 pr-3">
                   <div className="flex items-center gap-3">
@@ -187,12 +197,14 @@ export async function MoneySection({
                     <span className="flex flex-col">
                       <span className="font-semibold">{t(`installment.name.${item.number as 1 | 2 | 3 | 4}`)}</span>
                       <span className="text-sm text-muted-foreground">
-                        {item.purpose
-                          ? t("money.amountPurpose", {
-                              amount: formatRupees(item.amount, locale),
-                              purpose: item.purpose,
-                            })
-                          : formatRupees(item.amount, locale)}
+                        {isUpcoming(item)
+                          ? t("money.balanceToPay", { amount: formatRupees(item.amount, locale) })
+                          : item.purpose
+                            ? t("money.amountPurpose", {
+                                amount: formatRupees(item.amount, locale),
+                                purpose: item.purpose,
+                              })
+                            : formatRupees(item.amount, locale)}
                       </span>
                     </span>
                   </div>
@@ -203,6 +215,7 @@ export async function MoneySection({
                     {item.releasedOn ? (
                       <span className="text-sm">{t("money.paidOn", { date: formatDate(item.releasedOn) })}</span>
                     ) : (
+                      !isUpcoming(item) &&
                       item.expectedOn && (
                         <span className="text-sm">{t("money.expectedOn", { date: formatDate(item.expectedOn) })}</span>
                       )
@@ -214,6 +227,9 @@ export async function MoneySection({
             ))}
           </tbody>
         </table>
+      )}
+      {!waiting && allStarted && (
+        <p className="rounded-lg bg-background px-4 py-3 font-semibold text-primary">{t("money.allStarted")}</p>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-[#3F4843]">

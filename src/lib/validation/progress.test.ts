@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   dayProblem,
+  parseAmount,
   NOTE_ONLY,
   paidLimits,
   parsePaidForm,
@@ -47,7 +48,10 @@ describe("starting a payment (INS-3)", () => {
     });
     expect(
       parseStartForm(read({ expectedOn: "2027-01-15", purpose: " අත්තිවාරම සඳහා " }), startLimits(RELEASED)),
-    ).toEqual({ ok: true, value: { expectedOn: "2027-01-15", purpose: "අත්තිවාරම සඳහා", note: null } });
+    ).toEqual({
+      ok: true,
+      value: { amount: null, expectedOn: "2027-01-15", purpose: "අත්තිවාරම සඳහා", note: null },
+    });
   });
 
   it("keeps the purpose to 200 characters and the note to 500", () => {
@@ -56,6 +60,45 @@ describe("starting a payment (INS-3)", () => {
       startLimits(RELEASED),
     );
     expect(result).toEqual({ ok: false, errors: { purpose: "purposeTooLong", note: "noteTooLong" } });
+  });
+});
+
+describe("a land case's installment amount (INS-7, INS-8)", () => {
+  const read = (values: Partial<Record<StartField, string>>) => (field: StartField) => values[field] ?? "";
+
+  it("takes whole rupees from Rs. 1 to the balance, with or without commas", () => {
+    const limit = { max: 1_100_000, fixed: false };
+    expect(parseAmount("", limit)).toEqual({ ok: false, error: "amountRequired" });
+    expect(parseAmount("0", limit)).toEqual({ ok: false, error: "amountInvalid" });
+    expect(parseAmount("-5", limit)).toEqual({ ok: false, error: "amountInvalid" });
+    expect(parseAmount("450000.50", limit)).toEqual({ ok: false, error: "amountInvalid" });
+    expect(parseAmount("1,200,000", limit)).toEqual({ ok: false, error: "amountOverBalance" });
+    expect(parseAmount(" 450,000 ", limit)).toEqual({ ok: true, value: 450_000 });
+    expect(parseAmount("1100000", limit)).toEqual({ ok: true, value: 1_100_000 });
+  });
+
+  it("makes installment 4 the whole balance", () => {
+    const limit = { max: 300_000, fixed: true };
+    expect(parseAmount("200000", limit)).toEqual({ ok: false, error: "amountNotBalance" });
+    expect(parseAmount("300,000", limit)).toEqual({ ok: true, value: 300_000 });
+  });
+
+  it("is asked only for a land case, beside the day", () => {
+    const limits = startLimits(RELEASED);
+    expect(parseStartForm(read({ amount: "x" }), limits)).toEqual({
+      ok: false,
+      errors: { expectedOn: "dateRequired" },
+    });
+    expect(parseStartForm(read({}), limits, { max: 2_000_000, fixed: false })).toEqual({
+      ok: false,
+      errors: { amount: "amountRequired", expectedOn: "dateRequired" },
+    });
+    expect(
+      parseStartForm(read({ amount: "900,000", expectedOn: TODAY, purpose: "ඉඩම මිලදී ගැනීම" }), limits, {
+        max: 2_000_000,
+        fixed: false,
+      }),
+    ).toEqual({ ok: true, value: { amount: 900_000, expectedOn: TODAY, purpose: "ඉඩම මිලදී ගැනීම", note: null } });
   });
 });
 

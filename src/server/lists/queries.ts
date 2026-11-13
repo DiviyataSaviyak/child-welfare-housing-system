@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { Kind } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES, type Names } from "@/lib/names";
+import { type HouseKind, isHouseKind } from "@/lib/validation/case";
 import { type CaseScope, caseScope, type Viewer } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 
@@ -81,18 +81,26 @@ export async function officesOfDistrict(
 
 export type StageRow = Names & { id: number; sortOrder: number; active: boolean };
 
-export async function stagesByKind(db: PrismaClient): Promise<Record<Kind, StageRow[]>> {
+/** The stage lists, which only the house kinds have (LST-4). */
+export async function stagesByKind(db: PrismaClient): Promise<Record<HouseKind, StageRow[]>> {
   const stages = await db.stageDefinition.findMany({
     orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
     select: { id: true, kind: true, ...NAMES, sortOrder: true, active: true },
   });
-  const byKind: Record<Kind, StageRow[]> = { NEW_HOUSE: [], RENOVATION: [] };
-  for (const { kind, ...stage } of stages) byKind[kind].push(stage);
+  const byKind: Record<HouseKind, StageRow[]> = { NEW_HOUSE: [], RENOVATION: [] };
+  for (const { kind, ...stage } of stages) if (isHouseKind(kind)) byKind[kind].push(stage);
   return byKind;
 }
 
 export type OfficeOption = { id: number; name: string; active: boolean };
-export type DistrictOptions = { id: number; name: string; offices: OfficeOption[] };
+/** A district with its DS offices; `provinceName` is the province it is in (CASE-3). */
+export type DistrictOptions = { id: number; name: string; provinceName: string; offices: OfficeOption[] };
+
+/** The nine provinces, in the screen's language, for the care leaver's centres (CASE-14). */
+export async function provinceOptions(db: PrismaClient, locale: Locale): Promise<{ id: number; name: string }[]> {
+  const provinces = await db.province.findMany({ orderBy: { id: "asc" }, select: { id: true, ...NAMES } });
+  return provinces.map((p) => ({ id: p.id, name: localName(p, locale) }));
+}
 
 /** Every district with its DS offices, for choosing a case's office (CASE-3) or filtering a list (FND-1). */
 export async function districtsWithOffices(
@@ -106,12 +114,14 @@ export async function districtsWithOffices(
     select: {
       id: true,
       ...NAMES,
+      province: { select: NAMES },
       dsOffices: { where: only.offices, orderBy: { id: "asc" }, select: { id: true, ...NAMES, active: true } },
     },
   });
   return districts.map((d) => ({
     id: d.id,
     name: localName(d, locale),
+    provinceName: localName(d.province, locale),
     offices: d.dsOffices.map((o) => ({ id: o.id, name: localName(o, locale), active: o.active })),
   }));
 }

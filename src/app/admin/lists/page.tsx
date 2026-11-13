@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import { Kind } from "@/generated/prisma/enums";
 import { localName, type Names } from "@/lib/names";
+import { HOUSE_KINDS } from "@/lib/validation/case";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { listDistricts, officesOfDistrict, stagesByKind } from "@/server/lists/queries";
@@ -200,7 +200,7 @@ async function Stages() {
 
   return (
     <div className="grid grid-cols-2 items-start gap-6">
-      {Object.values(Kind).map((kind) => (
+      {HOUSE_KINDS.map((kind) => (
         <section
           key={kind}
           aria-labelledby={`stages-${kind}`}

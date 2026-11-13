@@ -10,10 +10,48 @@ datasource db {
   provider = "postgresql"
 }
 
-/// Kind of help (application spec, Data model). Land-only cases are out of scope.
+/// Kind of help (application spec, Data model; CASE-17). The first two are the house kinds, paid as four
+/// installments of Rs. 500,000 (INS-1); the last three the land kinds, paid in up to four installments of
+/// the amounts the purchase needs (INS-7). `HOUSE_KINDS`, `LAND_KINDS`, `isHouseKind` and `stageKind` in
+/// src/lib/validation/case.ts name the groups; nothing else lists them.
 enum Kind {
   NEW_HOUSE
   RENOVATION
+  LAND_ONLY
+  LAND_AND_BUILD
+  LAND_WITH_HOUSE
+}
+
+/// A care leaver's group (CASE-14): aged 16 to 18 and still in a children's home or in probation care, or
+/// left at 18 and now living in society.
+enum CareGroup {
+  IN_CARE
+  LEFT_CARE
+}
+
+/// A care leaver's marital status (CASE-14).
+enum MaritalStatus {
+  UNMARRIED
+  MARRIED
+}
+
+/// How the parent or guardian named on a child at risk's case is related to the child (CASE-15). `OTHER`
+/// comes with the relationship typed.
+enum Relationship {
+  MOTHER
+  FATHER
+  OTHER
+}
+
+/// The aid a beneficiary's family already receives (CASE-16). `OTHER` comes with the aid typed.
+enum Aid {
+  ARTHA
+  KIDNEY
+  SAMURDHI
+  ASWESUMA
+  ELDERLY
+  DISABILITY
+  OTHER
 }
 
 /// Which of the sheet's two lists a beneficiary belongs to (application spec, Data model).
@@ -77,12 +115,14 @@ enum NotificationType {
 
 /// Places and stages carry a name in each screen language (UI-9).
 model Province {
-  id        Int        @id @default(autoincrement())
-  nameEn    String     @unique @map("name_en")
-  nameSi    String     @unique @map("name_si")
-  nameTa    String     @unique @map("name_ta")
+  id        Int          @id @default(autoincrement())
+  nameEn    String       @unique @map("name_en")
+  nameSi    String       @unique @map("name_si")
+  nameTa    String       @unique @map("name_ta")
   districts District[]
   users     User[]
+  /// The child development centres in the province that care leavers lived in (CASE-14).
+  centres   CareCentre[]
 
   @@map("province")
 }
@@ -128,7 +168,8 @@ model DsOffice {
   @@map("ds_office")
 }
 
-/// Building stages per kind of help (LST-4). A used stage is deactivated, never removed.
+/// Building stages per kind of help (LST-4). A used stage is deactivated, never removed. Only the house
+/// kinds have a list (a database check); a `LAND_AND_BUILD` case follows the `NEW_HOUSE` one (STG-4).
 model StageDefinition {
   id        Int           @id @default(autoincrement())
   kind      Kind
@@ -335,57 +376,81 @@ model UnknownSignInName {
 
 /// A beneficiary's case. Never deleted, except drafts (CASE-8).
 model Case {
-  id                   String         @id
+  id                String         @id
   /// The Application Number (ඉල්ලුම් අංකය) the DS types from the paper application, kept as typed without
   /// spaces at either end (CASE-12). Version 1's case numbers became Application Numbers.
-  applicationNumber    String         @map("application_number")
+  applicationNumber String         @map("application_number")
   /// The Application Number in capitals without spaces (`applicationKey` in src/server/cases/numbers.ts):
   /// unique within the DS office of residence.
-  applicationKey       String         @map("application_key")
+  applicationKey    String         @map("application_key")
   /// The DS office of residence: it enters the case, and edits it while it awaits its allocation.
-  dsOfficeId           Int            @map("ds_office_id")
-  dsOffice             DsOffice       @relation("CaseResidence", fields: [dsOfficeId], references: [id])
+  dsOfficeId        Int            @map("ds_office_id")
+  dsOffice          DsOffice       @relation("CaseResidence", fields: [dsOfficeId], references: [id])
   /// The DS office where the house is built or the land bought (CASE-13): the DS office of residence
   /// unless the form says otherwise. The money, the installments and the stages follow it.
-  buildDsOfficeId      Int            @map("build_ds_office_id")
-  buildDsOffice        DsOffice       @relation("CaseBuilt", fields: [buildDsOfficeId], references: [id])
-  category             Category
-  kind                 Kind
+  buildDsOfficeId   Int            @map("build_ds_office_id")
+  buildDsOffice     DsOffice       @relation("CaseBuilt", fields: [buildDsOfficeId], references: [id])
+  category          Category
+  kind              Kind
   /// A new case is saved straight into AWAITING_ALLOCATION (CASE-5).
-  status               CaseStatus     @default(AWAITING_ALLOCATION)
+  status            CaseStatus     @default(AWAITING_ALLOCATION)
   /// The care leaver, or the guardian of a child at risk.
-  name                 String?
+  name              String?
   /// Only for children at risk.
-  childName            String?        @map("child_name")
+  childName         String?        @map("child_name")
   /// As entered, in capitals without spaces.
-  nic                  String?
+  nic               String?
   /// The NIC in its 12-digit form, so old and new numbers match (CASE-6).
-  nicKey               String?        @map("nic_key")
-  address              String?
+  nicKey            String?        @map("nic_key")
+  address           String?
   /// The Grama Niladhari division (ග්‍රාම නිලධාරී වසම), as typed. Optional.
-  gnDivision           String?        @map("gn_division")
-  mobile1              String?        @map("mobile_1")
-  mobile2              String?        @map("mobile_2")
-  remark               String?
-  createdById          String         @map("created_by_id")
-  createdBy            User           @relation(fields: [createdById], references: [id])
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
+  gnDivision        String?        @map("gn_division")
+  mobile1           String?        @map("mobile_1")
+  mobile2           String?        @map("mobile_2")
+  remark            String?
+  // Change 0007's details (CASE-14 to CASE-17). Every one may be empty, because the cases entered before it
+  // don't have them; the form requires them (src/lib/validation/case.ts), not the database.
+  /// A calendar day: the care leaver's, or the child's (CASE-14, CASE-15).
+  dateOfBirth       DateTime?      @map("date_of_birth") @db.Date
+  /// Care leavers only (a database check).
+  careGroup         CareGroup?     @map("care_group")
+  /// Care leavers only (a database check).
+  maritalStatus     MaritalStatus? @map("marital_status")
+  /// Children at risk only (a database check).
+  relationship      Relationship?
+  /// The relationship as typed, set only when `relationship` is `OTHER` (a database check).
+  relationshipOther String?        @map("relationship_other")
+  /// 1 to 30 (a database check).
+  familyMembers     Int?           @map("family_members")
+  disabledChildren  Boolean?       @map("disabled_children")
+  /// The aid received; an empty list means none. NULL in the database only on a case entered before
+  /// change 0007, which Prisma reads as an empty list.
+  aid               Aid[]
+  /// The aid as typed, set only when `aid` holds `OTHER` (a database check).
+  aidOther          String?        @map("aid_other")
+  /// The GN division where the land is (CASE-17), as typed. Optional.
+  landGnDivision    String?        @map("land_gn_division")
+  createdById       String         @map("created_by_id")
+  createdBy         User           @relation(fields: [createdById], references: [id])
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
   /// When the system found it finished (CLS-1).
-  completedAt          DateTime?      @map("completed_at")
+  completedAt       DateTime?      @map("completed_at")
   /// The case this one was entered in place of. Version 1's CASE-11 made these links; change 0006 removed
   /// it, and change 0008's amendments take its place. A case is replaced once.
-  replacesCaseId       String?        @unique @map("replaces_case_id")
-  replaces             Case?          @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
-  replacedBy           Case?          @relation("Replacement")
+  replacesCaseId    String?        @unique @map("replaces_case_id")
+  replaces          Case?          @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
+  replacedBy        Case?          @relation("Replacement")
   /// Goes up by one on every save, so a form opened earlier can't overwrite a newer change (CASE-10).
-  version              Int            @default(1)
-  decisions            Decision[]
-  files                StoredFile[]
-  release              Release?
-  installments         Installment[]
-  notifications        Notification[]
-  stageUpdates         StageUpdate[]
+  version           Int            @default(1)
+  decisions         Decision[]
+  files             StoredFile[]
+  release           Release?
+  installments      Installment[]
+  notifications     Notification[]
+  stageUpdates      StageUpdate[]
+  /// A care leaver's child development centres, in the order they lived in them (CASE-14).
+  centres           CareCentre[]
 
   @@unique([dsOfficeId, applicationKey])
   @@index([dsOfficeId, status])
@@ -393,6 +458,31 @@ model Case {
   @@index([nicKey])
   @@index([updatedAt])
   @@map("case")
+}
+
+/// One child development centre (ළමා සංවර්ධන මධ්‍යස්ථානය) a care leaver lived in (CASE-14). Saving the case
+/// replaces its centres. Each date is empty, a year, a year and month, or a full day: a month needs a year
+/// and a day needs a month (database checks); that the day exists and isn't in the future is the form's rule.
+model CareCentre {
+  caseId     String   @map("case_id")
+  /// The centres go with their case (CASE-8).
+  case       Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  /// 1 to 10: the order the form shows them in (a database check).
+  position   Int
+  /// 2 to 150 characters (a database check).
+  name       String
+  provinceId Int      @map("province_id")
+  province   Province @relation(fields: [provinceId], references: [id])
+  fromYear   Int?     @map("from_year")
+  fromMonth  Int?     @map("from_month")
+  fromDay    Int?     @map("from_day")
+  untilYear  Int?     @map("until_year")
+  untilMonth Int?     @map("until_month")
+  untilDay   Int?     @map("until_day")
+
+  @@id([caseId, position])
+  @@index([provinceId])
+  @@map("care_centre")
 }
 
 /// Version 1's decisions on a case (its CHK-3, CLS-2, CLS-3), kept for the cases that have them. Change 0006
@@ -537,14 +627,16 @@ model DsRelease {
   @@map("ds_release")
 }
 
-/// One of the four payments of Rs. 500,000 to the beneficiary (INS-1). All four are made with the release.
+/// One payment to the beneficiary (INS-1). A house kind has four of Rs. 500,000, made with the District's
+/// release (REL-7); a land kind has up to four, each made when the DS starts it, of the amount it needs (INS-7).
 model Installment {
   id         String            @id
   caseId     String            @map("case_id")
   case       Case              @relation(fields: [caseId], references: [id])
   /// 1 to 4 (a database check).
   number     Int
-  /// Always 500,000 (a database check).
+  /// Whole rupees, 1 to 2,000,000 (a database check). The commands keep a house kind's at 500,000 and a
+  /// land case's total at no more than 2,000,000.
   amount     Int
   status     InstallmentStatus @default(NOT_STARTED)
   purpose    String?

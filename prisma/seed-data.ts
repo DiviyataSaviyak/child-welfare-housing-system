@@ -1,4 +1,5 @@
-import { Kind, type PrismaClient } from "../src/generated/prisma/client";
+import type { PrismaClient } from "../src/generated/prisma/client";
+import { HOUSE_KINDS, type HouseKind } from "../src/lib/validation/case";
 import places from "../data/places.json";
 import stages from "../data/stages.json";
 
@@ -33,8 +34,9 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  const stageLists: Record<Kind, { nameSi: string; nameTa: string; nameEn: string }[]> = stages;
-  for (const kind of Object.values(Kind)) {
+  // Only the house kinds have a stage list (LST-4).
+  const stageLists: Record<HouseKind, { nameSi: string; nameTa: string; nameEn: string }[]> = stages;
+  for (const kind of HOUSE_KINDS) {
     for (const [index, names] of stageLists[kind].entries()) {
       await prisma.stageDefinition.upsert({
         where: { kind_nameSi: { kind, nameSi: names.nameSi } },

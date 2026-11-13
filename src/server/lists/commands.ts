@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Kind } from "@/generated/prisma/enums";
 import type { Names } from "@/lib/names";
+import { isHouseKind } from "@/lib/validation/case";
 import { writeAudit } from "../audit";
 
 export type ListCommandError = "notFound" | "nameTaken" | "codeTaken";
@@ -91,8 +92,13 @@ export async function setOfficeActive(db: PrismaClient, actorId: string, id: num
   return { ok: true };
 }
 
-/** LST-4: adds a stage, named in Sinhala, Tamil and English (UI-9), at the end of its kind's list. */
+/**
+ * LST-4: adds a stage, named in Sinhala, Tamil and English (UI-9), at the end of its kind's list. Only the
+ * house kinds have a list; a land kind is `notFound`, as the screen offers none (and a database check
+ * refuses it too).
+ */
 export async function addStage(db: PrismaClient, actorId: string, kind: Kind, names: Names): Promise<Result> {
+  if (!isHouseKind(kind)) return { ok: false, error: "notFound" };
   const { nameSi } = names;
   if (await db.stageDefinition.findUnique({ where: { kind_nameSi: { kind, nameSi } }, select: { id: true } })) {
     return { ok: false, error: "nameTaken" };

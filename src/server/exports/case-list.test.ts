@@ -22,6 +22,17 @@ const released: ExportRow = {
   gnDivision: "හෝමාගම නැගෙනහිර",
   mobile1: "0771234567",
   mobile2: null,
+  dateOfBirth: "2012-06-30",
+  careGroup: null,
+  maritalStatus: null,
+  relationship: "OTHER",
+  relationshipOther: "ආච්චි",
+  centres: [],
+  familyMembers: 4,
+  disabledChildren: false,
+  aid: ["SAMURDHI", "OTHER"],
+  aidOther: "ප්‍රාදේශීය සභා ආධාර",
+  landGnDivision: "ගම්පහ උතුර",
   districtName: "ගම්පහ",
   officeName: "ගම්පහ",
   // CASE-13: entered by Homagama, built in Gampaha.
@@ -38,10 +49,10 @@ const released: ExportRow = {
     dsRelease: { referenceNumber: "GMP/2026/11", releasedOn: "2026-03-10", paidOut: 1_000_000 },
   },
   installments: [
-    { status: "RELEASED", expectedOn: "2026-03-12", releasedOn: "2026-03-15" },
-    { status: "PROCESSING", expectedOn: "2026-04-17", releasedOn: null },
-    { status: "NOT_STARTED", expectedOn: null, releasedOn: null },
-    { status: "NOT_STARTED", expectedOn: null, releasedOn: null },
+    { status: "RELEASED", amount: 500_000, expectedOn: "2026-03-12", releasedOn: "2026-03-15" },
+    { status: "PROCESSING", amount: 500_000, expectedOn: "2026-04-17", releasedOn: null },
+    { status: "NOT_STARTED", amount: 500_000, expectedOn: null, releasedOn: null },
+    { status: "NOT_STARTED", amount: 500_000, expectedOn: null, releasedOn: null },
   ],
   progress: ["2026-03-20", null, null, null],
 };
@@ -55,6 +66,24 @@ const waiting: ExportRow = {
   childName: null,
   nic: "198800012345",
   mobile1: "0112345678",
+  dateOfBirth: "2003-01-15",
+  careGroup: "LEFT_CARE",
+  maritalStatus: "UNMARRIED",
+  relationship: null,
+  relationshipOther: null,
+  centres: [
+    {
+      name: "පරීක්ෂණ ළමා නිවාසය",
+      provinceName: "බස්නාහිර",
+      from: { year: 2010, month: 3, day: null },
+      until: { year: 2015, month: null, day: null },
+    },
+    { name: "දෙවන පරීක්ෂණ නිවාසය", provinceName: "මධ්‍යම", from: null, until: null },
+  ],
+  familyMembers: 1,
+  disabledChildren: true,
+  aid: [],
+  aidOther: null,
   release: null,
   installments: [null, null, null, null],
   progress: [null, null, null, null],
@@ -72,9 +101,37 @@ const allocated: ExportRow = {
   progress: [null, null, null, null],
 };
 
-async function reopen(rows: ExportRow[]): Promise<ExcelJS.Worksheet> {
+/** A land case paid in amounts of its own (INS-7): Rs. 900,000 paid, Rs. 400,000 being paid. */
+const land: ExportRow = {
+  ...released,
+  applicationNumber: "HMG/2026/19",
+  kind: "LAND_AND_BUILD",
+  release: { ...released.release!, dsRelease: { ...released.release!.dsRelease!, paidOut: 900_000 } },
+  installments: [
+    { status: "RELEASED", amount: 900_000, expectedOn: "2026-03-12", releasedOn: "2026-03-12" },
+    { status: "PROCESSING", amount: 400_000, expectedOn: "2026-04-17", releasedOn: null },
+    null,
+    null,
+  ],
+};
+
+/** Entered before change 0007: none of the registration form's details. */
+const older: ExportRow = {
+  ...released,
+  applicationNumber: "HMG/2026/20",
+  dateOfBirth: null,
+  relationship: null,
+  relationshipOther: null,
+  familyMembers: null,
+  disabledChildren: null,
+  aid: [],
+  aidOther: null,
+  landGnDivision: null,
+};
+
+async function reopen(rows: ExportRow[], translate = t, locale: "si" | "en" = "si"): Promise<ExcelJS.Worksheet> {
   const workbook = new ExcelJS.Workbook();
-  addSheet(workbook, t("export.sheet"), caseListColumns(t), rows);
+  addSheet(workbook, translate("export.sheet"), caseListColumns(translate, locale), rows);
   const again = new ExcelJS.Workbook();
   await again.xlsx.load((await workbookBytes(workbook)).buffer);
   return again.worksheets[0];
@@ -196,12 +253,18 @@ describe("the case list's Excel file (EXP-1)", () => {
     const cell = byHeader(sheet, 3);
     expect(
       COLUMNS.slice(COLUMNS.indexOf(t("export.columns.district")), COLUMNS.indexOf(t("export.columns.gnDivision"))),
-    ).toEqual(["ඉදිකරන දිස්ත්‍රික්කය", "ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය", "පදිංචි ප්‍රාදේශීය ලේකම් කොට්ඨාසය"]);
-    expect([cell("district").value, cell("office").value, cell("residenceOffice").value]).toEqual([
-      "ගම්පහ",
-      "ගම්පහ",
-      "හෝමාගම",
+    ).toEqual([
+      "ඉදිකරන දිස්ත්‍රික්කය",
+      "ඉදිකරන ප්‍රාදේශීය ලේකම් කොට්ඨාසය",
+      "ඉඩමේ ග්‍රාම නිලධාරී වසම",
+      "පදිංචි ප්‍රාදේශීය ලේකම් කොට්ඨාසය",
     ]);
+    expect([
+      cell("district").value,
+      cell("office").value,
+      cell("landGnDivision").value,
+      cell("residenceOffice").value,
+    ]).toEqual(["ගම්පහ", "ගම්පහ", "ගම්පහ උතුර", "හෝමාගම"]);
   });
 
   it("gives the Ministry's letter and the District's release in place of the days it was sent, verified and released", async () => {
@@ -277,10 +340,93 @@ describe("the case list's Excel file (EXP-1)", () => {
   it("writes the headers and statuses in the screen's language (UI-9)", async () => {
     const tEn = createTranslator({ locale: "en", messages: en, namespace: "cases" });
     const workbook = new ExcelJS.Workbook();
-    addSheet(workbook, tEn("export.sheet"), caseListColumns(tEn), [released]);
+    addSheet(workbook, tEn("export.sheet"), caseListColumns(tEn, "en"), [released]);
     const sheet = workbook.getWorksheet("Beneficiaries")!;
     expect(sheet.getRow(1).getCell(1).value).toBe("Application Number");
     expect(sheet.getRow(3).getCell(4).value).toBe("Work in progress");
+  });
+});
+
+describe("the registration form's columns (EXP-1, change 0007)", () => {
+  const NEW_COLUMNS = [
+    "dateOfBirth",
+    "careGroup",
+    "maritalStatus",
+    "relationship",
+    "centres",
+    "familyMembers",
+    "disabledChildren",
+    "aid",
+  ] as const;
+
+  it("come right after the phones, in EXP-1's order", () => {
+    const at = COLUMNS.indexOf(t("export.columns.mobile2")) + 1;
+    expect(COLUMNS.slice(at, at + NEW_COLUMNS.length)).toEqual(NEW_COLUMNS.map((key) => t(`export.columns.${key}`)));
+    expect(COLUMNS[at + NEW_COLUMNS.length]).toBe(t("export.columns.district"));
+  });
+
+  it("write a child at risk's details: the child's birthday as a date, the typed relationship and aid", async () => {
+    const sheet = await reopen([released]);
+    const cell = byHeader(sheet, 3);
+    expect(cell("dateOfBirth").value).toEqual(new Date("2012-06-30T00:00:00Z"));
+    expect(cell("dateOfBirth").numFmt).toBe("yyyy.mm.dd");
+    expect(cell("relationship").value).toBe("වෙනත්: ආච්චි");
+    expect(cell("familyMembers").value).toBe(4);
+    expect(cell("familyMembers").numFmt).toBeUndefined();
+    expect(cell("disabledChildren").value).toBe("නැත");
+    expect(cell("aid").value).toBe("සමෘද්ධි, වෙනත්: ප්‍රාදේශීය සභා ආධාර");
+    // A care leaver's details don't belong to a child at risk.
+    for (const key of ["careGroup", "maritalStatus", "centres"] as const) expect(cell(key).value, key).toBeNull();
+  });
+
+  it("write a care leaver's group, marital status and each centre on its own line, as precise as entered", async () => {
+    const sheet = await reopen([waiting]);
+    const cell = byHeader(sheet, 3);
+    expect(cell("careGroup").value).toBe(t("careGroup.LEFT_CARE"));
+    expect(cell("maritalStatus").value).toBe(t("maritalStatus.UNMARRIED"));
+    expect(cell("relationship").value).toBeNull();
+    expect(cell("centres").value).toBe("පරීක්ෂණ ළමා නිවාසය, බස්නාහිර (2010.03 – 2015)\nදෙවන පරීක්ෂණ නිවාසය, මධ්‍යම");
+    expect(cell("centres").alignment).toMatchObject({ wrapText: true });
+    expect(cell("disabledChildren").value).toBe("ඔව්");
+    // Asked, and none ticked.
+    expect(cell("aid").value).toBe(t("page.noAid"));
+  });
+
+  it("leaves every new column empty on a case entered before the change", async () => {
+    const sheet = await reopen([older]);
+    const cell = byHeader(sheet, 3);
+    for (const key of [...NEW_COLUMNS, "landGnDivision"] as const) expect(cell(key).value, key).toBeNull();
+  });
+
+  it("writes the aids and the relationship in the file's language", async () => {
+    const tEn = createTranslator({ locale: "en", messages: en, namespace: "cases" });
+    const sheet = await reopen([released], tEn, "en");
+    const headers = sheet.getRow(2).values as unknown[];
+    const cell = (key: (typeof NEW_COLUMNS)[number]) =>
+      sheet.getRow(3).getCell(headers.indexOf(tEn(`export.columns.${key}`)));
+    expect(cell("aid").value).toBe(`${tEn("aid.SAMURDHI")}, ${tEn("aid.OTHER")}: ප්‍රාදේශීය සභා ආධාර`);
+    expect(cell("disabledChildren").value).toBe("No");
+  });
+});
+
+describe("a land case's installments (EXP-1, INS-7)", () => {
+  it("give each installment's amount with its date", async () => {
+    const sheet = await reopen([land]);
+    const row = sheet.getRow(3);
+    expect([0, 1, 2, 3].map((i) => row.getCell(MONEY_AT + i).value)).toEqual([
+      "2026.03.12 දින රු. 900,000 ගෙවා ඇත",
+      "2026.04.17 දින රු. 400,000 ගෙවීමට අපේක්ෂිතයි",
+      null,
+      null,
+    ]);
+    expect(byHeader(sheet, 3)("paidOut").value).toBe(900_000);
+    expect(byHeader(sheet, 3)("balance").value).toBe(1_100_000);
+  });
+
+  it("in English too", async () => {
+    const tEn = createTranslator({ locale: "en", messages: en, namespace: "cases" });
+    const sheet = await reopen([land], tEn, "en");
+    expect(sheet.getRow(3).getCell(MONEY_AT).value).toBe("Rs. 900,000 paid on 2026.03.12");
   });
 });
 

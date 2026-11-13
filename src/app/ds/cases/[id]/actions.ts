@@ -14,7 +14,7 @@ import {
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { type PhotoUploadError, type UploadedFile, uploadPhoto } from "@/server/files/uploads";
-import { markInstallmentPaid, startInstallment } from "@/server/installments/commands";
+import { correctInstallment, markInstallmentPaid, startInstallment } from "@/server/installments/commands";
 import { recordStageUpdate } from "@/server/stages/commands";
 import type { ProgressState } from "@/components/progress/types";
 
@@ -50,6 +50,22 @@ export async function startInstallmentAction(_previous: ProgressState, form: For
   const result = await startInstallment(db, actor, { ...chosen, number, form: fields<StartField>(form, START_FIELDS) });
   if (!result.ok) return { error: result.error, errors: result.errors };
   done(chosen.caseId, "started");
+}
+
+/** INS-8: a land case's installment being paid, corrected by the DS where it is built. */
+export async function correctInstallmentAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
+  const actor = await requireRole("DS_OFFICER");
+  const chosen = target(form);
+  const number = Number(read(form, "number"));
+  if (!chosen || !Number.isInteger(number)) return { error: "notFound", errors: {} };
+
+  const result = await correctInstallment(db, actor, {
+    ...chosen,
+    number,
+    form: fields<StartField>(form, START_FIELDS),
+  });
+  if (!result.ok) return { error: result.error, errors: result.errors };
+  done(chosen.caseId, "corrected");
 }
 
 export async function payInstallmentAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {

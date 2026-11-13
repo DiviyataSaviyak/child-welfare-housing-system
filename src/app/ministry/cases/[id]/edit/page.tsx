@@ -4,10 +4,10 @@ import { buildSetting, formValues, PageHeader } from "@/components/cases/page-he
 import { StatusChip } from "@/components/cases/status-chip";
 import { CaseForm, type OfficeSetting } from "@/components/forms/case-form";
 import { getCase } from "@/server/cases/queries";
-import { canChangeBuildOffice, canChangeOffice, canEditDetails } from "@/server/cases/rules";
+import { canChangeBuildOffice, canChangeOffice, canEditDetails, kindsOffered } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { districtsWithOffices } from "@/server/lists/queries";
+import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, saveCaseAction, uploadDocumentAction } from "../../actions";
 
 /**
@@ -23,12 +23,17 @@ export default async function MinistryEditCasePage({ params }: { params: Promise
   if (!details) notFound();
   if (!canEditDetails(viewer.role, details.status)) redirect(`/ministry/cases/${id}`);
 
-  const [t, districts] = await Promise.all([getTranslations("cases"), districtsWithOffices(db, locale)]);
+  const [t, districts, provinces] = await Promise.all([
+    getTranslations("cases"),
+    districtsWithOffices(db, locale),
+    provinceOptions(db, locale),
+  ]);
   const office: OfficeSetting = canChangeOffice(viewer.role, details.status)
     ? { kind: "choose", districts, districtId: details.districtId, dsOfficeId: details.dsOfficeId }
     : {
         kind: "fixed",
         dsOfficeId: details.dsOfficeId,
+        provinceName: details.provinceName,
         districtName: details.districtName,
         officeName: details.officeName,
       };
@@ -54,9 +59,11 @@ export default async function MinistryEditCasePage({ params }: { params: Promise
         initial={formValues(details)}
         office={office}
         build={buildSetting(details, awaiting, districts)}
+        provinces={provinces}
         documents={details.documents}
         mode="edit"
         intro={!awaiting}
+        kinds={kindsOffered(details.status, details.kind)}
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,

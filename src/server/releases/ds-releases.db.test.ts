@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { seed } from "../../../prisma/seed-data";
-import { createTestClient, freeOfficeId, testApplicationNumber } from "../../../tests/db/client";
+import { createTestClient, freeOfficeId, testApplicationNumber, CARE_LEAVER_DETAILS } from "../../../tests/db/client";
 import { addDays, colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import type { DsReleaseField } from "@/lib/validation/ds-release";
@@ -26,6 +26,7 @@ let nicCounter = 0;
 const nextNic = () => `2004${String(++nicCounter).padStart(8, "0")}`;
 
 const values = (): CaseValues => ({
+  ...CARE_LEAVER_DETAILS,
   category: "CARE_LEAVER",
   kind: "NEW_HOUSE",
   applicationNumber: testApplicationNumber(),
