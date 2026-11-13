@@ -1,4 +1,5 @@
 import type { CaseStatus } from "@/generated/prisma/enums";
+import { HOUSE_KINDS, isHouseKind, KINDS, type KindValue, LAND_KINDS } from "@/lib/validation/case";
 import type { Role } from "../auth/roles";
 
 /**
@@ -65,6 +66,17 @@ export function canChangeOffice(role: Role, status: CaseStatus | null): boolean 
  */
 export function canChangeBuildOffice(status: CaseStatus | null): boolean {
   return status === null || AWAITING.includes(status);
+}
+
+/**
+ * CASE-9: the kinds of help a case may have. Before the District's release, any of the five; after it, only
+ * those of its own group, because a house kind is paid in four installments of Rs. 500,000 made at the
+ * release and a land kind in installments of its own amounts (INS-1, INS-7). `LAND_AND_BUILD` is a land kind
+ * here, although it follows the new-house stages.
+ */
+export function kindsOffered(status: CaseStatus | null, kind: KindValue | null): readonly KindValue[] {
+  if (!kind || status === null || !(takesProgress(status) || status === "COMPLETED")) return KINDS;
+  return isHouseKind(kind) ? HOUSE_KINDS : LAND_KINDS;
 }
 
 /**

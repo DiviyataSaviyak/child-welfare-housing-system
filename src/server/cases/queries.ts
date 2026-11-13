@@ -581,7 +581,10 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
       where: {
         ...progress,
         status: "ALLOCATION_RECEIVED",
-        installments: { some: { number: 1, status: "NOT_STARTED" } },
+        // A house kind's installment 1 is made at the release; a land kind's only when started (INS-7).
+        AND: [
+          { OR: [{ installments: { some: { number: 1, status: "NOT_STARTED" } } }, { installments: { none: {} } }] },
+        ],
       },
       orderBy: [{ release: { dsReleasedOn: "asc" } }, { id: "asc" }],
       take: TODO_TAKE,

@@ -499,9 +499,11 @@ describe("the kinds of help (CASE-17, INS-1, STG-4)", () => {
     expect(KINDS.map(stageKind)).toEqual(["NEW_HOUSE", "RENOVATION", null, "NEW_HOUSE", null]);
   });
 
-  it("takes only the house kinds on the form until the land kinds' installments are built", () => {
-    for (const kind of LAND_KINDS) {
-      expect(parse({ ...COMPLETE, kind })).toEqual({ ok: false, errors: { kind: "kindRequired" } });
+  it("takes all five kinds on the form (CASE-17)", () => {
+    for (const kind of KINDS) {
+      const parsed = parse({ ...COMPLETE, kind });
+      expect(parsed.ok && parsed.value.kind).toBe(kind);
     }
+    expect(parse({ ...COMPLETE, kind: "LAND" })).toEqual({ ok: false, errors: { kind: "kindRequired" } });
   });
 });

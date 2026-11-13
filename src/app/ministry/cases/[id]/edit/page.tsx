@@ -4,7 +4,7 @@ import { buildSetting, formValues, PageHeader } from "@/components/cases/page-he
 import { StatusChip } from "@/components/cases/status-chip";
 import { CaseForm, type OfficeSetting } from "@/components/forms/case-form";
 import { getCase } from "@/server/cases/queries";
-import { canChangeBuildOffice, canChangeOffice, canEditDetails } from "@/server/cases/rules";
+import { canChangeBuildOffice, canChangeOffice, canEditDetails, kindsOffered } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
@@ -63,6 +63,7 @@ export default async function MinistryEditCasePage({ params }: { params: Promise
         documents={details.documents}
         mode="edit"
         intro={!awaiting}
+        kinds={kindsOffered(details.status, details.kind)}
         actions={{
           save: saveCaseAction,
           upload: uploadDocumentAction,

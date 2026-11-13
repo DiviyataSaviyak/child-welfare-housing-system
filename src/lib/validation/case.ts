@@ -38,12 +38,6 @@ export function stageKind(kind: KindValue): HouseKind | null {
   return kind === "LAND_AND_BUILD" ? "NEW_HOUSE" : null;
 }
 
-/**
- * The kinds the case form takes until change 0007's installments for the land kinds are built (task 4):
- * until then a land case would be paid as a house. Task 4 replaces it with `KINDS`.
- */
-export const FORM_KINDS = HOUSE_KINDS;
-
 /** A care leaver's group (CASE-14). */
 export const CARE_GROUPS = ["IN_CARE", "LEFT_CARE"] as const;
 export type CareGroupValue = (typeof CARE_GROUPS)[number];
@@ -235,7 +229,7 @@ function fieldSchemas(today: string): { [F in CaseField]: z.ZodType<CaseValues[F
   return {
     category: choice(CATEGORIES),
     careGroup: choice(CARE_GROUPS),
-    kind: choice(FORM_KINDS),
+    kind: choice(KINDS),
     landGnDivision: text(1, 100),
     applicationNumber: text(1, APPLICATION_NUMBER_MAX),
     childName: text(2, 100),

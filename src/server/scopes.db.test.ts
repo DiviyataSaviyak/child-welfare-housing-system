@@ -456,7 +456,7 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
         caseId,
         version,
         number: 1,
-        form: { expectedOn: today, purpose: "", note: "" },
+        form: { amount: "", expectedOn: today, purpose: "", note: "" },
       });
     const visit = (actor: Actor, version: number) =>
       recordStageUpdate(db, actor, {

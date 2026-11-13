@@ -1,5 +1,7 @@
-import type { PrismaClient } from "@/generated/prisma/client";
+import { randomUUID } from "node:crypto";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
+import { isHouseKind } from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import {
   type PaidField,
@@ -14,11 +16,19 @@ import { writeAudit } from "../audit";
 import { claimCase } from "../cases/claim";
 import type { Actor } from "../cases/commands";
 import { completeIfDone } from "../cases/complete";
-import { Refusal } from "../cases/refusal";
+import { isUniqueViolation, Refusal } from "../cases/refusal";
 import { PROGRESS_STATUSES, takesProgress } from "../cases/rules";
 import { applyMove } from "../cases/transitions";
 import { CASE_PLACES, canActOn, canSeeCase } from "../permissions";
-import { lastPaid, previousPaidOn, type StepRefusal, stepRefusal } from "./rules";
+import {
+  isUpcoming,
+  landAmountLimit,
+  lastPaid,
+  previousPaidOn,
+  schedule,
+  type StepRefusal,
+  stepRefusal,
+} from "./rules";
 
 export type InstallmentError =
   | "notFound"
@@ -32,6 +42,8 @@ export type InstallmentError =
   | "conflict"
   /** INS-6: no installment has been paid. */
   | "nothingToUndo"
+  /** INS-8: only a land case's installment is corrected; a house's are Rs. 500,000 each (INS-1). */
+  | "fixedAmount"
   | Exclude<StepRefusal, "noSuchInstallment">
   | ReasonErrorKey;
 
@@ -67,7 +79,16 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       release: { select: { dsReleasedOn: true } },
       installments: {
         orderBy: { number: "asc" },
-        select: { id: true, number: true, status: true, expectedOn: true, releasedOn: true, note: true },
+        select: {
+          id: true,
+          number: true,
+          amount: true,
+          status: true,
+          expectedOn: true,
+          releasedOn: true,
+          purpose: true,
+          note: true,
+        },
       },
     },
   });
@@ -97,12 +118,27 @@ async function prepareStep(db: PrismaClient, actor: Actor, target: Target, step:
     return { refusal: refused("roleNotAllowed") };
   }
   if (!takesProgress(found.status) || !found.dsReleasedOn) return { refusal: refused("caseNotRunning") };
-  const refusal = stepRefusal(found.installments, target.number, step);
+  // A land case's next installment has no row until it is started (INS-7).
+  const scheduled = schedule(found.kind, found.installments);
+  const refusal = stepRefusal(scheduled, target.number, step);
   if (refusal === "noSuchInstallment") return { refusal: refused("notFound") };
   if (refusal) return { refusal: refused(refusal) };
-  const installment = found.installments.find((i) => i.number === target.number);
+  const installment = scheduled.find((i) => i.number === target.number);
   if (!installment) return { refusal: refused("notFound") };
   return { found: { ...found, dsReleasedOn: found.dsReleasedOn }, installment };
+}
+
+/**
+ * INS-7: inside the transaction, with the case claimed (so two changes take turns), the land case's other
+ * installments still leave room for `amount` as installment `number`; otherwise it is refused.
+ */
+async function checkLandBalance(tx: Prisma.TransactionClient, caseId: string, number: number, amount: number) {
+  const rows = await tx.installment.findMany({ where: { caseId }, select: { number: true, amount: true } });
+  const limit = landAmountLimit(
+    rows.filter((row) => row.number !== number),
+    number,
+  );
+  if (amount > limit.max || (limit.fixed && amount !== limit.max)) throw new Refusal("conflict");
 }
 
 /**
@@ -119,32 +155,108 @@ export async function startInstallment(
   if (prepared.refusal) return prepared.refusal;
   const { found, installment } = prepared;
 
-  const parsed = parseStartForm((field) => input.form[field], startLimits(found.dsReleasedOn));
+  const amountLimit = isUpcoming(installment) ? landAmountLimit(found.installments, installment.number) : null;
+  const parsed = parseStartForm((field) => input.form[field], startLimits(found.dsReleasedOn), amountLimit);
   if (!parsed.ok) return { ok: false, error: null, errors: parsed.errors };
   if (found.version !== input.version) return refused("conflict");
-  const values = parsed.value;
+  const { amount, ...values } = parsed.value;
+  const data = {
+    status: "PROCESSING" as const,
+    expectedOn: dayToDate(values.expectedOn),
+    purpose: values.purpose,
+    note: values.note,
+  };
 
   try {
     await db.$transaction(async (tx) => {
       await claimCase(tx, found, PROGRESS_STATUSES);
-      const changed = await tx.installment.updateMany({
-        where: { id: installment.id, status: "NOT_STARTED" },
-        data: {
-          status: "PROCESSING",
-          expectedOn: dayToDate(values.expectedOn),
-          purpose: values.purpose,
-          note: values.note,
-        },
-      });
-      if (changed.count === 0) throw new Refusal("conflict");
+      let id: string;
+      let paying: number;
+      if (isUpcoming(installment)) {
+        if (amount === null) throw new Refusal("conflict");
+        await checkLandBalance(tx, found.id, installment.number, amount);
+        id = randomUUID();
+        paying = amount;
+        await tx.installment.create({ data: { id, caseId: found.id, number: installment.number, amount, ...data } });
+      } else {
+        id = installment.id;
+        paying = installment.amount;
+        const changed = await tx.installment.updateMany({ where: { id, status: "NOT_STARTED" }, data });
+        if (changed.count === 0) throw new Refusal("conflict");
+      }
       await writeAudit(tx, {
         actorId: actor.userId,
         action: "installment_started",
         entityType: "installment",
-        entityId: installment.id,
+        entityId: id,
         caseId: found.id,
         before: { number: installment.number, status: "NOT_STARTED" },
-        after: { number: installment.number, status: "PROCESSING", ...values },
+        after: { number: installment.number, status: "PROCESSING", amount: paying, ...values },
+      });
+    });
+  } catch (error) {
+    // Two starts at once: the second finds the case claimed or the number taken (INS-7).
+    if (error instanceof Refusal || isUniqueViolation(error)) return refused("conflict");
+    throw error;
+  }
+  return { ok: true, completed: false };
+}
+
+/**
+ * INS-8: while a land case's installment is PROCESSING, the DS office where it is built corrects its
+ * amount (up to the balance, as INS-7 allows; installment 4 stays the whole balance), its expected date,
+ * purpose and note. The old and new value of each changed field is logged (HIS-1). A paid installment is
+ * corrected only after the Ministry undoes the payment (INS-6); a house's installment is never corrected.
+ */
+export async function correctInstallment(
+  db: PrismaClient,
+  actor: Actor,
+  input: Target & { form: Record<StartField, string> },
+): Promise<InstallmentResult<StartField>> {
+  // The installment being paid: the next one, started and not yet paid (INS-2).
+  const prepared = await prepareStep(db, actor, input, "pay");
+  if (prepared.refusal) return prepared.refusal;
+  const { found, installment } = prepared;
+  if (isHouseKind(found.kind) || isUpcoming(installment)) return refused("fixedAmount");
+
+  const limit = landAmountLimit(found.installments, installment.number);
+  const parsed = parseStartForm((field) => input.form[field], startLimits(found.dsReleasedOn), limit);
+  if (!parsed.ok) return { ok: false, error: null, errors: parsed.errors };
+  if (found.version !== input.version) return refused("conflict");
+  const now = { ...parsed.value, amount: parsed.value.amount ?? installment.amount };
+  const was = {
+    amount: installment.amount,
+    expectedOn: installment.expectedOn,
+    purpose: installment.purpose,
+    note: installment.note,
+  };
+  const changed = (Object.keys(was) as (keyof typeof was)[]).filter((field) => was[field] !== now[field]);
+  if (changed.length === 0) return { ok: true, completed: false };
+  const pick = (from: Record<keyof typeof was, unknown>) =>
+    Object.fromEntries(changed.map((field) => [field, from[field]]));
+
+  try {
+    await db.$transaction(async (tx) => {
+      await claimCase(tx, found, PROGRESS_STATUSES);
+      await checkLandBalance(tx, found.id, installment.number, now.amount);
+      const updated = await tx.installment.updateMany({
+        where: { id: installment.id, status: "PROCESSING" },
+        data: {
+          amount: now.amount,
+          expectedOn: dayToDate(now.expectedOn),
+          purpose: now.purpose,
+          note: now.note,
+        },
+      });
+      if (updated.count === 0) throw new Refusal("conflict");
+      await writeAudit(tx, {
+        actorId: actor.userId,
+        action: "installment_corrected",
+        entityType: "installment",
+        entityId: installment.id,
+        caseId: found.id,
+        before: { number: installment.number, ...pick(was) },
+        after: { number: installment.number, ...pick(now) },
       });
     });
   } catch (error) {
@@ -168,6 +280,8 @@ export async function markInstallmentPaid(
   const prepared = await prepareStep(db, actor, input, "pay");
   if (prepared.refusal) return prepared.refusal;
   const { found, installment } = prepared;
+  // stepRefusal() lets only a PROCESSING installment be paid, and that one has its row.
+  if (isUpcoming(installment)) return refused("notStartedYet");
 
   const now = new Date();
   const limits = paidLimits(colomboDay(now), found.dsReleasedOn, previousPaidOn(found.installments, input.number));
@@ -191,7 +305,7 @@ export async function markInstallmentPaid(
         entityId: installment.id,
         caseId: found.id,
         before: { number: installment.number, status: "PROCESSING", note: installment.note },
-        after: { number: installment.number, status: "RELEASED", ...values },
+        after: { number: installment.number, status: "RELEASED", amount: installment.amount, ...values },
       });
       // Only installment 1 can be the next one while the allocation is merely received (INS-2).
       let current = { ...found, version: found.version + 1 };

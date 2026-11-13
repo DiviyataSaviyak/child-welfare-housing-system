@@ -1,5 +1,6 @@
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { formatDate } from "@/lib/dates";
+import { formatRupees } from "@/lib/money";
 import type { HistoryEntry } from "@/server/history/queries";
 
 const ACTIONS = [
@@ -18,6 +19,8 @@ const ACTIONS = [
   "installment_started",
   "installment_paid",
   "installment_payment_undone",
+  // Change 0007: a land case's installment corrected while it is being paid (INS-8).
+  "installment_corrected",
   // Change 0006: paying installment 1 moves the case to in progress, and undoing it moves it back (INS-5, INS-6).
   "case_started",
   "case_unstarted",
@@ -74,7 +77,7 @@ const installmentNumber = (value: unknown): 1 | 2 | 3 | 4 | null =>
  * A changed detail is named; its old and new values stay in the audit record (CASE-9, HIS-1).
  */
 export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
-  const [t, tc] = await Promise.all([getTranslations("history"), getTranslations("cases")]);
+  const [t, tc, locale] = await Promise.all([getTranslations("history"), getTranslations("cases"), getLocale()]);
 
   const installment = (value: unknown) => {
     const number = installmentNumber(value);
@@ -84,6 +87,8 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
     const shown = text(value);
     return shown ? formatDate(shown) : tc("none");
   };
+  // Records since change 0007 carry the installment's amount (INS-7); older ones don't.
+  const rupees = (value: unknown) => (Number.isSafeInteger(value) ? formatRupees(value as number, locale) : null);
 
   function describe(entry: HistoryEntry): { sentence: string; lines: string[] } {
     const { after, before } = entry;
@@ -167,21 +172,44 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
         if (text(after.purpose)) lines.push(text(after.purpose) as string);
         if (text(after.note)) lines.push(t("note", { note: text(after.note) as string }));
         return {
-          sentence: t("actions.installment_started", {
-            installment: installment(after.number),
-            date: day(after.expectedOn),
-          }),
+          sentence: rupees(after.amount)
+            ? t("actions.installment_startedAmount", {
+                installment: installment(after.number),
+                amount: rupees(after.amount) as string,
+                date: day(after.expectedOn),
+              })
+            : t("actions.installment_started", { installment: installment(after.number), date: day(after.expectedOn) }),
           lines,
         };
       case "installment_paid":
         if (text(after.note)) lines.push(t("note", { note: text(after.note) as string }));
         return {
-          sentence: t("actions.installment_paid", {
-            installment: installment(after.number),
-            date: day(after.releasedOn),
-          }),
+          sentence: rupees(after.amount)
+            ? t("actions.installment_paidAmount", {
+                installment: installment(after.number),
+                amount: rupees(after.amount) as string,
+                date: day(after.releasedOn),
+              })
+            : t("actions.installment_paid", { installment: installment(after.number), date: day(after.releasedOn) }),
           lines,
         };
+      case "installment_corrected": {
+        if ("amount" in after) {
+          const from = rupees(before.amount) ?? tc("none");
+          lines.push(t("change", { field: t("fields.amount"), from, to: rupees(after.amount) ?? tc("none") }));
+        }
+        if ("expectedOn" in after) {
+          lines.push(
+            t("change", { field: t("fields.expectedOn"), from: day(before.expectedOn), to: day(after.expectedOn) }),
+          );
+        }
+        if ("purpose" in after) {
+          const from = text(before.purpose) ?? tc("none");
+          lines.push(t("change", { field: t("fields.purpose"), from, to: text(after.purpose) ?? tc("none") }));
+        }
+        if ("note" in after) lines.push(t("changedFields", { fields: t("fields.note") }));
+        return { sentence: t("actions.installment_corrected", { installment: installment(after.number) }), lines };
+      }
       case "installment_payment_undone":
         return { sentence: t("actions.installment_payment_undone", { installment: installment(after.number) }), lines };
       case "stage_updated": {

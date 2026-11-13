@@ -63,6 +63,7 @@ export default async function OversightCasePage({
             {details.release && (
               <MoneySection
                 audience="oversight"
+                kind={details.kind}
                 release={details.release}
                 installments={details.installments}
                 dsCorrection={

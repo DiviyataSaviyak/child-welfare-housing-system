@@ -22,10 +22,10 @@ import {
   type CentrePart,
   centreError,
   centreInput,
-  FORM_KINDS,
   formatPartialDate,
   formReader,
   KINDS,
+  type KindValue,
   MARITAL_STATUSES,
   MAX_CENTRES,
   parseCaseForm,
@@ -127,7 +127,8 @@ const centreTarget = (index: number, part: CentrePart) =>
  * first, then goes straight to "awaiting fund allocation" (CASE-5). The kind of help is followed by where
  * the land is (CASE-13, CASE-17); the province, district and DS of residence open the beneficiary's details
  * (CASE-3). A saved case is changed with one save button (CASE-9); `intro` says that every change is
- * logged, for the Ministry's changes after the allocation.
+ * logged, for the Ministry's changes after the allocation. `kinds` are the kinds it may have: after the
+ * District's release, only those of its own group (CASE-9, `kindsOffered`).
  */
 export function CaseForm({
   caseId,
@@ -140,6 +141,7 @@ export function CaseForm({
   actions,
   mode,
   intro = false,
+  kinds = KINDS,
 }: {
   caseId: string;
   /** The version the form was opened with (CASE-10); null for a new case. */
@@ -153,6 +155,7 @@ export function CaseForm({
   actions: CaseFormActions;
   mode: "new" | "edit";
   intro?: boolean;
+  kinds?: readonly KindValue[];
 }) {
   const t = useTranslations("cases");
   const [state, dispatch, pending] = useActionState(actions.save, EMPTY);
@@ -447,7 +450,7 @@ export function CaseForm({
           <ChoiceCards
             name="kind"
             labelledBy="part-kind-title"
-            options={FORM_KINDS.map((value) => ({ value, label: t(`kind.${value}`), hint: t(`kindHint.${value}`) }))}
+            options={kinds.map((value) => ({ value, label: t(`kind.${value}`), hint: t(`kindHint.${value}`) }))}
             value={values.kind}
             onChange={(value) => setField("kind", value)}
             error={errorText("kind")}

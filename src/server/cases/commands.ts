@@ -25,6 +25,7 @@ import {
   canEditDetails,
   canEnterCases,
   editableStatuses,
+  kindsOffered,
 } from "./rules";
 import { moveRefusal } from "./transitions";
 
@@ -57,7 +58,9 @@ export type CaseCommandError =
   /** The actor's role never takes this step (application spec, Roles and permissions). */
   | "roleNotAllowed"
   /** The kind of help decides the stages, so it stays once a stage is recorded (CASE-9, STG-4). */
-  | "kindLocked";
+  | "kindLocked"
+  /** After the District's release, the kind changes only within its group, house or land (CASE-9, INS-7). */
+  | "kindGroupLocked";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: CaseCommandError };
 
@@ -224,6 +227,7 @@ async function checkSave(
     if (built !== current.buildDsOfficeId && !canChangeBuildOffice(current.status)) return "notEditable";
     // The stages come from the kind of help (LST-4), so a case that has reached one keeps its kind.
     if (input.values.kind !== current.kind) {
+      if (!kindsOffered(current.status, current.kind).includes(input.values.kind)) return "kindGroupLocked";
       const reached = await db.stageUpdate.count({ where: { caseId: current.id, stageId: { not: null } } });
       if (reached > 0) return "kindLocked";
     }

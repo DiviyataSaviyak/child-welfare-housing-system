@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { CaseStatus as STATUS_VALUES } from "@/generated/prisma/enums";
 import { applicationKey } from "./numbers";
-import { canChangeBuildOffice, canChangeOffice, canDeleteCase, canEditDetails } from "./rules";
+import { canChangeBuildOffice, canChangeOffice, canDeleteCase, canEditDetails, kindsOffered } from "./rules";
 import { type Move, moveRefusal, MOVES, type Mover, movesFrom } from "./transitions";
 
 const STATUSES = Object.values(STATUS_VALUES) as CaseStatus[];
@@ -106,6 +106,17 @@ describe("status changes (application spec, Case statuses and transitions)", () 
     expect(movesFrom("ALLOCATED_TO_DISTRICT")).toEqual(["release"]);
     expect(movesFrom("ALLOCATION_RECEIVED")).toEqual(["start"]);
     expect(movesFrom("IN_PROGRESS").sort()).toEqual(["complete", "unstart"]);
+  });
+});
+
+describe("the kind of help after the District's release (CASE-9)", () => {
+  it("changes freely until the release, then only within its group", () => {
+    expect(kindsOffered(null, null)).toHaveLength(5);
+    expect(kindsOffered("AWAITING_ALLOCATION", "NEW_HOUSE")).toHaveLength(5);
+    expect(kindsOffered("ALLOCATED_TO_DISTRICT", "LAND_ONLY")).toHaveLength(5);
+    expect(kindsOffered("ALLOCATION_RECEIVED", "NEW_HOUSE")).toEqual(["NEW_HOUSE", "RENOVATION"]);
+    expect(kindsOffered("IN_PROGRESS", "LAND_AND_BUILD")).toEqual(["LAND_ONLY", "LAND_AND_BUILD", "LAND_WITH_HOUSE"]);
+    expect(kindsOffered("COMPLETED", "RENOVATION")).toEqual(["NEW_HOUSE", "RENOVATION"]);
   });
 });
 

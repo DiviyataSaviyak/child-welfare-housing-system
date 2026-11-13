@@ -19,7 +19,7 @@ import { recordLetter } from "../releases/commands";
 import { releaseToDsForTests } from "../../../tests/db/ds-release";
 import { recordStageUpdate } from "../stages/commands";
 import { getStageProgress } from "../stages/queries";
-import { markInstallmentPaid, startInstallment, undoInstallmentPayment } from "./commands";
+import { correctInstallment, markInstallmentPaid, startInstallment, undoInstallmentPayment } from "./commands";
 
 const filesDir = mkdtempSync(join(tmpdir(), "diviyata-progress-"));
 process.env.FILES_DIR = filesDir;
@@ -116,7 +116,7 @@ function start(actor: Actor, caseId: string, caseVersion: number, number: number
     caseId,
     version: caseVersion,
     number,
-    form: { expectedOn, purpose: "", note: "" },
+    form: { amount: "", expectedOn, purpose: "", note: "" },
   });
 }
 
@@ -757,5 +757,159 @@ describe("the DS home (HOME-1, HOME-3, HOME-4)", () => {
     expect(await officeMoney(db, admin)).toBeNull();
     const { rows } = await listCases(db, dsA, { q: (await load(c.id)).applicationNumber ?? "" }, "si");
     expect(rows).toEqual([expect.objectContaining({ id: c.id, paid: 1, stageName: first!.nameSi })]);
+  });
+});
+
+describe("a land case's installments (REL-7, INS-7, INS-8, AC-62)", () => {
+  function startLand(caseId: string, caseVersion: number, number: number, amount: string, actor: Actor = dsA) {
+    return startInstallment(db, actor, {
+      caseId,
+      version: caseVersion,
+      number,
+      form: { amount, expectedOn: daysAgo(40), purpose: "ඉඩම මිලදී ගැනීම", note: "" },
+    });
+  }
+
+  async function correct(caseId: string, number: number, amount: string, actor: Actor = dsA) {
+    const row = await db.installment.findUniqueOrThrow({ where: { caseId_number: { caseId, number } } });
+    return correctInstallment(db, actor, {
+      caseId,
+      version: await version(caseId),
+      number,
+      form: { amount, expectedOn: daysAgo(35), purpose: row.purpose ?? "", note: "" },
+    });
+  }
+
+  /** Starts a land case's next installment with its amount and pays it. */
+  async function payLand(caseId: string, number: number, amount: string) {
+    const started = await startLand(caseId, await version(caseId), number, amount);
+    if (!started.ok) throw new Error(JSON.stringify(started));
+    const paid = await pay(dsA, caseId, await version(caseId), number);
+    if (!paid.ok) throw new Error(JSON.stringify(paid));
+  }
+
+  const amounts = async (caseId: string) =>
+    (await db.installment.findMany({ where: { caseId }, orderBy: { number: "asc" } })).map((i) => [
+      i.number,
+      i.amount,
+      i.status,
+    ]);
+
+  it("makes none at the District's release; each is made when started, with its own amount", async () => {
+    const house = await allocated();
+    const land = await allocated({ kind: "LAND_AND_BUILD" });
+    await releaseToDsForTests(db, [house.id, land.id], { on: dayToDate(daysAgo(RELEASED_DAYS_AGO)) });
+    expect(await db.installment.count({ where: { caseId: house.id } })).toBe(4);
+    expect(await db.installment.count({ where: { caseId: land.id } })).toBe(0);
+    expect((await load(land.id)).status).toBe("ALLOCATION_RECEIVED");
+    // HOME-3: it waits for its first installment as a house does.
+    expect((await todoItems(db, dsA)).some((item) => item.id === land.id && item.type === "received")).toBe(true);
+
+    const before = (await officeMoney(db, dsA))!.paidOut;
+    expect(await startLand(land.id, await version(land.id), 2, "900000")).toEqual({
+      ok: false,
+      error: "notFound",
+      errors: {},
+    });
+    expect(await startLand(land.id, await version(land.id), 1, "")).toMatchObject({
+      ok: false,
+      errors: { amount: "amountRequired" },
+    });
+    expect(await startLand(land.id, await version(land.id), 1, "900,000")).toMatchObject({ ok: true });
+    expect(await pay(dsA, land.id, await version(land.id), 1)).toMatchObject({ ok: true });
+    expect((await load(land.id)).status).toBe("IN_PROGRESS");
+
+    expect(await startLand(land.id, await version(land.id), 2, "1,200,000")).toMatchObject({
+      ok: false,
+      errors: { amount: "amountOverBalance" },
+    });
+    expect(await startLand(land.id, await version(land.id), 2, "450000")).toMatchObject({ ok: true });
+    expect(await correct(land.id, 2, "400000")).toMatchObject({ ok: true });
+    expect(await pay(dsA, land.id, await version(land.id), 2)).toMatchObject({ ok: true });
+    expect(await amounts(land.id)).toEqual([
+      [1, 900_000, "RELEASED"],
+      [2, 400_000, "RELEASED"],
+    ]);
+    // HOME-4: the amounts paid, not their number times Rs. 500,000.
+    expect((await officeMoney(db, dsA))!.paidOut - before).toBe(1_300_000);
+
+    const audit = await db.auditLog.findFirstOrThrow({ where: { caseId: land.id, action: "installment_corrected" } });
+    expect(audit.before).toMatchObject({ number: 2, amount: 450_000 });
+    expect(audit.after).toMatchObject({ number: 2, amount: 400_000 });
+    const history = await caseHistory(db, ho, land.id, "en");
+    expect(history?.map((entry) => entry.action)).toContain("installment_corrected");
+  });
+
+  it("can't overspend: two starts at once, nothing after Rs. 2,000,000, and installment 4 is the balance", async () => {
+    const once = await running({ kind: "LAND_ONLY" });
+    await payLand(once.id, 1, "1500000");
+    const shown = await version(once.id);
+    const both = await Promise.all([startLand(once.id, shown, 2, "500000"), startLand(once.id, shown, 2, "500000")]);
+    expect(both.filter((result) => result.ok)).toHaveLength(1);
+    expect(both.find((result) => !result.ok)).toEqual({ ok: false, error: "conflict", errors: {} });
+    expect(await pay(dsA, once.id, await version(once.id), 2)).toMatchObject({ ok: true });
+    expect(await startLand(once.id, await version(once.id), 3, "1")).toEqual({
+      ok: false,
+      error: "notFound",
+      errors: {},
+    });
+
+    const four = await running({ kind: "LAND_WITH_HOUSE" });
+    for (const number of [1, 2, 3]) await payLand(four.id, number, "100,000");
+    expect(await startLand(four.id, await version(four.id), 4, "100000")).toMatchObject({
+      ok: false,
+      errors: { amount: "amountNotBalance" },
+    });
+    expect(await startLand(four.id, await version(four.id), 4, "1,700,000")).toMatchObject({ ok: true });
+  });
+
+  it("is corrected only while being paid, by the office where it is built, and never for a house (INS-8)", async () => {
+    const house = await running();
+    expect(await start(dsA, house.id, await version(house.id), 1)).toMatchObject({ ok: true });
+    expect(await correct(house.id, 1, "400000")).toEqual({ ok: false, error: "fixedAmount", errors: {} });
+
+    const land = await running({ kind: "LAND_AND_BUILD" });
+    await payLand(land.id, 1, "800000");
+    expect(await correct(land.id, 1, "700000")).toEqual({ ok: false, error: "alreadyPaid", errors: {} });
+    expect(await correct(land.id, 1, "700000", dsB)).toEqual({ ok: false, error: "notFound", errors: {} });
+    expect(await correct(land.id, 1, "700000", ho)).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
+    // INS-6: once the Ministry undoes the payment, the DS corrects it.
+    expect(
+      await undoInstallmentPayment(db, ho, {
+        caseId: land.id,
+        version: await version(land.id),
+        number: 1,
+        reason: "මුදල වැරදියි",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(await correct(land.id, 1, "2,000,001")).toMatchObject({
+      ok: false,
+      errors: { amount: "amountOverBalance" },
+    });
+    expect(await correct(land.id, 1, "700000")).toMatchObject({ ok: true });
+    expect(await amounts(land.id)).toEqual([[1, 700_000, "PROCESSING"]]);
+  });
+
+  it("keeps the kind in its group after the District's release (CASE-9, AC-63)", async () => {
+    const edit = async (caseId: string, actor: Actor, kind: CaseValues["kind"]) => {
+      const current = await load(caseId);
+      return saveCase(db, actor, {
+        id: caseId,
+        version: current.version,
+        dsOfficeId: null,
+        buildDsOfficeId: null,
+        values: { ...values(), applicationNumber: current.applicationNumber, nic: current.nic, kind },
+        documentIds: [],
+      });
+    };
+    const waiting = await awaiting();
+    expect(await edit(waiting.id, dsA, "LAND_ONLY")).toMatchObject({ ok: true });
+
+    const house = await running();
+    expect(await edit(house.id, ho, "LAND_ONLY")).toEqual({ ok: false, error: "kindGroupLocked" });
+    expect(await edit(house.id, ho, "RENOVATION")).toMatchObject({ ok: true });
+    const land = await running({ kind: "LAND_AND_BUILD" });
+    expect(await edit(land.id, ho, "NEW_HOUSE")).toEqual({ ok: false, error: "kindGroupLocked" });
+    expect(await edit(land.id, ho, "LAND_ONLY")).toMatchObject({ ok: true });
   });
 });

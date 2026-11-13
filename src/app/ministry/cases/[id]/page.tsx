@@ -15,7 +15,7 @@ import { DuplicateCases } from "@/components/review/duplicate-cases";
 import { ReviewNotice } from "@/components/review/review-notice";
 import { colomboDay } from "@/lib/dates";
 import { duplicatesInFull } from "@/server/cases/duplicates";
-import { getCase, type InstallmentDetails } from "@/server/cases/queries";
+import { getCase } from "@/server/cases/queries";
 import { canDeleteCase, canEditDetails } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -99,7 +99,7 @@ export default async function HoCasePage({
 
   /** INS-6: only the most recently paid installment of a running case can be moved back. */
   const undoTarget = details.status === "IN_PROGRESS" ? lastPaid(details.installments) : null;
-  const undo = (item: InstallmentDetails) => {
+  const undo = (item: { number: number }) => {
     if (item.number !== undoTarget?.number) return null;
     const installment = t(`installment.name.${item.number as 1 | 2 | 3 | 4}`);
     return (
@@ -179,6 +179,7 @@ export default async function HoCasePage({
             {details.release && (
               <MoneySection
                 audience="ministry"
+                kind={details.kind}
                 release={details.release}
                 installments={details.installments}
                 actions={undoTarget ? undo : undefined}
