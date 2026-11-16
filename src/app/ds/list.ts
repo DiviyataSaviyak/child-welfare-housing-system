@@ -1,4 +1,4 @@
-import { NOT_ALLOCATED_STATUSES } from "@/components/cases/list-filters";
+import { type FilterValues, NOT_ALLOCATED_STATUSES, readCategory, readPeriod } from "@/components/cases/list-filters";
 import type { AmendmentStatus } from "@/generated/prisma/enums";
 import type { CaseFilter } from "@/server/cases/queries";
 
@@ -56,20 +56,55 @@ export function tabFilter(tab: CaseTab): Omit<CaseFilter, "q" | "page"> {
   }
 }
 
+/** The DS's list offers only these of the case list's filters; its tabs take the status's place (HOME-2, EXP-4). */
+export const HOME_FILTERS = ["q", "category", "from", "until"] as const satisfies (keyof FilterValues)[];
+
+const text = (value: unknown, length = 100) => (typeof value === "string" ? value.slice(0, length) : "");
+
 /**
- * HOME-2: the DS officer's list from the address, a tab and a search. The home page and its Excel
- * export (EXP-1) both read it here, so the file holds the cases the screen shows. An amendment tab lists
- * amendments instead (AMD-9): it has no search and no file, so `amendments` names the status and the
- * case filter is unused.
+ * HOME-2, EXP-4: the DS officer's list from the address: a tab, a search, the category and the period. The
+ * home page and its Excel export (EXP-1) both read it here, so the file holds the cases the screen shows.
+ * `values` are the filters as the form shows them, the others empty. An amendment tab lists amendments
+ * instead (AMD-9): it has no filters and no file, so `amendments` names the status and the case filter is
+ * unused.
  */
-export function readHomeList(params: { tab?: unknown; q?: unknown }): {
+export function readHomeList(params: {
+  tab?: unknown;
+  q?: unknown;
+  category?: unknown;
+  from?: unknown;
+  until?: unknown;
+}): {
   tab: Tab;
   q: string;
+  values: FilterValues;
   filter: Omit<CaseFilter, "page">;
   amendments: AmendmentStatus | null;
 } {
   const tab: Tab = isTab(params.tab) ? params.tab : "all";
-  if (isAmendmentTab(tab)) return { tab, q: "", filter: { q: "" }, amendments: amendmentStatusOf(tab) };
-  const q = typeof params.q === "string" ? params.q.slice(0, 100) : "";
-  return { tab, q, filter: { ...tabFilter(tab), q }, amendments: null };
+  const values: FilterValues = {
+    q: "",
+    districtId: "",
+    dsOfficeId: "",
+    status: "",
+    category: "",
+    kind: "",
+    from: "",
+    until: "",
+  };
+  if (isAmendmentTab(tab)) return { tab, q: "", values, filter: { q: "" }, amendments: amendmentStatusOf(tab) };
+  for (const key of HOME_FILTERS) values[key] = text(params[key]);
+  const category = readCategory(values.category);
+  return {
+    tab,
+    q: values.q,
+    values,
+    filter: {
+      ...tabFilter(tab),
+      q: values.q,
+      ...(category && { category }),
+      ...readPeriod(values.from, values.until),
+    },
+    amendments: null,
+  };
 }

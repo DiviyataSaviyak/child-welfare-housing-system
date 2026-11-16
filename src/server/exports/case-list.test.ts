@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import en from "../../../messages/en.json";
 import messages from "../../../messages/si.json";
 import ta from "../../../messages/ta.json";
-import { caseListColumns, type ExportRow, progressStages } from "./case-list";
+import { caseListColumns, type ExportRow, exportFileNames, notesCell, periodName, progressStages } from "./case-list";
 import { addSheet, workbookBytes, XLSX_TYPE, xlsxResponse } from "./workbook";
 
 const t = createTranslator({ locale: "si", messages, namespace: "cases" });
@@ -42,6 +42,7 @@ const released: ExportRow = {
   completedAt: null,
   updatedAt: new Date("2026-04-05T06:00:00Z"),
   remark: null,
+  replaces: null,
   release: {
     amount: 2_000_000,
     letterNumber: "MWCA/DS/2026/04",
@@ -330,10 +331,12 @@ describe("the case list's Excel file (EXP-1)", () => {
       ["ta", ta],
       ["en", en],
     ] as const) {
-      const name = createTranslator({ locale, messages: file, namespace: "cases" })("export.fileName", {
-        date: "2026-10-04",
-      });
-      expect(name, locale).not.toMatch(/\p{Cf}/u);
+      const tFile = createTranslator({ locale, messages: file, namespace: "cases" });
+      expect(tFile("export.fileName", { date: "2026-10-04" }), locale).not.toMatch(/\p{Cf}/u);
+      expect(
+        tFile("export.fileNamePeriod", { date: "2026-10-04", period: "2026.09.01-2026.09.30" }),
+        locale,
+      ).not.toMatch(/\p{Cf}/u);
     }
   });
 
@@ -443,5 +446,73 @@ describe("the building-progress columns' stages", () => {
 
   it("leaves all four empty for a kind with no stages", () => {
     expect(progressStages([])).toEqual([null, null, null, null]);
+  });
+});
+
+describe("the period in the file's name (EXP-1, EXP-4)", () => {
+  // 10:00 on 16 Nov in Colombo.
+  const now = new Date("2026-11-16T04:30:00Z");
+
+  it("ends the name with the period, its days written as UI-3 writes them", () => {
+    expect(periodName({ enteredFrom: "2026-10-01", enteredUntil: "2026-10-31" })).toBe("2026.10.01-2026.10.31");
+    expect(exportFileNames(t, { enteredFrom: "2026-10-01", enteredUntil: "2026-10-31" }, now)).toEqual({
+      fileName: "දිවියට සවියක් ලැයිස්තුව 2026-11-16 කාල සීමාව 2026.10.01-2026.10.31.xlsx",
+      asciiName: "diviyata-saviyak-2026-11-16_period_2026.10.01-2026.10.31.xlsx",
+    });
+  });
+
+  it("leaves an open end empty", () => {
+    expect(periodName({ enteredFrom: "2026-10-01" })).toBe("2026.10.01-");
+    expect(periodName({ enteredUntil: "2026-10-31" })).toBe("-2026.10.31");
+  });
+
+  it("keeps the plain name with no period", () => {
+    expect(periodName({})).toBeNull();
+    expect(exportFileNames(t, {}, now)).toEqual({
+      fileName: "දිවියට සවියක් ලැයිස්තුව 2026-11-16.xlsx",
+      asciiName: "diviyata-saviyak-2026-11-16.xlsx",
+    });
+  });
+
+  it("puts nothing in the header that RFC 5987 would need escaped beyond encodeURIComponent", () => {
+    const { fileName, asciiName } = exportFileNames(t, { enteredFrom: "2026-10-01", enteredUntil: "2026-10-31" }, now);
+    const disposition = xlsxResponse(new Uint8Array([1]), fileName, asciiName).headers.get("Content-Disposition") ?? "";
+    expect(disposition.split("''")[1]).not.toMatch(/[()'*]/);
+    expect(decodeURIComponent(disposition.split("''")[1])).toBe(fileName);
+  });
+});
+
+describe("the Notes column (AMD-7)", () => {
+  const remark = "ඉඩම් ගැටලුව විසඳා ඇත.";
+
+  it("keeps the remark alone on a case that replaced no one", () => {
+    expect(notesCell(t, { replaces: null, remark })).toBe(remark);
+    expect(notesCell(t, { replaces: null, remark: null })).toBeNull();
+  });
+
+  it("names the previous beneficiary and address on a line above the remark", () => {
+    const replaces = { name: "ඩී. ඊ. පරීක්ෂණ", childName: null, address: "2, පරීක්ෂණ පාර, හෝමාගම" };
+    expect(notesCell(t, { replaces, remark })).toBe(
+      `පෙර ප්‍රතිලාභියා: ඩී. ඊ. පරීක්ෂණ, 2, පරීක්ෂණ පාර, හෝමාගම\n${remark}`,
+    );
+    expect(notesCell(t, { replaces, remark: null })).toBe("පෙර ප්‍රතිලාභියා: ඩී. ඊ. පරීක්ෂණ, 2, පරීක්ෂණ පාර, හෝමාගම");
+  });
+
+  it("names the child too for a child at risk, and does without an address it hasn't", () => {
+    const replaces = { name: "ඩී. ඊ. පරීක්ෂණ", childName: "එෆ්. පරීක්ෂණ", address: null };
+    expect(notesCell(t, { replaces, remark: null })).toBe(
+      `පෙර ප්‍රතිලාභියා: ${t("withChild", { name: "ඩී. ඊ. පරීක්ෂණ", child: "එෆ්. පරීක්ෂණ" })}`,
+    );
+  });
+
+  it("writes it in the file's language, as a wrapped cell after the remark's header", async () => {
+    const tEn = createTranslator({ locale: "en", messages: en, namespace: "cases" });
+    const replaces = { name: "D. E. Test", childName: null, address: "2, Test Road, Homagama" };
+    expect(notesCell(tEn, { replaces, remark: "Land cleared." })).toBe(
+      "Previous beneficiary: D. E. Test, 2, Test Road, Homagama\nLand cleared.",
+    );
+    const column = caseListColumns(t, "si").at(-1)!;
+    expect(column.header).toBe(t("export.columns.remark"));
+    expect(column.wrap).toBe(true);
   });
 });

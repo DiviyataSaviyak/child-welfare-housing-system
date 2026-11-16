@@ -477,8 +477,6 @@
         "inProgress": "වැඩ සිදුවෙමින් ({count})",
         "completed": "නිමයි ({count})"
       },
-      "search": "සොයන්න",
-      "searchPlaceholder": "නම, ඉල්ලුම් අංකය හෝ හැඳුනුම්පත් අංකය",
       "columns": {
         "beneficiary": "ප්‍රතිලාභියා",
         "kind": "ආධාරය",
@@ -537,6 +535,14 @@
       "notAllocated": "ප්‍රතිපාදන නොලැබූ",
       "apply": "සොයන්න",
       "clear": "පෙරහන් ඉවත් කරන්න",
+      "period": "කාල සීමාව",
+      "from": "ඇතුළත් කළ දිනය: සිට",
+      "until": "ඇතුළත් කළ දිනය: දක්වා",
+      "periods": {
+        "month": "මාසයක්",
+        "twoMonths": "මාස දෙකක්",
+        "year": "වසරක්"
+      },
       "inactive": "{office} (අක්‍රියයි)",
       "columns": {
         "beneficiary": "ප්‍රතිලාභියා",
@@ -853,6 +859,9 @@
       "hint": "පෙරහන්වලට ගැළපෙන සියලු ප්‍රතිලාභීන්, සියලු පිටු සමඟ",
       "sheet": "ප්‍රතිලාභීන්",
       "fileName": "දිවියට සවියක් ලැයිස්තුව {date}.xlsx",
+      "fileNamePeriod": "දිවියට සවියක් ලැයිස්තුව {date} කාල සීමාව {period}.xlsx",
+      "previousBeneficiary": "පෙර ප්‍රතිලාභියා: {name}, {address}",
+      "previousBeneficiaryNoAddress": "පෙර ප්‍රතිලාභියා: {name}",
       "columns": {
         "number": "ඉල්ලුම් අංකය",
         "category": "කාණ්ඩය",

@@ -69,3 +69,15 @@ export function addDays(day: string, count: number): string {
 export function colomboStartOf(day: string): Date {
   return new Date(`${day}T00:00:00+05:30`);
 }
+
+/**
+ * The calendar day `count` months after `day` ("YYYY-MM-DD"), or before it when `count` is negative. A day
+ * the other month hasn't, such as 31 March a month back, becomes that month's last day (28 or 29 February).
+ */
+export function addMonths(day: string, count: number): string {
+  const [year, month, date] = day.split("-").map(Number) as [number, number, number];
+  const first = new Date(Date.UTC(year, month - 1 + count, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(date, last));
+  return first.toISOString().slice(0, 10);
+}

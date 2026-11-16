@@ -477,8 +477,6 @@
         "inProgress": "வேலை நடைபெறுகிறது ({count})",
         "completed": "நிறைவடைந்தவை ({count})"
       },
-      "search": "தேடுக",
-      "searchPlaceholder": "பெயர், விண்ணப்ப இலக்கம் அல்லது அடையாள அட்டை இலக்கம்",
       "columns": {
         "beneficiary": "பயனாளி",
         "kind": "உதவி",
@@ -537,6 +535,14 @@
       "notAllocated": "ஒதுக்கீடு கிடைக்காதவை",
       "apply": "தேடுக",
       "clear": "வடிகட்டிகளை அகற்று",
+      "period": "காலப்பகுதி",
+      "from": "பதிவுசெய்த திகதி: முதல்",
+      "until": "பதிவுசெய்த திகதி: வரை",
+      "periods": {
+        "month": "ஒரு மாதம்",
+        "twoMonths": "இரண்டு மாதங்கள்",
+        "year": "ஒரு வருடம்"
+      },
       "inactive": "{office} (செயலிழந்தது)",
       "columns": {
         "beneficiary": "பயனாளி",
@@ -853,6 +859,9 @@
       "hint": "வடிகட்டிகளுக்குப் பொருந்தும் அனைத்துப் பயனாளிகளும், அனைத்துப் பக்கங்களுடனும்",
       "sheet": "பயனாளிகள்",
       "fileName": "திவியட சவியக் பட்டியல் {date}.xlsx",
+      "fileNamePeriod": "திவியட சவியக் பட்டியல் {date} காலப்பகுதி {period}.xlsx",
+      "previousBeneficiary": "முன்னைய பயனாளி: {name}, {address}",
+      "previousBeneficiaryNoAddress": "முன்னைய பயனாளி: {name}",
       "columns": {
         "number": "விண்ணப்ப இலக்கம்",
         "category": "வகை",

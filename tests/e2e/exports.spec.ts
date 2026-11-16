@@ -172,7 +172,8 @@ test("the DS officer and the Ministry take their lists to Excel, with the screen
   await page.goto("/ds");
   await page.getByRole("searchbox").fill(nic);
   await page.getByRole("button", { name: "සොයන්න" }).click();
-  await expect(page).toHaveURL(new RegExp(`/ds\\?q=${nic}$`));
+  // EXP-4: the DS's form sends its category and period too, empty here.
+  await expect(page).toHaveURL(new RegExp(`/ds\\?q=${nic}&category=&from=&until=$`));
   const own = await exportList(page);
   expect(own.fileName).toMatch(FILE_NAME);
   expect(own.sheet.name).toBe("ප්‍රතිලාභීන්");

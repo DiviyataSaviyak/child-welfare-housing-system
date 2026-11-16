@@ -477,8 +477,6 @@
         "inProgress": "Work in progress ({count})",
         "completed": "Completed ({count})"
       },
-      "search": "Search",
-      "searchPlaceholder": "Name, Application Number or NIC number",
       "columns": {
         "beneficiary": "Beneficiary",
         "kind": "Assistance",
@@ -537,6 +535,14 @@
       "notAllocated": "Not yet allocated",
       "apply": "Search",
       "clear": "Clear filters",
+      "period": "Period",
+      "from": "Entered from",
+      "until": "Entered until",
+      "periods": {
+        "month": "One month",
+        "twoMonths": "Two months",
+        "year": "One year"
+      },
       "inactive": "{office} (inactive)",
       "columns": {
         "beneficiary": "Beneficiary",
@@ -853,6 +859,9 @@
       "hint": "Every beneficiary that matches the filters, on all pages",
       "sheet": "Beneficiaries",
       "fileName": "Diviyata Saviyak list {date}.xlsx",
+      "fileNamePeriod": "Diviyata Saviyak list {date} period {period}.xlsx",
+      "previousBeneficiary": "Previous beneficiary: {name}, {address}",
+      "previousBeneficiaryNoAddress": "Previous beneficiary: {name}",
       "columns": {
         "number": "Application Number",
         "category": "Category",

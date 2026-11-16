@@ -490,6 +490,9 @@ export type CaseFilter = {
   districtId?: number;
   /** The DS of residence or the DS where it is built (FND-1, CASE-13). */
   dsOfficeId?: number;
+  /** EXP-4: the first and last day the case was entered ("YYYY-MM-DD", in Colombo, ARC-6), each optional. */
+  enteredFrom?: string;
+  enteredUntil?: string;
   /** 1 is the first page. */
   page?: number;
 };
@@ -546,6 +549,9 @@ export function caseWhere(viewer: Viewer, filter: CaseFilter): Prisma.CaseWhereI
     });
   }
   if (filter.dsOfficeId) and.push({ OR: [{ dsOfficeId: filter.dsOfficeId }, { buildDsOfficeId: filter.dsOfficeId }] });
+  // EXP-4: from the start of the first Colombo day to the end of the last (ARC-6).
+  if (filter.enteredFrom) and.push({ createdAt: { gte: colomboStartOf(filter.enteredFrom) } });
+  if (filter.enteredUntil) and.push({ createdAt: { lt: colomboStartOf(addDays(filter.enteredUntil, 1)) } });
 
   const q = filter.q?.trim();
   if (q) {

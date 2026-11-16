@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import type { DistrictOptions } from "@/server/lists/queries";
-import { type FilterValues, NOT_ALLOCATED } from "./list-filters";
+import { type FilterValues, filterQuery, NOT_ALLOCATED, PERIODS, type Period, periodDays } from "./list-filters";
 
 const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-base";
 
@@ -17,26 +17,46 @@ const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-base"
 export type PlaceFilters = "district" | "office" | "none";
 
 /**
- * FND-1: the case list's filters, sent in the address so a search can be bookmarked or shared.
- * Choosing a district narrows the DS offices at once. `districts` holds only the places the viewer
- * may see.
+ * FND-1, EXP-4: the case list's filters, sent in the address so a search can be bookmarked or shared,
+ * and the list's Excel file follows them. Choosing a district narrows the DS offices at once. `districts`
+ * holds only the places the viewer may see. The DS's list has no status or kind filter (`statuses` and
+ * `kinds` left out): its tabs, kept in `hidden`, take the status's place (HOME-2).
  */
 export function CaseFilters({
   action,
   values,
-  districts,
+  districts = [],
   places = "district",
   statuses,
+  kinds = true,
+  hidden = {},
+  today,
 }: {
   /** The list's own address. */
   action: string;
   values: FilterValues;
-  districts: DistrictOptions[];
+  districts?: DistrictOptions[];
   places?: PlaceFilters;
-  statuses: readonly CaseStatus[];
+  statuses?: readonly CaseStatus[];
+  kinds?: boolean;
+  /** Address values the form keeps as they are, such as the DS's tab. */
+  hidden?: Record<string, string>;
+  /** Colombo's day ("YYYY-MM-DD", ARC-6), read once by the page, which the period's shortcuts end on. */
+  today: string;
 }) {
   const t = useTranslations("cases");
   const [chosen, setDistrictId] = useState(values.districtId);
+  const [from, setFrom] = useState(values.from);
+  const withHidden = (query: URLSearchParams) => {
+    for (const [key, value] of Object.entries(hidden)) query.set(key, value);
+    return query.size > 0 ? `${action}?${query}` : action;
+  };
+  // EXP-4: each shortcut keeps the filters in use and fills the period, ending today.
+  const shortcut = (period: Period) => {
+    const days = periodDays(period, today);
+    const query = filterQuery({ ...values, ...days });
+    return { href: withHidden(query), current: values.from === days.from && values.until === days.until };
+  };
   // With no district to choose, the offices are those of the area's one district.
   const districtId = places === "district" ? chosen : String(districts[0]?.id ?? "");
   const offices = districts.find((d) => String(d.id) === districtId)?.offices ?? [];
@@ -48,6 +68,9 @@ export function CaseFilters({
       aria-label={t("list.filtersLabel")}
       className="flex flex-wrap items-end gap-3 border-b px-5 py-4"
     >
+      {Object.entries(hidden).map(([key, value]) => (
+        <input key={key} type="hidden" name={key} value={value} />
+      ))}
       <Field id="q" label={t("list.search")}>
         <input
           id="q"
@@ -96,18 +119,20 @@ export function CaseFilters({
           </select>
         </Field>
       )}
-      <Field id="status" label={t("list.status")}>
-        <select id="status" name="status" defaultValue={values.status} className={selectClass}>
-          <option value="">{t("list.all")}</option>
-          {/* FND-1: the first two statuses together, the cases whose money hasn't reached the DS. */}
-          <option value={NOT_ALLOCATED}>{t("list.notAllocated")}</option>
-          {statuses.map((s) => (
-            <option key={s} value={s}>
-              {t(`status.${s}`)}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {statuses && (
+        <Field id="status" label={t("list.status")}>
+          <select id="status" name="status" defaultValue={values.status} className={selectClass}>
+            <option value="">{t("list.all")}</option>
+            {/* FND-1: the first two statuses together, the cases whose money hasn't reached the DS. */}
+            <option value={NOT_ALLOCATED}>{t("list.notAllocated")}</option>
+            {statuses.map((s) => (
+              <option key={s} value={s}>
+                {t(`status.${s}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field id="category" label={t("list.category")}>
         <select id="category" name="category" defaultValue={values.category} className={selectClass}>
           <option value="">{t("list.all")}</option>
@@ -118,22 +143,65 @@ export function CaseFilters({
           ))}
         </select>
       </Field>
-      <Field id="kind" label={t("list.kind")}>
-        <select id="kind" name="kind" defaultValue={values.kind} className={selectClass}>
-          <option value="">{t("list.all")}</option>
-          {KINDS.map((k) => (
-            <option key={k} value={k}>
-              {t(`kindShort.${k}`)}
-            </option>
-          ))}
-        </select>
+      {kinds && (
+        <Field id="kind" label={t("list.kind")}>
+          <select id="kind" name="kind" defaultValue={values.kind} className={selectClass}>
+            <option value="">{t("list.all")}</option>
+            {KINDS.map((k) => (
+              <option key={k} value={k}>
+                {t(`kindShort.${k}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {/* EXP-4: the days the cases were entered, either alone; "until" can't be before "from". */}
+      <Field id="from" label={t("list.from")}>
+        <input
+          id="from"
+          name="from"
+          type="date"
+          defaultValue={values.from}
+          max={today}
+          onChange={(event) => setFrom(event.target.value)}
+          className={selectClass}
+        />
+      </Field>
+      <Field id="until" label={t("list.until")}>
+        <input
+          id="until"
+          name="until"
+          type="date"
+          defaultValue={values.until}
+          min={from || undefined}
+          className={selectClass}
+        />
       </Field>
       <button type="submit" className="h-11 rounded-lg border border-primary px-5 font-semibold text-primary">
         {t("list.apply")}
       </button>
-      <Link href={action} className="flex h-11 items-center px-2 font-semibold text-primary underline">
+      <Link
+        href={withHidden(new URLSearchParams())}
+        className="flex h-11 items-center px-2 font-semibold text-primary underline"
+      >
         {t("list.clear")}
       </Link>
+      <nav aria-label={t("list.period")} className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-[15px]">
+        <span className="font-semibold">{t("list.period")}:</span>
+        {(Object.keys(PERIODS) as Period[]).map((period) => {
+          const { href, current } = shortcut(period);
+          return (
+            <Link
+              key={period}
+              href={href}
+              aria-current={current ? "true" : undefined}
+              className={`font-semibold text-primary underline-offset-2 ${current ? "underline" : "hover:underline"}`}
+            >
+              {t(`list.periods.${period}`)}
+            </Link>
+          );
+        })}
+      </nav>
     </form>
   );
 }

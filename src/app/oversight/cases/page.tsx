@@ -4,6 +4,7 @@ import { CaseTable } from "@/components/cases/case-table";
 import { ExportLink } from "@/components/cases/export-link";
 import { FILTERS, filterQuery, positive, readFilters, STATUSES } from "@/components/cases/list-filters";
 import { Pager } from "@/components/cases/pager";
+import { colomboDay } from "@/lib/dates";
 import { listCases, PAGE_SIZE } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -67,6 +68,7 @@ export default async function OversightCasesPage({
           districts={area.districts}
           places={area.places}
           statuses={STATUSES}
+          today={colomboDay(new Date())}
         />
         <CaseTable rows={list.rows} href={(row) => `/oversight/cases/${row.id}`} />
         <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={pageHref} />

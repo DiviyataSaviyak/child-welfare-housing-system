@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentTable } from "@/components/amendments/amendment-table";
+import { CaseFilters } from "@/components/cases/case-filters";
 import { ExportLink } from "@/components/cases/export-link";
 import { ListTabs } from "@/components/cases/list-tabs";
 import { caseName } from "@/components/cases/page-header";
 import { Pager } from "@/components/cases/pager";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
-import { daysBetween, formatDate } from "@/lib/dates";
+import { colomboDay, daysBetween, formatDate } from "@/lib/dates";
 import { formatRupees, INSTALLMENT_COUNT } from "@/lib/money";
 import { countAmendments, listAmendments } from "@/server/amendments/queries";
 import {
@@ -24,7 +25,16 @@ import {
 } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { amendmentStatusOf, CASE_TABS, isAmendmentTab, readHomeList, type Tab, TABS, tabFilter } from "./list";
+import {
+  amendmentStatusOf,
+  CASE_TABS,
+  HOME_FILTERS,
+  isAmendmentTab,
+  readHomeList,
+  type Tab,
+  TABS,
+  tabFilter,
+} from "./list";
 
 /** The colour of each kind of to-do item, as in the prototype. */
 const TODO_COLOUR: Record<TodoItem["type"], string> = {
@@ -36,8 +46,9 @@ const TODO_COLOUR: Record<TodoItem["type"], string> = {
 
 /**
  * HOME-1 to HOME-4: the DS officer's own cases, entered there or built there (CASE-13), with what needs
- * doing next and the office's money beside them. The last three tabs list the office's amendments instead
- * (AMD-9), with no search and no Excel file.
+ * doing next and the office's money beside them. The search, category and period (EXP-4) narrow the case
+ * tabs and their Excel file. The last three tabs list the office's amendments instead (AMD-9), with no
+ * filters and no Excel file.
  */
 export default async function DsHomePage({
   searchParams,
@@ -45,6 +56,9 @@ export default async function DsHomePage({
   searchParams: Promise<{
     tab?: string | string[];
     q?: string | string[];
+    category?: string | string[];
+    from?: string | string[];
+    until?: string | string[];
     page?: string | string[];
     notice?: string | string[];
   }>;
@@ -55,7 +69,7 @@ export default async function DsHomePage({
   if (!office) notFound();
 
   const params = await searchParams;
-  const { tab, q, filter, amendments } = readHomeList(params);
+  const { tab, values, filter, amendments } = readHomeList(params);
   const page = Math.max(1, Number(params.page) || 1);
 
   const [t, list, amendmentList, caseCounts, amendmentCounts, todo, money] = await Promise.all([
@@ -82,8 +96,8 @@ export default async function DsHomePage({
     const query = new URLSearchParams();
     const nextTab = changes.tab ?? tab;
     if (nextTab !== "all") query.set("tab", nextTab);
-    // The search is over cases; an amendment tab has none.
-    if (q && !isAmendmentTab(nextTab)) query.set("q", q);
+    // The filters are over cases; an amendment tab has none.
+    if (!isAmendmentTab(nextTab)) for (const key of HOME_FILTERS) if (values[key]) query.set(key, values[key]);
     if (changes.page && changes.page > 1) query.set("page", String(changes.page));
     const text = query.toString();
     return text ? `${path}?${text}` : path;
@@ -152,29 +166,19 @@ export default async function DsHomePage({
                 tabs: TABS.filter(isAmendmentTab).map(tabLink),
               }}
             />
-            {!amendments && (
-              <form method="get" action="/ds" className="ms-auto flex items-center gap-2">
-                {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
-                <label htmlFor="q" className="sr-only">
-                  {t("home.search")}
-                </label>
-                <input
-                  id="q"
-                  name="q"
-                  type="search"
-                  defaultValue={q}
-                  placeholder={t("home.searchPlaceholder")}
-                  className="h-11.5 w-80 rounded-lg border border-input bg-card px-3.5 text-base"
-                />
-                <button
-                  type="submit"
-                  className="h-11.5 rounded-lg border border-primary px-4 font-semibold text-primary"
-                >
-                  {t("home.search")}
-                </button>
-              </form>
-            )}
           </div>
+          {!amendments && (
+            <CaseFilters
+              // A tab or "clear" changes the address without leaving the page; a new form shows the new choices.
+              key={[tab, ...HOME_FILTERS.map((key) => values[key])].join("|")}
+              action="/ds"
+              values={values}
+              places="none"
+              kinds={false}
+              hidden={tab === "all" ? {} : { tab }}
+              today={colomboDay(now)}
+            />
+          )}
 
           {amendments && amendmentList ? (
             <>
