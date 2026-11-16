@@ -1436,7 +1436,7 @@
     "tiles": {
       "label": "Totals",
       "cases": "Total beneficiaries",
-      "casesNote": "Every beneficiary entered",
+      "casesNote": "Every beneficiary entered, less those replaced",
       "money": "Money",
       "allocated": "Allocated to districts (Rs.)",
       "allocatedNote": "By the Ministry's allocation letters",
@@ -1444,6 +1444,13 @@
       "releasedToDsNote": "By the District Secretariats",
       "paidOut": "Paid to beneficiaries (Rs.)",
       "paidOutNote": "Installments paid"
+    },
+    "amendments": {
+      "title": "Amendments",
+      "WAITING": "Submitted for approval",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "approvedNote": "Each replaced a beneficiary"
     },
     "table": {
       "byDistrict": "By district",
@@ -1464,7 +1471,8 @@
     "waiting": {
       "title": "Needs your action",
       "release": "To release allocations",
-      "dsRelease": "To release to DS offices"
+      "dsRelease": "To release to DS offices",
+      "amendments": "Amendments to decide"
     },
     "stale": {
       "title": "Not updated for {days} days or more ({count})",
