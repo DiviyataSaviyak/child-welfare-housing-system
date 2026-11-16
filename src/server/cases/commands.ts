@@ -273,13 +273,22 @@ export async function applicationNumberTaken(
   dsOfficeId: number,
   applicationNumber: string,
   exceptCaseId: string | null,
+  /** The amendment being approved, which holds the number itself until then (AMD-5). */
+  exceptAmendmentId: string | null = null,
 ): Promise<boolean> {
   const key = applicationKey(applicationNumber);
   const [cases, amendments] = await Promise.all([
     db.case.count({
       where: { dsOfficeId, applicationKey: key, ...(exceptCaseId ? { id: { not: exceptCaseId } } : {}) },
     }),
-    db.amendment.count({ where: { dsOfficeId, applicationKey: key, status: "WAITING" } }),
+    db.amendment.count({
+      where: {
+        dsOfficeId,
+        applicationKey: key,
+        status: "WAITING",
+        ...(exceptAmendmentId ? { id: { not: exceptAmendmentId } } : {}),
+      },
+    }),
   ]);
   return cases + amendments > 0;
 }
@@ -292,32 +301,25 @@ async function writeCase(
   dsOfficeId: number,
   buildDsOfficeId: number,
 ): Promise<SavedCase> {
-  const { centres, dateOfBirth, ...rest } = input.values;
-  const fields = {
-    ...rest,
-    dateOfBirth: dayToDate(dateOfBirth),
-    applicationKey: applicationKey(input.values.applicationNumber),
-    nicKey: input.values.nic ? nicKey(input.values.nic) : null,
-    dsOfficeId,
-    buildDsOfficeId,
-  };
-
   if (current) {
     const updated = await tx.case.updateMany({
       where: { id: current.id, version: current.version, status: { in: [...editableStatuses(actor.role)] } },
-      data: { ...fields, version: { increment: 1 } },
+      data: { ...caseColumns(input.values, dsOfficeId, buildDsOfficeId), version: { increment: 1 } },
     });
     if (updated.count === 0) throw new Refusal("conflict");
     // CASE-14: saving replaces the centres.
     await tx.careCentre.deleteMany({ where: { caseId: current.id } });
+    await insertCentres(tx, input.id, input.values.centres);
   } else {
     // CASE-5: saved straight into AWAITING_ALLOCATION; no draft, no check, no generated number.
-    await tx.case.create({
-      data: { id: input.id, ...fields, status: "AWAITING_ALLOCATION", createdById: actor.userId },
+    await insertCase(tx, {
+      id: input.id,
+      values: input.values,
+      dsOfficeId,
+      buildDsOfficeId,
+      status: "AWAITING_ALLOCATION",
+      createdById: actor.userId,
     });
-  }
-  if (centres.length > 0) {
-    await tx.careCentre.createMany({ data: centres.map((centre, index) => centreRow(input.id, centre, index)) });
   }
   const documentIds = await attachDocuments(tx, actor, input.id, input.documentIds);
 
@@ -359,6 +361,55 @@ async function writeCase(
     if (await completeIfDone(tx, moving, new Date())) status = "COMPLETED";
   }
   return { id: input.id, applicationNumber: input.values.applicationNumber, status, created: !current };
+}
+
+/** The case's own columns for its form's values, as stored (CASE-12, CASE-13, CASE-6's NIC key). */
+function caseColumns(values: CompleteCaseValues, dsOfficeId: number, buildDsOfficeId: number) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the centres are rows of their own (CASE-14)
+  const { centres, dateOfBirth, ...rest } = values;
+  return {
+    ...rest,
+    dateOfBirth: dayToDate(dateOfBirth),
+    applicationKey: applicationKey(values.applicationNumber),
+    nicKey: values.nic ? nicKey(values.nic) : null,
+    dsOfficeId,
+    buildDsOfficeId,
+  };
+}
+
+async function insertCentres(tx: Prisma.TransactionClient, caseId: string, centres: CentreValues[]) {
+  if (centres.length === 0) return;
+  await tx.careCentre.createMany({ data: centres.map((centre, index) => centreRow(caseId, centre, index)) });
+}
+
+/**
+ * A new case's row and its centres, inside the caller's transaction: a new beneficiary saved on the form
+ * (CASE-5), or the one an approved amendment brings in, in the status of the case it replaces (AMD-5). The
+ * caller checks the rules, attaches the documents and writes the audit record.
+ */
+export async function insertCase(
+  tx: Prisma.TransactionClient,
+  input: {
+    id: string;
+    values: CompleteCaseValues;
+    dsOfficeId: number;
+    buildDsOfficeId: number;
+    status: CaseStatus;
+    createdById: string;
+    /** AMD-5: the case this one takes the place of. */
+    replacesCaseId?: string | null;
+  },
+): Promise<void> {
+  await tx.case.create({
+    data: {
+      id: input.id,
+      ...caseColumns(input.values, input.dsOfficeId, input.buildDsOfficeId),
+      status: input.status,
+      createdById: input.createdById,
+      replacesCaseId: input.replacesCaseId ?? null,
+    },
+  });
+  await insertCentres(tx, input.id, input.values.centres);
 }
 
 /** The fields a save logs, with their old and new values (HIS-1). */

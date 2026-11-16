@@ -216,7 +216,7 @@ export default async function DsCasePage({
       {notice === "amendmentSubmitted" && <FormNotice message={t("amend.submitted")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <ReplacementNotes details={details} audience="ds" />
-      <AmendmentNotes details={details} ownOffice={amendable} />
+      <AmendmentNotes details={details} ownOffice={amendable} audience="ds" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

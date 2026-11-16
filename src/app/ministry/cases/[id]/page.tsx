@@ -155,7 +155,7 @@ export default async function HoCasePage({
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <ReviewNotice notice={notice} />
       <ReplacementNotes details={details} audience="ministry" />
-      <AmendmentNotes details={details} ownOffice={false} />
+      <AmendmentNotes details={details} ownOffice={false} audience="ministry" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

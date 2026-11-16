@@ -1,5 +1,7 @@
 import { FilePen, FileX } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import Link from "next/link";
+import { type Audience, amendmentHref } from "@/components/cases/case-view";
 import { caseName } from "@/components/cases/page-header";
 import { formatDate } from "@/lib/dates";
 import type { CaseDetails } from "@/server/cases/queries";
@@ -8,12 +10,27 @@ import type { CaseDetails } from "@/server/cases/queries";
  * AMD-3, AMD-6: a case page's box for the case's amendment, on every account's case page (PRM-4): the one
  * waiting for the Ministry, with the new beneficiary it proposes and its reason, and what it holds until
  * then; or else the last one, if the Ministry rejected it, with the Ministry's reason. `ownOffice` adds the
- * line for the DS of residence that another amendment may be submitted.
+ * line for the DS of residence that another amendment may be submitted. It links to the amendment's page
+ * where the reader has one (`amendmentHref`).
  */
-export async function AmendmentNotes({ details, ownOffice }: { details: CaseDetails; ownOffice: boolean }) {
+export async function AmendmentNotes({
+  details,
+  ownOffice,
+  audience,
+}: {
+  details: CaseDetails;
+  ownOffice: boolean;
+  audience: Audience;
+}) {
   const amendment = details.amendment;
   if (!amendment) return null;
   const t = await getTranslations("cases");
+  const href = amendmentHref(audience, amendment.id);
+  const open = href && (
+    <Link href={href} className="self-start font-semibold underline underline-offset-2">
+      {t("amend.openAmendment")}
+    </Link>
+  );
   const person = {
     name: caseName(t, amendment.name, amendment.childName),
     number: amendment.applicationNumber,
@@ -34,6 +51,7 @@ export async function AmendmentNotes({ details, ownOffice }: { details: CaseDeta
           <p>{t("amend.waitingText", { date: formatDate(amendment.submittedAt), ...person })}</p>
           <p className="whitespace-pre-line">{t("amend.reasonLine", { reason: amendment.reason })}</p>
           <p className="text-[15px]">{t("amend.waitingHold")}</p>
+          {open}
         </div>
       </section>
     );
@@ -53,6 +71,7 @@ export async function AmendmentNotes({ details, ownOffice }: { details: CaseDeta
         <p>{t("amend.rejectedText", person)}</p>
         <p className="whitespace-pre-line">{t("amend.rejectionReason", { reason: amendment.rejectionReason ?? "" })}</p>
         {ownOffice && <p className="text-[15px] text-[#3F4843]">{t("amend.again")}</p>}
+        {open}
       </div>
     </section>
   );

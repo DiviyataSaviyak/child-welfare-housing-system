@@ -11,10 +11,12 @@ import { getCase, todoItems } from "../cases/queries";
 import { fileForViewer, uploadDocument } from "../files/uploads";
 import { caseHistory } from "../history/queries";
 import { markInstallmentPaid, startInstallment } from "../installments/commands";
+import { listNotifications } from "../notifications/queries";
 import { recordLetter } from "../releases/commands";
 import { casesForDsRelease, casesForLetter } from "../releases/queries";
 import { recordStageUpdate } from "../stages/commands";
-import { type SubmitAmendmentInput, submitAmendment } from "./commands";
+import { approveAmendment, rejectAmendment, type SubmitAmendmentInput, submitAmendment } from "./commands";
+import { getAmendment } from "./queries";
 
 const db = createTestClient();
 
@@ -82,6 +84,8 @@ let dsBuilt: Actor;
 /** The CRPO of a DS of another district. */
 let dsFar: Actor;
 let ministry: Actor;
+/** The Ministry's Secretary, who only views (PRM-4, AC-48). */
+let secretary: Actor;
 let districtA: number;
 /** An active DS office of another district. */
 let far: { id: number; districtId: number };
@@ -187,6 +191,7 @@ beforeAll(async () => {
     actor("amend-test-ministry", "MINISTRY_OFFICER", "MINISTRY_PROGRAMME_OFFICER"),
     "සං. අමාත්‍යාංශ",
   );
+  secretary = await account(actor("amend-test-secretary", "VIEWER", "MINISTRY_SECRETARY"), "සං. ලේකම්");
 });
 
 afterAll(async () => {
@@ -428,16 +433,9 @@ describe("a rejected amendment (AMD-6, HOME-3)", () => {
     const row = await newCase("ප්‍රතික්ෂේපිත");
     const first = await amend(row);
     if (!first.ok) throw new Error(String(first.error));
-    // The Ministry's rejection is task 3's command; the row is set as it will set it.
-    await db.amendment.update({
-      where: { id: first.value.id },
-      data: {
-        status: "REJECTED",
-        decidedById: ministry.userId,
-        decidedAt: new Date(),
-        rejectionReason: "ලේඛන ප්‍රමාණවත් නැත",
-      },
-    });
+    expect(
+      await rejectAmendment(db, ministry, { amendmentId: first.value.id, version: 1, reason: "ලේඛන ප්‍රමාණවත් නැත" }),
+    ).toEqual({ ok: true, caseId: row.id });
 
     const todo = await todoItems(db, dsA);
     expect(todo.find((item) => item.type === "amendmentRejected" && item.amendmentId === first.value.id)).toMatchObject(
@@ -478,3 +476,301 @@ async function districtOfficer(): Promise<Actor> {
     }));
   return actor(user.id, "DISTRICT_OFFICER", "DISTRICT_CRPO", { districtId: districtA });
 }
+
+/** Submits an amendment and gives its id, failing the test if it is refused. */
+async function submitted(existing: { id: string; version: number }, overrides: Partial<SubmitAmendmentInput> = {}) {
+  const result = await amend(existing, overrides);
+  if (!result.ok) throw new Error(String(result.error));
+  return result.value.id;
+}
+
+/** The Ministry approves, with the versions it was shown. */
+async function approve(amendmentId: string, by: Actor = ministry) {
+  const row = await db.amendment.findUnique({ where: { id: amendmentId }, select: { version: true, caseId: true } });
+  const caseVersion = row ? (await load(row.caseId)).version : 1;
+  return approveAmendment(db, by, { amendmentId, version: row?.version ?? 1, caseVersion });
+}
+
+const noticesOf = async (who: Actor, caseId: string) =>
+  (await listNotifications(db, who, 200)).filter((n) => n.caseId === caseId).map((n) => n.type);
+
+describe("approving an amendment (AMD-5, AC-44, AC-45)", () => {
+  it("makes the new beneficiary's case in the existing one's place, before the allocation", async () => {
+    const existing = await newCase("ප්‍රතිස්ථාපනය වන");
+    const upload = await uploadDocument(db, dsA, { name: "නව ලේඛනය.pdf", bytes: PDF });
+    if (!upload.ok) throw new Error(upload.error);
+    const id = await submitted(existing, {
+      values: values("අනුමත නව", { applicationNumber: "amd/44" }),
+      buildDsOfficeId: dsBuilt.dsOfficeId,
+      documentIds: [upload.value.id],
+    });
+
+    const result = await approve(id);
+    if (!result.ok) throw new Error(result.error);
+    const made = await db.case.findUniqueOrThrow({ where: { id: result.caseId }, include: { centres: true } });
+    expect(made).toMatchObject({
+      status: "AWAITING_ALLOCATION",
+      name: "අනුමත නව",
+      applicationNumber: "amd/44",
+      applicationKey: "AMD/44",
+      dsOfficeId: dsA.dsOfficeId,
+      buildDsOfficeId: dsBuilt.dsOfficeId,
+      replacesCaseId: existing.id,
+      createdById: dsA.userId,
+    });
+    expect(made.centres.length).toBe(CARE_LEAVER_DETAILS.centres.length);
+    expect(await load(existing.id)).toMatchObject({ status: "REPLACED", name: existing.name });
+    expect(await db.amendment.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: "APPROVED",
+      decidedById: ministry.userId,
+      newCaseId: made.id,
+      version: 2,
+    });
+    // The documents follow the new beneficiary.
+    expect(await db.storedFile.findUniqueOrThrow({ where: { id: upload.value.id } })).toMatchObject({
+      caseId: made.id,
+      amendmentId: null,
+    });
+
+    // Each links to the other through the amendment.
+    const before = await getCase(db, dsA, existing.id, "si");
+    expect(before?.replacedBy).toMatchObject({ id: made.id, amendment: { id } });
+    expect(before?.amendment).toBeNull();
+    const after = await getCase(db, dsA, made.id, "si");
+    expect(after?.replaces).toMatchObject({ id: existing.id, decision: null, amendment: { id } });
+    expect(after?.documents.map((d) => d.id)).toEqual([upload.value.id]);
+
+    // Both histories say who approved it, and name the other case (AMD-5).
+    const oldHistory = await caseHistory(db, dsA, existing.id, "si");
+    expect(oldHistory?.find((e) => e.action === "case_replaced")).toMatchObject({
+      actor: { role: "MINISTRY_OFFICER" },
+      after: { newCaseId: made.id, newApplicationNumber: "amd/44", newName: "අනුමත නව", allocationMoved: false },
+    });
+    const newHistory = await caseHistory(db, dsA, made.id, "si");
+    expect(newHistory?.find((e) => e.action === "amendment_approved")).toMatchObject({
+      actor: { role: "MINISTRY_OFFICER" },
+      after: {
+        replacesCaseId: existing.id,
+        replacedApplicationNumber: existing.applicationNumber,
+        applicationNumber: "amd/44",
+        reason: REASON,
+        status: "AWAITING_ALLOCATION",
+        documentsAdded: [upload.value.id],
+      },
+    });
+
+    // AMD-10: the CRPOs of both DS offices, on the new case; no District officer before a letter.
+    expect(await noticesOf(dsA, made.id)).toEqual(["AMENDMENT_APPROVED"]);
+    expect(await noticesOf(dsBuilt, made.id)).toEqual(["AMENDMENT_APPROVED"]);
+    expect(await db.notification.count({ where: { caseId: made.id, user: { role: "DISTRICT_OFFICER" } } })).toBe(0);
+
+    // The page shows both beneficiaries to whoever sees the case, and nobody else (AMD-4, PRM-1).
+    const view = await getAmendment(db, accountant, id, "si");
+    expect(view).toMatchObject({ status: "APPROVED", newCase: { id: made.id }, proposed: { name: "අනුමත නව" } });
+    expect(view?.documents.map((d) => d.id)).toEqual([upload.value.id]);
+    expect(await getAmendment(db, dsFar, id, "si")).toBeNull();
+  });
+
+  it("moves the allocation and its District release, with new installments by the new kind", async () => {
+    const existing = await received("ලැබුණු ප්‍රතිස්ථාපිත");
+    const release = await db.release.findUniqueOrThrow({ where: { caseId: existing.id } });
+    // An installment started before the amendment stays on the replaced case, unpaid.
+    expect(await start(dsA, existing)).toMatchObject({ ok: true });
+    const id = await submitted(await load(existing.id));
+    const officer = await districtOfficer();
+
+    const result = await approve(id);
+    if (!result.ok) throw new Error(result.error);
+    const made = await db.case.findUniqueOrThrow({
+      where: { id: result.caseId },
+      include: { release: true, installments: { orderBy: { number: "asc" } } },
+    });
+    expect(made.status).toBe("ALLOCATION_RECEIVED");
+    expect(made.release).toMatchObject({
+      id: release.id,
+      letterId: release.letterId,
+      dsReleaseId: release.dsReleaseId,
+      amount: 2_000_000,
+    });
+    expect(made.installments.map((i) => [i.number, i.status, i.amount])).toEqual([
+      [1, "NOT_STARTED", 500_000],
+      [2, "NOT_STARTED", 500_000],
+      [3, "NOT_STARTED", 500_000],
+      [4, "NOT_STARTED", 500_000],
+    ]);
+    const old = await db.case.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { release: true, installments: { orderBy: { number: "asc" } } },
+    });
+    expect(old.status).toBe("REPLACED");
+    expect(old.release).toBeNull();
+    expect(old.installments.map((i) => i.status)).toEqual(["PROCESSING", "NOT_STARTED", "NOT_STARTED", "NOT_STARTED"]);
+    // The letter and the District release still count one case each for it.
+    expect(await db.release.count({ where: { letterId: release.letterId } })).toBe(1);
+
+    // AMD-10: the district holds the money, so its District officers hear of it too.
+    expect(await noticesOf(officer, made.id)).toEqual(["AMENDMENT_APPROVED"]);
+    // AMD-5 + STS-2: the replaced case's installment can't change any more.
+    const replaced = await load(existing.id);
+    expect(await pay(dsA, replaced)).toMatchObject({ ok: false });
+    expect(await getCase(db, dsA, made.id, "si")).toMatchObject({
+      release: { dsRelease: { id: release.dsReleaseId } },
+    });
+  });
+
+  it("puts the new beneficiary on the same letter, and makes no installment for a land kind", async () => {
+    const onLetter = await allocate((await newCase("ලිපියේ ප්‍රතිස්ථාපිත")).id);
+    const letterId = (await db.release.findUniqueOrThrow({ where: { caseId: onLetter.id } })).letterId;
+    const id = await submitted(onLetter, {
+      values: values("ඉඩම් නව", { kind: "LAND_ONLY" }),
+      buildDsOfficeId: dsBuilt.dsOfficeId,
+    });
+    const result = await approve(id);
+    if (!result.ok) throw new Error(result.error);
+    expect(
+      await db.case.findUniqueOrThrow({ where: { id: result.caseId }, include: { release: true, installments: true } }),
+    ).toMatchObject({
+      status: "ALLOCATED_TO_DISTRICT",
+      kind: "LAND_ONLY",
+      buildDsOfficeId: dsBuilt.dsOfficeId,
+      release: { letterId, dsReleaseId: null },
+      installments: [],
+    });
+
+    const land = await received("ඉඩම් ලැබුණු");
+    const landId = await submitted(land, { values: values("ඉඩම් පමණක්", { kind: "LAND_ONLY" }) });
+    const approved = await approve(landId);
+    if (!approved.ok) throw new Error(approved.error);
+    expect(await db.installment.count({ where: { caseId: approved.caseId } })).toBe(0);
+  });
+});
+
+describe("an approval refused (AMD-4, AMD-5, AC-46, AC-48, AC-66)", () => {
+  it("is only for a Ministry officer, and only for an amendment the account may see", async () => {
+    const existing = await newCase("අනුමත කළ නොහැකි");
+    const id = await submitted(existing);
+    for (const who of [dsA, accountant, secretary, await districtOfficer()]) {
+      expect(await approve(id, who)).toEqual({ ok: false, error: "roleNotAllowed" });
+      expect(await rejectAmendment(db, who, { amendmentId: id, version: 1, reason: REASON })).toEqual({
+        ok: false,
+        error: "roleNotAllowed",
+      });
+    }
+    expect(await approve(id, dsFar)).toEqual({ ok: false, error: "notFound" });
+    expect(await approve(randomUUID())).toEqual({ ok: false, error: "notFound" });
+    expect((await db.amendment.findUniqueOrThrow({ where: { id } })).status).toBe("WAITING");
+    expect((await load(existing.id)).status).toBe("AWAITING_ALLOCATION");
+  });
+
+  it("names the rule that failed when the letter moved the money away from the new beneficiary's land", async () => {
+    const existing = await newCase("දුර ඉඩම");
+    const id = await submitted(existing, { buildDsOfficeId: far.id });
+    await allocate(existing.id);
+    expect(await approve(id)).toEqual({ ok: false, error: "buildOfficeNotAllowed" });
+    const unchanged = await load(existing.id);
+    expect(unchanged.status).toBe("ALLOCATED_TO_DISTRICT");
+    expect(await db.case.count({ where: { replacesCaseId: existing.id } })).toBe(0);
+    // The Ministry rejects it with that reason instead.
+    expect(
+      await rejectAmendment(db, ministry, { amendmentId: id, version: 1, reason: "ඉඩම වෙනත් දිස්ත්‍රික්කයක" }),
+    ).toEqual({ ok: true, caseId: existing.id });
+  });
+
+  it("is refused once an installment is paid, or decided, or changed meanwhile", async () => {
+    const existing = await received("ගෙවූ පසු");
+    const id = await submitted(existing);
+    // AMD-3 holds the payment, so only a change made around the rules can do it; AMD-5 still refuses.
+    await db.installment.updateMany({
+      where: { caseId: existing.id, number: 1 },
+      data: { status: "RELEASED", expectedOn: dayToDate(daysAgo(1)), releasedOn: dayToDate(today()) },
+    });
+    expect(await approve(id)).toEqual({ ok: false, error: "amendmentNotAllowed" });
+
+    const other = await newCase("වෙනස් වූ");
+    const otherId = await submitted(other);
+    // CASE-10: the amendment or the case as the page showed it.
+    expect(
+      await approveAmendment(db, ministry, { amendmentId: otherId, version: 0, caseVersion: other.version }),
+    ).toEqual({ ok: false, error: "conflict" });
+    expect(
+      await approveAmendment(db, ministry, { amendmentId: otherId, version: 1, caseVersion: other.version - 1 }),
+    ).toEqual({ ok: false, error: "conflict" });
+    expect(await approve(otherId)).toMatchObject({ ok: true });
+    // Decided once only.
+    expect(await approve(otherId)).toEqual({ ok: false, error: "amendmentDecided" });
+    expect(await rejectAmendment(db, ministry, { amendmentId: otherId, version: 2, reason: REASON })).toEqual({
+      ok: false,
+      error: "amendmentDecided",
+    });
+  });
+});
+
+describe("rejecting an amendment (AMD-6, AC-47)", () => {
+  it("leaves the case as it was, tells its CRPOs with the reason, and needs a reason", async () => {
+    const existing = await newCase("ප්‍රතික්ෂේප වන", dsBuilt.dsOfficeId);
+    const id = await submitted(existing, { buildDsOfficeId: dsBuilt.dsOfficeId });
+    expect(await rejectAmendment(db, ministry, { amendmentId: id, version: 1, reason: "කෙටි" })).toEqual({
+      ok: false,
+      error: "reasonTooShort",
+    });
+
+    expect(await rejectAmendment(db, ministry, { amendmentId: id, version: 1, reason: "ලේඛන නොමැත" })).toEqual({
+      ok: true,
+      caseId: existing.id,
+    });
+    expect(await db.amendment.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: "REJECTED",
+      rejectionReason: "ලේඛන නොමැත",
+      decidedById: ministry.userId,
+      newCaseId: null,
+    });
+    expect(await load(existing.id)).toMatchObject({ status: "AWAITING_ALLOCATION", version: existing.version });
+    expect(await noticesOf(dsA, existing.id)).toEqual(["AMENDMENT_REJECTED"]);
+    expect(await noticesOf(dsBuilt, existing.id)).toEqual(["AMENDMENT_REJECTED"]);
+    const history = await caseHistory(db, dsA, existing.id, "si");
+    expect(history?.find((e) => e.action === "amendment_rejected")?.after).toMatchObject({
+      reason: "ලේඛන නොමැත",
+      name: "නව ප්‍රතිලාභී",
+    });
+    // The DS may submit another.
+    expect(await amend(await load(existing.id), { buildDsOfficeId: dsBuilt.dsOfficeId })).toMatchObject({ ok: true });
+  });
+});
+
+describe("a replaced case (STS-2, CASE-9, AC-71)", () => {
+  it("can't be edited, deleted or given an installment or stage, and leaves the to-do panel", async () => {
+    const existing = await received("අවසන් ප්‍රතිස්ථාපිත");
+    const id = await submitted(existing);
+    const result = await approve(id);
+    if (!result.ok) throw new Error(result.error);
+    const replaced = await db.case.findUniqueOrThrow({ where: { id: existing.id }, include: { centres: true } });
+    expect(replaced.status).toBe("REPLACED");
+
+    for (const who of [dsA, ministry]) {
+      expect(
+        await saveCase(db, who, {
+          id: replaced.id,
+          version: replaced.version,
+          dsOfficeId: null,
+          buildDsOfficeId: null,
+          values: values("වෙනස් කළ නොහැකි", { applicationNumber: replaced.applicationNumber }),
+          documentIds: [],
+        }),
+      ).toEqual({ ok: false, error: "notEditable" });
+      expect(
+        await deleteCase(db, who, { caseId: replaced.id, version: replaced.version, reason: "මකා දැමිය යුතුයි" }),
+      ).toMatchObject({ ok: false });
+    }
+    expect(await start(dsA, replaced)).toMatchObject({ ok: false });
+    expect(
+      await recordStageUpdate(db, dsA, {
+        caseId: replaced.id,
+        version: replaced.version,
+        form: { stageId: NOTE_ONLY, visitedOn: today(), note: "" },
+        photoIds: [],
+      }),
+    ).toMatchObject({ ok: false });
+    expect(await amend(replaced)).toEqual({ ok: false, error: "amendmentNotAllowed" });
+    expect((await todoItems(db, dsA)).some((item) => item.id === replaced.id)).toBe(false);
+  });
+});

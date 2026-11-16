@@ -795,7 +795,9 @@
       "dateWithAge": "{date} (age {years})",
       "centreLine": "{name}, {province} ({dates})",
       "centreLineNoDates": "{name}, {province}",
-      "noAid": "None"
+      "noAid": "None",
+      "replacedByAmendment": "Replaced on {date} through an approved amendment: {number} ({name}) took this beneficiary's place",
+      "replacesAmendment": "Entered on {date} through an approved amendment, in place of {number} ({name})"
     },
     "officeClosed": "Your Divisional Secretariat has been deactivated, so new beneficiaries can't be added. Contact the Ministry.",
     "installment": {
@@ -975,7 +977,32 @@
       "rejectedTitle": "The Ministry rejected the amendment on {date}",
       "rejectedText": "It proposed {name} ({number}) in this beneficiary's place.",
       "rejectionReason": "The Ministry's reason: {reason}",
-      "again": "Another amendment can be submitted if needed."
+      "again": "Another amendment can be submitted if needed.",
+      "openAmendment": "Open the amendment",
+      "view": {
+        "title": "Amendment",
+        "submittedBy": "Submitted on {date} by {name}",
+        "approvedBy": "Approved on {date} by {name}",
+        "rejectedBy": "Rejected on {date} by {name}",
+        "unreadable": "The new beneficiary's details can't be shown.",
+        "approve": "Approve",
+        "approveTitle": "Approve this amendment?",
+        "approveText": "{new} takes the place of {existing}. The existing beneficiary is marked replaced, and can't be changed after that.",
+        "approveMoney": "The allocation and its Rs. 2,000,000 move to the new beneficiary.",
+        "approveConfirm": "Approve",
+        "reject": "Reject",
+        "rejectTitle": "Reject this amendment?",
+        "rejectText": "The existing beneficiary stays as they are. The DS office is told, with your reason.",
+        "rejectReason": "Reason for rejecting *",
+        "rejectConfirm": "Reject",
+        "approved": "The amendment was approved. The DS office has been told.",
+        "rejected": "The amendment was rejected. The DS office has been told."
+      },
+      "status": {
+        "WAITING": "Submitted for approval",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected"
+      }
     }
   },
   "review": {
@@ -1248,7 +1275,13 @@
       "fileFailed": "The upload failed. Try again.",
       "notAllowed": "You can't add photos.",
       "amendmentWaiting": "An amendment of this beneficiary awaits the Ministry's approval, so this can't be done until the Ministry decides.",
-      "hasAmendment": "An amendment was submitted for this beneficiary, so it can't be deleted."
+      "hasAmendment": "An amendment was submitted for this beneficiary, so it can't be deleted.",
+      "amendmentDecided": "This amendment has already been approved or rejected. Reload the page.",
+      "amendmentNotAllowed": "This beneficiary can no longer be replaced: an installment has been paid, or the beneficiary is completed or replaced.",
+      "incomplete": "A required detail of the new beneficiary is missing, so the amendment can't be approved. Reject it, giving the reason.",
+      "officeInactive": "The DS office no longer takes new beneficiaries, so the amendment can't be approved. Reject it, giving the reason.",
+      "buildOfficeNotAllowed": "The allocation has already gone to a district or DS office, and the new beneficiary's land isn't there, so the amendment can't be approved. Reject it, giving the reason.",
+      "applicationNumberTaken": "Another beneficiary of the DS office now has the new beneficiary's Application Number, so the amendment can't be approved. Reject it, giving the reason."
     }
   },
   "history": {
@@ -1295,7 +1328,12 @@
       "case_ds_released": "The {district} District Secretariat released Rs. 2,000,000 to the {office} DS office (reference number {reference})",
       "ds_release_corrected": "The District release's details were corrected",
       "amendment_submitted": "Submitted an amendment",
-      "amendment_submittedFor": "Submitted an amendment proposing {name} ({number}) in this beneficiary's place"
+      "amendment_submittedFor": "Submitted an amendment proposing {name} ({number}) in this beneficiary's place",
+      "amendment_approved": "Entered through an amendment the Ministry approved",
+      "amendment_approvedFor": "Entered through an amendment the Ministry approved, in place of {name} ({number}). Application Number {newNumber}",
+      "amendment_rejected": "The Ministry rejected the amendment",
+      "amendment_rejectedFor": "The Ministry rejected the amendment proposing {name} ({number})",
+      "case_replacedBy": "The Ministry approved an amendment: {name} ({number}) took this beneficiary's place"
     },
     "reason": "Reason: {reason}",
     "note": "Note: {note}",
@@ -1341,7 +1379,9 @@
     "anotherNameRequested": "Another name was asked of the DS office",
     "anotherNameWithdrawn": "The request for another name was withdrawn",
     "replacesSet": "Entered in place of another case",
-    "replacesCleared": "No longer in place of another case"
+    "replacesCleared": "No longer in place of another case",
+    "allocationMovedTo": "The allocation moved to the new beneficiary",
+    "allocationMovedFrom": "The allocation moved from the replaced beneficiary"
   },
   "dashboard": {
     "title": "Summary",

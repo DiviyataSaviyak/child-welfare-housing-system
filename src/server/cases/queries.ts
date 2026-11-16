@@ -78,12 +78,13 @@ export type CaseDetails = {
   completedAt: Date | null;
   updatedAt: Date;
   /**
-   * The case this one was entered in place of, with version 1's decision that closed it. Version 1's
-   * CASE-11 made these links; change 0006 removed it, and the case pages still show them.
+   * The case this one was entered in place of: through the Ministry's approval of an amendment (AMD-5), or
+   * by version 1's CASE-11, with its decision that closed it; change 0006 removed CASE-11, and the case pages
+   * still show its links.
    */
   replaces: ReplacedCase | null;
-  /** The case entered in this one's place. */
-  replacedBy: CaseLink | null;
+  /** The case entered in this one's place, through an approved amendment or by version 1. */
+  replacedBy: (CaseLink & { amendment: AmendmentLink | null }) | null;
   documents: { id: string; name: string }[];
   /** The Rs. 2,000,000 release, once recorded (REL-2). */
   release: ReleaseDetails | null;
@@ -136,7 +137,12 @@ export type CaseLink = {
 /** A replaced case, with version 1's rejection or stop that asked for another name, if it still has one. */
 export type ReplacedCase = CaseLink & {
   decision: { type: "REJECT" | "STOP"; at: Date; reason: string | null } | null;
+  /** The approved amendment that replaced it (AMD-5); null for version 1's links. */
+  amendment: AmendmentLink | null;
 };
+
+/** The approved amendment between two cases (AMD-5). */
+export type AmendmentLink = { id: string; decidedAt: Date | null };
 
 const LINK_SELECT = { id: true, applicationNumber: true, name: true, childName: true } as const;
 
@@ -256,6 +262,8 @@ export async function getCase(
         },
       },
       replacedBy: { select: { ...LINK_SELECT, ...CASE_PLACES } },
+      // AMD-5: the approved amendment that made this case, with the case it replaced.
+      madeBy: { select: { id: true, decidedAt: true, case: { select: { ...LINK_SELECT, ...CASE_PLACES } } } },
       updatedAt: true,
       buildDsOffice: {
         select: {
@@ -335,6 +343,7 @@ export async function getCase(
           submittedAt: true,
           decidedAt: true,
           rejectionReason: true,
+          newCase: { select: { ...LINK_SELECT, ...CASE_PLACES } },
         },
       },
       _count: { select: { amendments: true } },
@@ -349,6 +358,7 @@ export async function getCase(
     installments,
     replaces,
     replacedBy,
+    madeBy,
     centres,
     dateOfBirth,
     amendments,
@@ -377,9 +387,23 @@ export async function getCase(
     buildProvinceName: localName(buildDsOffice.district.province, locale),
     dateOfBirth: dateOfBirth && dateToDay(dateOfBirth),
     centres: centres.map((centre) => ({ ...centreValues(centre), provinceName: localName(centre.province, locale) })),
-    // Both cases were always of one office; the check keeps it that way for the viewer.
-    replaces: replaces && canSeeCase(viewer, replaces) ? toReplaced(replaces) : null,
-    replacedBy: replacedBy && canSeeCase(viewer, replacedBy) ? toLink(replacedBy) : null,
+    // The two cases share their DS of residence, but not always the DS where they are built (AMD-8), so
+    // the check keeps each link to a viewer who may see the other case.
+    replaces: madeBy
+      ? canSeeCase(viewer, madeBy.case)
+        ? { ...toLink(madeBy.case), decision: null, amendment: { id: madeBy.id, decidedAt: madeBy.decidedAt } }
+        : null
+      : replaces && canSeeCase(viewer, replaces)
+        ? toReplaced(replaces)
+        : null,
+    replacedBy:
+      last?.status === "APPROVED" && last.newCase
+        ? canSeeCase(viewer, last.newCase)
+          ? { ...toLink(last.newCase), amendment: { id: last.id, decidedAt: last.decidedAt } }
+          : null
+        : replacedBy && canSeeCase(viewer, replacedBy)
+          ? { ...toLink(replacedBy), amendment: null }
+          : null,
     documents: files.map((f) => ({ id: f.id, name: f.originalName })),
     release: release && {
       releasedOn: dateToDay(release.releasedOn),
@@ -448,6 +472,7 @@ function toReplaced(
   const decision = found.decisions[0];
   return {
     ...toLink(found),
+    amendment: null,
     decision:
       decision && (decision.type === "REJECT" || decision.type === "STOP")
         ? { type: decision.type, at: decision.at, reason: decision.reason }

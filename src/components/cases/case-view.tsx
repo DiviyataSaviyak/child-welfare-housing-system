@@ -16,13 +16,49 @@ export type Audience = "ds" | "ministry" | "oversight";
 type CasesT = Awaited<ReturnType<typeof getTranslations<"cases">>>;
 
 /**
+ * What `caseFieldRows` reads: a case's details, or the new beneficiary an amendment proposes (AMD-4), who
+ * has no day entered until the approval makes their case.
+ */
+export type BeneficiaryFields = Pick<
+  CaseDetails,
+  | "applicationNumber"
+  | "category"
+  | "careGroup"
+  | "kind"
+  | "buildProvinceName"
+  | "buildDistrictName"
+  | "buildOfficeName"
+  | "landGnDivision"
+  | "childName"
+  | "dateOfBirth"
+  | "name"
+  | "relationship"
+  | "relationshipOther"
+  | "nic"
+  | "maritalStatus"
+  | "address"
+  | "gnDivision"
+  | "mobile1"
+  | "mobile2"
+  | "centres"
+  | "familyMembers"
+  | "disabledChildren"
+  | "aid"
+  | "aidOther"
+  | "remark"
+  | "provinceName"
+  | "districtName"
+  | "officeName"
+> & { createdAt: Date | null };
+
+/**
  * Every field of a case as label and value, for the case page: the land under the kind of help (CASE-17),
  * then the beneficiary, the family and the aid (CASE-14 to CASE-16). A detail a case entered before change
  * 0007 doesn't have reads "none".
  */
 export function caseFieldRows(
   t: CasesT,
-  details: CaseDetails,
+  details: BeneficiaryFields,
   today: string = colomboDay(new Date()),
 ): { label: string; value: string }[] {
   const atRisk = details.category === "CHILD_AT_RISK";
@@ -94,31 +130,59 @@ export function caseFieldRows(
     { label: t("page.fields.province"), value: details.provinceName },
     { label: t("page.fields.district"), value: details.districtName },
     { label: t("page.fields.office"), value: details.officeName },
-    { label: t("page.fields.createdAt"), value: formatDate(details.createdAt) },
+    ...(details.createdAt ? [{ label: t("page.fields.createdAt"), value: formatDate(details.createdAt) }] : []),
   ];
 }
 
 /**
- * The links version 1's CASE-11 made, as in the prototype: a case entered in place of another names it,
- * with the Ministry's decision on it; a replaced case names the case entered in its place. Each links to
- * the other case on the reader's own pages. Change 0006 removed CASE-11; change 0008's amendments take
- * its place.
+ * An amendment's page on the reader's own pages (AMD-4), or null where there is none yet: the DS's and the
+ * view-only area's come with change 0008's task 4.
+ */
+export function amendmentHref(audience: Audience, id: string): string | null {
+  return audience === "ministry" ? `/ministry/amendments/${id}` : null;
+}
+
+/**
+ * The links between a replaced case and the case entered in its place, as in the prototype: since change
+ * 0008 through the Ministry's approval of an amendment (AMD-5), with its date and a link to it; before, by
+ * version 1's CASE-11, with the Ministry's decision that asked for another name. Each links to the other
+ * case on the reader's own pages.
  */
 export async function ReplacementNotes({ details, audience }: { details: CaseDetails; audience: Audience }) {
   const { replaces, replacedBy } = details;
   if (!replaces && !replacedBy) return null;
   const t = await getTranslations("cases");
   const caseHref = (id: string) => `/${audience}/cases/${id}`;
+  const amendmentLink = (amendment: { id: string } | null) => {
+    const href = amendment && amendmentHref(audience, amendment.id);
+    return (
+      href && (
+        <Link href={href} className="self-start font-semibold text-primary underline">
+          {t("amend.openAmendment")}
+        </Link>
+      )
+    );
+  };
+  const decided = (amendment: { decidedAt: Date | null }) =>
+    amendment.decidedAt ? formatDate(amendment.decidedAt) : t("none");
 
   return (
     <div className="flex flex-col gap-3">
       {replaces && (
         <ReplacementBox
           id="replaces-title"
-          title={t("page.replacesTitle", {
-            number: replaces.applicationNumber,
-            name: caseName(t, replaces.name, replaces.childName),
-          })}
+          title={
+            replaces.amendment
+              ? t("page.replacesAmendment", {
+                  date: decided(replaces.amendment),
+                  number: replaces.applicationNumber,
+                  name: caseName(t, replaces.name, replaces.childName),
+                })
+              : t("page.replacesTitle", {
+                  number: replaces.applicationNumber,
+                  name: caseName(t, replaces.name, replaces.childName),
+                })
+          }
         >
           {replaces.decision && (
             <p>
@@ -133,19 +197,29 @@ export async function ReplacementNotes({ details, audience }: { details: CaseDet
           <Link href={caseHref(replaces.id)} className="self-start font-semibold text-primary underline">
             {t("page.openOther", { number: replaces.applicationNumber })}
           </Link>
+          {amendmentLink(replaces.amendment)}
         </ReplacementBox>
       )}
       {replacedBy && (
         <ReplacementBox
           id="replaced-title"
-          title={t("page.replacedBy", {
-            number: replacedBy.applicationNumber,
-            name: caseName(t, replacedBy.name, replacedBy.childName),
-          })}
+          title={
+            replacedBy.amendment
+              ? t("page.replacedByAmendment", {
+                  date: decided(replacedBy.amendment),
+                  number: replacedBy.applicationNumber,
+                  name: caseName(t, replacedBy.name, replacedBy.childName),
+                })
+              : t("page.replacedBy", {
+                  number: replacedBy.applicationNumber,
+                  name: caseName(t, replacedBy.name, replacedBy.childName),
+                })
+          }
         >
           <Link href={caseHref(replacedBy.id)} className="self-start font-semibold text-primary underline">
             {t("page.openOther", { number: replacedBy.applicationNumber })}
           </Link>
+          {amendmentLink(replacedBy.amendment)}
         </ReplacementBox>
       )}
     </div>

@@ -57,7 +57,7 @@ export default async function OversightCasePage({
       />
       <ReviewNotice notice={notice} />
       <ReplacementNotes details={details} audience="oversight" />
-      <AmendmentNotes details={details} ownOffice={false} />
+      <AmendmentNotes details={details} ownOffice={false} audience="oversight" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

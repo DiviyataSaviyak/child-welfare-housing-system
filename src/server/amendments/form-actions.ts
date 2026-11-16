@@ -1,9 +1,10 @@
 import type { CaseFormState } from "@/components/forms/case-form";
+import type { ProgressState } from "@/components/progress/types";
 import { parseReason } from "@/lib/validation/decision";
 import type { Actor } from "../cases/commands";
 import { readCaseForm } from "../cases/form-data";
 import { db } from "../db";
-import { submitAmendment } from "./commands";
+import { approveAmendment, rejectAmendment, submitAmendment } from "./commands";
 
 const text = (form: FormData, field: string) => {
   const value = form.get(field);
@@ -43,4 +44,29 @@ export async function submitAmendmentForm(
     return { ok: false, state: { errors: {}, error: result.error, reasonError: result.reasonError ?? null } };
   }
   return { ok: true, caseId: result.value.caseId };
+}
+
+/**
+ * AMD-4: the Ministry's approve and reject forms on the amendment page: the amendment and its version, the
+ * existing case's version, and for a rejection the reason. A refusal comes back to the pop-up; on success
+ * the caller moves on.
+ */
+export async function decideAmendmentForm(
+  actor: Actor,
+  form: FormData,
+  decision: "approve" | "reject",
+): Promise<{ ok: true; caseId: string } | { ok: false; state: ProgressState }> {
+  const amendmentId = text(form, "amendmentId");
+  const version = Number(text(form, "version"));
+  const caseVersion = Number(text(form, "caseVersion"));
+  if (amendmentId === "" || amendmentId.length > 64 || !Number.isInteger(version)) {
+    return { ok: false, state: { error: "notFound", errors: {} } };
+  }
+  const result =
+    decision === "approve"
+      ? Number.isInteger(caseVersion)
+        ? await approveAmendment(db, actor, { amendmentId, version, caseVersion })
+        : ({ ok: false, error: "notFound" } as const)
+      : await rejectAmendment(db, actor, { amendmentId, version, reason: text(form, "reason") });
+  return result.ok ? result : { ok: false, state: { error: result.error, errors: {} } };
 }

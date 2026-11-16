@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import type { Kind } from "@/generated/prisma/enums";
 import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
 import { isHouseKind } from "@/lib/validation/case";
 import { INSTALLMENT_AMOUNT, INSTALLMENT_COUNT, RELEASE_AMOUNT } from "@/lib/money";
@@ -429,15 +430,7 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
           where: { id: c.release!.id },
           data: { dsReleaseId, dsReleasedOn: dayToDate(release.releasedOn) },
         });
-        if (!isHouseKind(c.kind)) continue;
-        await tx.installment.createMany({
-          data: Array.from({ length: INSTALLMENT_COUNT }, (_, index) => ({
-            id: randomUUID(),
-            caseId: c.id,
-            number: index + 1,
-            amount: INSTALLMENT_AMOUNT,
-          })),
-        });
+        await makeInstallments(tx, c.id, c.kind);
       }
       await writeAudit(tx, {
         actorId: actor.userId,
@@ -452,6 +445,24 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
     throw error;
   }
   return { ok: true, dsReleaseId };
+}
+
+/**
+ * REL-7, INS-1, INS-7: the installments a case gets when its allocation reaches the DS where it is built:
+ * four NOT_STARTED ones of Rs. 500,000 for a house kind; none for a land kind, whose installments are made
+ * one at a time as the DS starts them. Also used by an approved amendment, which makes the new beneficiary's
+ * by their own kind (AMD-5). Inside the caller's transaction.
+ */
+export async function makeInstallments(tx: Prisma.TransactionClient, caseId: string, kind: Kind): Promise<void> {
+  if (!isHouseKind(kind)) return;
+  await tx.installment.createMany({
+    data: Array.from({ length: INSTALLMENT_COUNT }, (_, index) => ({
+      id: randomUUID(),
+      caseId,
+      number: index + 1,
+      amount: INSTALLMENT_AMOUNT,
+    })),
+  });
 }
 
 /**

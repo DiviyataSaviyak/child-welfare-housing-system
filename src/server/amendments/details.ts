@@ -1,5 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
-import type { CompleteCaseValues } from "@/lib/validation/case";
+import type { CaseValues, CompleteCaseValues } from "@/lib/validation/case";
 
 /**
  * What an amendment holds for its new beneficiary until the Ministry decides (`amendment.details`): the
@@ -29,4 +29,18 @@ export function amendmentPerson(details: Prisma.JsonValue): AmendmentPerson {
     childName: textOrNull(object.childName),
     applicationNumber: textOrNull(object.applicationNumber) ?? "",
   };
+}
+
+/**
+ * A stored amendment's details as the form's values and the DS office where the new beneficiary would be
+ * built, or null when they aren't an object with that office. The approval runs `completeValues` on them
+ * again before anything is saved (AMD-5).
+ */
+export function readDetails(details: Prisma.JsonValue): { values: CaseValues; buildDsOfficeId: number } | null {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return null;
+  const { buildDsOfficeId, ...values } = details as Record<string, unknown>;
+  if (typeof buildDsOfficeId !== "number" || !Number.isInteger(buildDsOfficeId)) return null;
+  const centres = Array.isArray(values.centres) ? values.centres : [];
+  const aid = Array.isArray(values.aid) ? values.aid : [];
+  return { values: { ...(values as unknown as CaseValues), centres, aid }, buildDsOfficeId };
 }

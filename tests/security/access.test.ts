@@ -201,6 +201,11 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/ministry/cases/[id]/actions.ts": {
     undoInstallmentAction: MINISTRY,
   },
+  // AMD-4: a Ministry officer; the command checks the area and AMD-5 again (AC-48).
+  "src/app/ministry/amendments/[id]/actions.ts": {
+    approveAmendmentAction: MINISTRY,
+    rejectAmendmentAction: MINISTRY,
+  },
   "src/app/ministry/allocate/actions.ts": {
     recordLetterAction: MINISTRY,
     uploadLetterScanAction: MINISTRY,
