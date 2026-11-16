@@ -1,13 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import { AmendmentTable } from "@/components/amendments/amendment-table";
+import { CaseFilters } from "@/components/cases/case-filters";
 import { ExportLink } from "@/components/cases/export-link";
+import { ListTabs } from "@/components/cases/list-tabs";
 import { caseName } from "@/components/cases/page-header";
 import { Pager } from "@/components/cases/pager";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
-import { daysBetween, formatDate } from "@/lib/dates";
+import { colomboDay, daysBetween, formatDate } from "@/lib/dates";
 import { formatRupees, INSTALLMENT_COUNT } from "@/lib/money";
+import { countAmendments, listAmendments } from "@/server/amendments/queries";
 import {
   type CaseRow,
   countCases,
@@ -21,10 +25,20 @@ import {
 } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { readHomeList, type Tab, TABS, tabFilter } from "./list";
+import {
+  amendmentStatusOf,
+  CASE_TABS,
+  HOME_FILTERS,
+  isAmendmentTab,
+  readHomeList,
+  type Tab,
+  TABS,
+  tabFilter,
+} from "./list";
 
 /** The colour of each kind of to-do item, as in the prototype. */
 const TODO_COLOUR: Record<TodoItem["type"], string> = {
+  amendmentRejected: "bg-[#FDE7E4]",
   received: "bg-[#FBEBD3]",
   due: "bg-[#E4EDF8]",
   stale: "bg-muted",
@@ -32,7 +46,9 @@ const TODO_COLOUR: Record<TodoItem["type"], string> = {
 
 /**
  * HOME-1 to HOME-4: the DS officer's own cases, entered there or built there (CASE-13), with what needs
- * doing next and the office's money beside them.
+ * doing next and the office's money beside them. The search, category and period (EXP-4) narrow the case
+ * tabs and their Excel file. The last three tabs list the office's amendments instead (AMD-9), with no
+ * filters and no Excel file.
  */
 export default async function DsHomePage({
   searchParams,
@@ -40,6 +56,9 @@ export default async function DsHomePage({
   searchParams: Promise<{
     tab?: string | string[];
     q?: string | string[];
+    category?: string | string[];
+    from?: string | string[];
+    until?: string | string[];
     page?: string | string[];
     notice?: string | string[];
   }>;
@@ -50,22 +69,35 @@ export default async function DsHomePage({
   if (!office) notFound();
 
   const params = await searchParams;
-  const { tab, q, filter } = readHomeList(params);
+  const { tab, values, filter, amendments } = readHomeList(params);
   const page = Math.max(1, Number(params.page) || 1);
 
-  const [t, list, counts, todo, money] = await Promise.all([
+  const [t, list, amendmentList, caseCounts, amendmentCounts, todo, money] = await Promise.all([
     getTranslations("cases"),
-    listCases(db, viewer, { ...filter, page }, locale),
-    Promise.all(TABS.map((key) => countCases(db, viewer, tabFilter(key)))),
+    amendments ? null : listCases(db, viewer, { ...filter, page }, locale),
+    amendments ? listAmendments(db, viewer, { status: amendments, page }, locale) : null,
+    Promise.all(CASE_TABS.map((key) => countCases(db, viewer, tabFilter(key)))),
+    countAmendments(db, viewer),
     todoItems(db, viewer),
     officeMoney(db, viewer),
   ]);
+  const count = (key: Tab) =>
+    isAmendmentTab(key) ? amendmentCounts[amendmentStatusOf(key)] : (caseCounts[CASE_TABS.indexOf(key)] ?? 0);
+  const tabLink = (key: Tab) => ({
+    key,
+    label: isAmendmentTab(key)
+      ? t(`amend.list.tabs.${amendmentStatusOf(key)}`, { count: count(key) })
+      : t(`home.tabs.${key}`, { count: count(key) }),
+    href: href({ tab: key, page: 1 }),
+    current: tab === key,
+  });
   const now = new Date();
   const href = (changes: { tab?: Tab; page?: number }, path = "/ds") => {
     const query = new URLSearchParams();
     const nextTab = changes.tab ?? tab;
     if (nextTab !== "all") query.set("tab", nextTab);
-    if (q) query.set("q", q);
+    // The filters are over cases; an amendment tab has none.
+    if (!isAmendmentTab(nextTab)) for (const key of HOME_FILTERS) if (values[key]) query.set(key, values[key]);
     if (changes.page && changes.page > 1) query.set("page", String(changes.page));
     const text = query.toString();
     return text ? `${path}?${text}` : path;
@@ -80,6 +112,7 @@ export default async function DsHomePage({
       case "ALLOCATED_TO_DISTRICT":
       case "ALLOCATION_RECEIVED":
       case "COMPLETED":
+      case "REPLACED":
         return t(`home.progress.${row.status}`);
       default:
         return t("none");
@@ -103,7 +136,7 @@ export default async function DsHomePage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {list.total > 0 && (
+          {list && list.total > 0 && (
             <ExportLink href={href({}, "/ds/export")} label={t("export.button")} hint={t("export.hint")} />
           )}
           {office.active && (
@@ -125,42 +158,36 @@ export default async function DsHomePage({
             {t("home.title")}
           </h2>
           <div className="flex flex-wrap items-center gap-4 border-b px-5 py-3.5">
-            <nav aria-label={t("home.tabsLabel")} className="flex gap-1 rounded-lg bg-muted p-1">
-              {TABS.map((key, index) => (
-                <Link
-                  key={key}
-                  href={href({ tab: key, page: 1 })}
-                  aria-current={tab === key ? "page" : undefined}
-                  className={`flex h-10.5 items-center rounded-md px-4.5 font-semibold ${
-                    tab === key ? "bg-card text-primary shadow-sm" : "text-[#3F4843]"
-                  }`}
-                >
-                  {t(`home.tabs.${key}`, { count: counts[index] ?? 0 })}
-                </Link>
-              ))}
-            </nav>
-            <form method="get" action="/ds" className="ms-auto flex items-center gap-2">
-              {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
-              <label htmlFor="q" className="sr-only">
-                {t("home.search")}
-              </label>
-              <input
-                id="q"
-                name="q"
-                type="search"
-                defaultValue={q}
-                placeholder={t("home.searchPlaceholder")}
-                className="h-11.5 w-80 rounded-lg border border-input bg-card px-3.5 text-base"
-              />
-              <button type="submit" className="h-11.5 rounded-lg border border-primary px-4 font-semibold text-primary">
-                {t("home.search")}
-              </button>
-            </form>
+            <ListTabs
+              label={t("home.tabsLabel")}
+              tabs={CASE_TABS.map(tabLink)}
+              apart={{
+                label: t("home.amendmentsGroup"),
+                tabs: TABS.filter(isAmendmentTab).map(tabLink),
+              }}
+            />
           </div>
+          {!amendments && (
+            <CaseFilters
+              // A tab or "clear" changes the address without leaving the page; a new form shows the new choices.
+              key={[tab, ...HOME_FILTERS.map((key) => values[key])].join("|")}
+              action="/ds"
+              values={values}
+              places="none"
+              kinds={false}
+              hidden={tab === "all" ? {} : { tab }}
+              today={colomboDay(now)}
+            />
+          )}
 
-          {list.rows.length === 0 ? (
+          {amendments && amendmentList ? (
+            <>
+              <AmendmentTable rows={amendmentList.rows} status={amendments} audience="ds" />
+              <Pager page={page} pageSize={PAGE_SIZE} total={amendmentList.total} href={(p) => href({ page: p })} />
+            </>
+          ) : !list ? null : list.rows.length === 0 ? (
             <p className="px-5 py-8 text-center text-muted-foreground">
-              {counts[0] === 0 ? t("home.emptyStart") : t("home.empty")}
+              {count("all") === 0 ? t("home.emptyStart") : t("home.empty")}
             </p>
           ) : (
             <table className="w-full border-collapse text-left">
@@ -224,7 +251,7 @@ export default async function DsHomePage({
               </tbody>
             </table>
           )}
-          <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={(p) => href({ page: p })} />
+          {list && <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={(p) => href({ page: p })} />}
         </section>
 
         <div className="flex w-80 shrink-0 flex-col gap-5">
@@ -237,7 +264,7 @@ export default async function DsHomePage({
             ) : (
               <ul className="flex flex-col gap-2.5">
                 {todo.map((item) => (
-                  <li key={`${item.type}-${item.id}`}>
+                  <li key={`${item.type}-${item.type === "amendmentRejected" ? item.amendmentId : item.id}`}>
                     <TodoLink item={item} t={t} />
                   </li>
                 ))}
@@ -278,6 +305,14 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
   const name = caseName(t, item.name, item.childName);
   const content = (() => {
     switch (item.type) {
+      case "amendmentRejected":
+        // HOME-3, AMD-6: the case page shows the Ministry's reason, and another amendment can be submitted.
+        return {
+          href: `/ds/cases/${item.id}`,
+          title: t("home.todo.amendmentRejected", { name }),
+          text: t("home.todo.amendmentRejectedText", { date: formatDate(item.rejectedOn), reason: item.reason }),
+          action: t("home.todo.open"),
+        };
       case "received":
         // HOME-3: the District released it; the first installment is waiting to start.
         return {

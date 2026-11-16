@@ -32,6 +32,8 @@ import {
   parseOfficeId,
   RELATIONSHIPS,
 } from "@/lib/validation/case";
+import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
+import type { AmendmentError } from "@/server/amendments/commands";
 import type { CaseCommandError } from "@/server/cases/commands";
 import type { NicMatch } from "@/server/cases/duplicates";
 import type { DistrictOptions } from "@/server/lists/queries";
@@ -39,7 +41,12 @@ import { CaseDocuments, type DocumentActions, type Upload } from "./case-documen
 import { NicMatches } from "./nic-matches";
 
 export type { CaseFormValues, CentreFormValues };
-export type CaseFormState = { errors: CaseErrors; error: CaseCommandError | null };
+export type CaseFormState = {
+  errors: CaseErrors;
+  error: CaseCommandError | AmendmentError | null;
+  /** An amendment's reason (AMD-1). */
+  reasonError?: ReasonErrorKey | null;
+};
 
 /** The form's starting values: every field, and the centres (at least one box). */
 export type CaseFormStart = { values: CaseFormValues; centres: CentreFormValues[] };
@@ -55,10 +62,23 @@ export type OfficeSetting =
 
 /** CASE-13, CASE-17: where the land is (the house, for a renovation). */
 export type BuildSetting =
-  /** Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. */
-  | { kind: "choose"; districts: DistrictOptions[]; districtId: number | null; dsOfficeId: number | null }
+  /**
+   * Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. An amendment's
+   * new beneficiary may be limited to the district the money went to (AMD-8): `districts` holds only it,
+   * and `sameAllowed` is false when the DS of residence is in another district.
+   */
+  | {
+      kind: "choose";
+      districts: DistrictOptions[];
+      districtId: number | null;
+      dsOfficeId: number | null;
+      sameAllowed?: boolean;
+    }
   /** Once the case is allocated, it stays; `dsOfficeId` is null for the DS of residence. */
   | { kind: "fixed"; dsOfficeId: number | null; districtName: string; officeName: string };
+
+/** AMD-1: the case whose beneficiary an amendment would replace, for the form's summary. */
+export type AmendSetting = { caseId: string; existingName: string; existingNumber: string };
 
 export type CaseFormActions = DocumentActions & {
   save: (state: CaseFormState, form: FormData) => Promise<CaseFormState>;
@@ -129,6 +149,10 @@ const centreTarget = (index: number, part: CentrePart) =>
  * (CASE-3). A saved case is changed with one save button (CASE-9); `intro` says that every change is
  * logged, for the Ministry's changes after the allocation. `kinds` are the kinds it may have: after the
  * District's release, only those of its own group (CASE-9, `kindsOffered`).
+ *
+ * In `amend` mode (AMD-1) the form takes the new beneficiary of an amendment: a sixth part asks the reason,
+ * and the summary before sending shows the existing beneficiary above the new one. `caseId` is then the
+ * amendment's own id, and `version` the existing case's (CASE-10).
  */
 export function CaseForm({
   caseId,
@@ -142,6 +166,7 @@ export function CaseForm({
   mode,
   intro = false,
   kinds = KINDS,
+  amend,
 }: {
   caseId: string;
   /** The version the form was opened with (CASE-10); null for a new case. */
@@ -153,9 +178,11 @@ export function CaseForm({
   provinces: { id: number; name: string }[];
   documents: { id: string; name: string }[];
   actions: CaseFormActions;
-  mode: "new" | "edit";
+  mode: "new" | "edit" | "amend";
   intro?: boolean;
   kinds?: readonly KindValue[];
+  /** Required in `amend` mode. */
+  amend?: AmendSetting;
 }) {
   const t = useTranslations("cases");
   const [state, dispatch, pending] = useActionState(actions.save, EMPTY);
@@ -164,7 +191,9 @@ export function CaseForm({
   const [centres, setCentres] = useState(initial.centres.length > 0 ? initial.centres : [EMPTY_CENTRE]);
   const [districtId, setDistrictId] = useState(office.kind === "choose" ? String(office.districtId ?? "") : "");
   const [dsOfficeId, setDsOfficeId] = useState(office.kind === "choose" ? String(office.dsOfficeId ?? "") : "");
-  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null ? "same" : "other");
+  // AMD-8: the DS of residence may be outside the district the money went to.
+  const sameAllowed = build.kind !== "choose" || build.sameAllowed !== false;
+  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null && sameAllowed ? "same" : "other");
   const [buildDistrictId, setBuildDistrictId] = useState(build.kind === "choose" ? String(build.districtId ?? "") : "");
   const [buildOfficeId, setBuildOfficeId] = useState(build.kind === "choose" ? String(build.dsOfficeId ?? "") : "");
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -175,6 +204,8 @@ export function CaseForm({
   const [failedTries, setFailedTries] = useState(0);
   const [nicCheck, setNicCheck] = useState<{ nic: string; matches: NicMatch[] } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState("");
+  const [reasonLocalError, setReasonLocalError] = useState<ReasonErrorKey | null>(null);
   const summary = useRef<HTMLDivElement>(null);
 
   // After a refused try, move to the list of errors so it is seen and read out.
@@ -192,6 +223,7 @@ export function CaseForm({
   const serverError = localErrors === null ? state.error : null;
   const showOfficeError = officeMissing || serverError === "officeRequired";
   const showBuildError = buildMissing || serverError === "buildOfficeRequired";
+  const reasonError = localErrors ? reasonLocalError : (state.reasonError ?? null);
   const uploading = uploads.some((u) => u.state === "uploading");
   const documentCount = documents.length + uploads.filter((u) => u.state === "done").length;
   const chosenOffice = office.kind === "choose" ? parseOfficeId(dsOfficeId) : null;
@@ -255,6 +287,10 @@ export function CaseForm({
       form.set("built", "same");
     }
     for (const upload of uploads) if (upload.state === "done" && upload.id) form.append("documentIds", upload.id);
+    if (amend) {
+      form.set("caseId", amend.caseId);
+      form.set("reason", reason);
+    }
     startTransition(() => dispatch(form));
   }
 
@@ -262,16 +298,20 @@ export function CaseForm({
     const checked = parseCaseForm(read, today);
     const noOffice = office.kind === "choose" && chosenOffice === null;
     const noBuild = build.kind === "choose" && built === "other" && chosenBuildOffice === null;
-    if (!checked.ok || noOffice || noBuild) {
+    const reasonChecked = mode === "amend" ? parseReason(reason) : null;
+    const badReason = reasonChecked && !reasonChecked.ok ? reasonChecked.error : null;
+    if (!checked.ok || noOffice || noBuild || badReason) {
       setLocalErrors(checked.ok ? {} : checked.errors);
       setOfficeMissing(noOffice);
       setBuildMissing(noBuild);
+      setReasonLocalError(badReason);
       setFailedTries((n) => n + 1);
       return;
     }
     setLocalErrors(null);
     setOfficeMissing(false);
     setBuildMissing(false);
+    setReasonLocalError(null);
     // CASE-9: a change is saved at once; a new case is confirmed first (CASE-5).
     if (mode === "edit") {
       send();
@@ -331,6 +371,7 @@ export function CaseForm({
     ...centreErrors,
     ...fieldError("remark"),
     ...FAMILY.flatMap(fieldError),
+    ...(reasonError ? [{ key: "reason", target: "amendReason", message: t(`form.errors.${reasonError}`) }] : []),
   ];
 
   const complete = parseCaseForm(read, today);
@@ -348,6 +389,7 @@ export function CaseForm({
     },
     { key: "family", done: FAMILY.every((f) => !incomplete[f]), optional: false },
     { key: "documents", done: documentCount > 0, optional: true },
+    ...(mode === "amend" ? [{ key: "reason" as const, done: parseReason(reason).ok, optional: false }] : []),
   ] as const;
 
   const district = office.kind === "choose" ? office.districts.find((d) => String(d.id) === districtId) : undefined;
@@ -461,19 +503,23 @@ export function CaseForm({
             </h3>
             {build.kind === "choose" ? (
               <>
-                <ChoiceCards
-                  name="built"
-                  labelledBy="built-title"
-                  options={[
-                    { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
-                    { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
-                  ]}
-                  value={built}
-                  onChange={(value) => {
-                    setBuilt(value === "other" ? "other" : "same");
-                    setBuildMissing(false);
-                  }}
-                />
+                {sameAllowed ? (
+                  <ChoiceCards
+                    name="built"
+                    labelledBy="built-title"
+                    options={[
+                      { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
+                      { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
+                    ]}
+                    value={built}
+                    onChange={(value) => {
+                      setBuilt(value === "other" ? "other" : "same");
+                      setBuildMissing(false);
+                    }}
+                  />
+                ) : (
+                  <p className="text-[15px] text-[#3F4843]">{t("amend.landInDistrict")}</p>
+                )}
                 {built === "other" && (
                   <div className="grid grid-cols-2 gap-5 rounded-lg bg-muted p-4">
                     <Select
@@ -809,6 +855,21 @@ export function CaseForm({
           />
         </Part>
 
+        {mode === "amend" && (
+          <Part number={6} id="part-reason" title={t("amend.reason")}>
+            <FormTextArea
+              id="amendReason"
+              label={t("amend.reason")}
+              help={t("amend.reasonHelp")}
+              rows={3}
+              maxLength={1000}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              error={reasonError ? t(`form.errors.${reasonError}`) : undefined}
+            />
+          </Part>
+        )}
+
         {errorList.length > 0 && (
           <div
             ref={summary}
@@ -839,7 +900,13 @@ export function CaseForm({
             disabled={busy}
             className="h-13 rounded-lg bg-primary px-7 text-[17px] font-bold text-primary-foreground disabled:opacity-60"
           >
-            {pending ? t("form.saving") : mode === "edit" ? t("form.saveChanges") : t("form.save")}
+            {pending
+              ? t("form.saving")
+              : mode === "edit"
+                ? t("form.saveChanges")
+                : mode === "amend"
+                  ? t("amend.submit")
+                  : t("form.save")}
           </button>
         </div>
       </form>
@@ -881,11 +948,21 @@ export function CaseForm({
 
       <Modal open={confirming} onClose={() => setConfirming(false)} labelledBy="confirm-title">
         <h2 id="confirm-title" className="text-[23px] font-bold">
-          {t("form.confirm.title")}
+          {amend ? t("amend.confirmTitle") : t("form.confirm.title")}
         </h2>
-        <p className="text-[#3F4843]">{t("form.confirm.text")}</p>
+        <p className="text-[#3F4843]">{amend ? t("amend.confirmText") : t("form.confirm.text")}</p>
         <dl className="flex max-h-[55vh] flex-col overflow-y-auto rounded-lg border">
           {[
+            // AMD-1: the summary shows both beneficiaries: the existing one, then the new one's details.
+            ...(amend
+              ? [
+                  {
+                    label: t("amend.existing"),
+                    value: t("amend.person", { name: amend.existingName, number: amend.existingNumber }),
+                  },
+                  { label: t("amend.newBeneficiary"), value: "" },
+                ]
+              : []),
             { label: t("form.confirm.category"), value: category ? t(`category.${category}`) : "" },
             ...(careLeaver && complete.ok && complete.value.careGroup
               ? [{ label: t("form.confirm.careGroup"), value: t(`careGroup.${complete.value.careGroup}`) }]
@@ -941,6 +1018,7 @@ export function CaseForm({
             },
             { label: t("form.confirm.aid"), value: aidText || t("page.noAid") },
             { label: t("form.confirm.documents"), value: t("form.confirm.documentCount", { count: documentCount }) },
+            ...(amend ? [{ label: t("amend.reason"), value: reason.trim() }] : []),
           ].map((row) => (
             <div
               key={row.label}
@@ -952,7 +1030,7 @@ export function CaseForm({
           ))}
         </dl>
         {matches.length > 0 && <NicMatches matches={matches} />}
-        <p className="text-[15px] text-[#3F4843]">{t("form.confirm.after")}</p>
+        <p className="text-[15px] text-[#3F4843]">{amend ? t("amend.confirmAfter") : t("form.confirm.after")}</p>
         <div className="flex justify-end gap-3">
           <button
             type="button"
@@ -969,7 +1047,7 @@ export function CaseForm({
             }}
             className="h-12 rounded-lg bg-primary px-7 text-[17px] font-bold text-primary-foreground"
           >
-            {t("form.confirm.send")}
+            {amend ? t("amend.confirmSend") : t("form.confirm.send")}
           </button>
         </div>
       </Modal>

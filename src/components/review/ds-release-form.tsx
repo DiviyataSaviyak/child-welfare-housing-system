@@ -8,6 +8,7 @@ import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
 import { latestDay } from "@/lib/validation/release";
 import { DS_RELEASE_FIELDS, type DsReleaseErrors, parseDsReleaseForm } from "@/lib/validation/ds-release";
 import { DsReleaseFields, type DsReleaseFormValues } from "./ds-release-fields";
+import { AmendmentFlag } from "./amendment-flag";
 import { type Scan, ScanPicker, type ScanUpload, TickAll } from "./scan-picker";
 
 /** A case the Ministry allocated, waiting for the District's release to its DS office, as the server gives it. */
@@ -24,6 +25,8 @@ export type DsReleaseFormCase = {
   residence: string | null;
   /** "YYYY-MM-DD": the date of its Ministry letter, the earliest the release can be dated (REL-6). */
   letterDate: string;
+  /** AMD-3: an amendment of the case waits for the Ministry; it can still be ticked. */
+  amendmentWaiting: boolean;
 };
 
 /**
@@ -144,6 +147,7 @@ export function DsReleaseForm({
                   <span className="text-sm text-muted-foreground">{c.detail}</span>
                   <span className="text-sm text-[#3F4843]">{c.letter}</span>
                   {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                  {c.amendmentWaiting && <AmendmentFlag text={t("letters.amendmentFlag")} />}
                 </span>
                 <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>
                   {ticks ? formatRupees(RELEASE_AMOUNT, locale) : t("district.notOnRelease")}

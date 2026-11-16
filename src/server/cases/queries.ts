@@ -24,6 +24,7 @@ import {
   officeFilter,
   type Viewer,
 } from "../permissions";
+import { type AmendmentPerson, amendmentPerson } from "../amendments/details";
 import { accountLabel, LABEL_SELECT } from "../users/label";
 import { CENTRE_SELECT, centreValues } from "./commands";
 import { applicationKey } from "./numbers";
@@ -77,12 +78,13 @@ export type CaseDetails = {
   completedAt: Date | null;
   updatedAt: Date;
   /**
-   * The case this one was entered in place of, with version 1's decision that closed it. Version 1's
-   * CASE-11 made these links; change 0006 removed it, and the case pages still show them.
+   * The case this one was entered in place of: through the Ministry's approval of an amendment (AMD-5), or
+   * by version 1's CASE-11, with its decision that closed it; change 0006 removed CASE-11, and the case pages
+   * still show its links.
    */
   replaces: ReplacedCase | null;
-  /** The case entered in this one's place. */
-  replacedBy: CaseLink | null;
+  /** The case entered in this one's place, through an approved amendment or by version 1. */
+  replacedBy: (CaseLink & { amendment: AmendmentLink | null }) | null;
   documents: { id: string; name: string }[];
   /** The Rs. 2,000,000 release, once recorded (REL-2). */
   release: ReleaseDetails | null;
@@ -95,7 +97,24 @@ export type CaseDetails = {
    * it is built (REL-9).
    * The role and the status still decide the rest (rules.ts, transitions.ts).
    */
-  actsOn: { edit: boolean; progress: boolean; release: boolean };
+  actsOn: { edit: boolean; progress: boolean; release: boolean; amend: boolean };
+  /**
+   * AMD-3, AMD-6: the case's amendment that waits for the Ministry, or else its last one if the Ministry
+   * rejected it; null when it has neither.
+   */
+  amendment: CaseAmendment | null;
+  /** Whether any amendment was ever submitted for it: such a case can't be deleted (CASE-8). */
+  hasAmendments: boolean;
+};
+
+/** An amendment as a case page shows it, with the new beneficiary it proposed. */
+export type CaseAmendment = AmendmentPerson & {
+  id: string;
+  status: "WAITING" | "REJECTED";
+  submittedAt: Date;
+  reason: string;
+  decidedAt: Date | null;
+  rejectionReason: string | null;
 };
 
 /** One child development centre, with its province's name in the screen's language (CASE-14). */
@@ -118,7 +137,12 @@ export type CaseLink = {
 /** A replaced case, with version 1's rejection or stop that asked for another name, if it still has one. */
 export type ReplacedCase = CaseLink & {
   decision: { type: "REJECT" | "STOP"; at: Date; reason: string | null } | null;
+  /** The approved amendment that replaced it (AMD-5); null for version 1's links. */
+  amendment: AmendmentLink | null;
 };
+
+/** The approved amendment between two cases (AMD-5). */
+export type AmendmentLink = { id: string; decidedAt: Date | null };
 
 const LINK_SELECT = { id: true, applicationNumber: true, name: true, childName: true } as const;
 
@@ -238,6 +262,8 @@ export async function getCase(
         },
       },
       replacedBy: { select: { ...LINK_SELECT, ...CASE_PLACES } },
+      // AMD-5: the approved amendment that made this case, with the case it replaced.
+      madeBy: { select: { id: true, decidedAt: true, case: { select: { ...LINK_SELECT, ...CASE_PLACES } } } },
       updatedAt: true,
       buildDsOffice: {
         select: {
@@ -305,6 +331,22 @@ export async function getCase(
           note: true,
         },
       },
+      // The last one: at most one waits (AMD-3), and a new one comes only after the last was decided.
+      amendments: {
+        orderBy: [{ submittedAt: "desc" }, { id: "asc" }],
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          details: true,
+          reason: true,
+          submittedAt: true,
+          decidedAt: true,
+          rejectionReason: true,
+          newCase: { select: { ...LINK_SELECT, ...CASE_PLACES } },
+        },
+      },
+      _count: { select: { amendments: true } },
     },
   });
   if (!found || !canSeeCase(viewer, found)) return null;
@@ -316,15 +358,20 @@ export async function getCase(
     installments,
     replaces,
     replacedBy,
+    madeBy,
     centres,
     dateOfBirth,
+    amendments,
+    _count,
     ...fields
   } = found;
+  const last = amendments[0];
   const places = { dsOffice, buildDsOffice };
   const actsOn = {
     edit: canActOn(viewer, places, "edit"),
     progress: canActOn(viewer, places, "installment"),
     release: viewer.role === "DISTRICT_OFFICER" && canActOn(viewer, places, "release"),
+    amend: canActOn(viewer, places, "amend"),
   };
   const dsRelease = release?.dsRelease;
   return {
@@ -340,9 +387,23 @@ export async function getCase(
     buildProvinceName: localName(buildDsOffice.district.province, locale),
     dateOfBirth: dateOfBirth && dateToDay(dateOfBirth),
     centres: centres.map((centre) => ({ ...centreValues(centre), provinceName: localName(centre.province, locale) })),
-    // Both cases were always of one office; the check keeps it that way for the viewer.
-    replaces: replaces && canSeeCase(viewer, replaces) ? toReplaced(replaces) : null,
-    replacedBy: replacedBy && canSeeCase(viewer, replacedBy) ? toLink(replacedBy) : null,
+    // The two cases share their DS of residence, but not always the DS where they are built (AMD-8), so
+    // the check keeps each link to a viewer who may see the other case.
+    replaces: madeBy
+      ? canSeeCase(viewer, madeBy.case)
+        ? { ...toLink(madeBy.case), decision: null, amendment: { id: madeBy.id, decidedAt: madeBy.decidedAt } }
+        : null
+      : replaces && canSeeCase(viewer, replaces)
+        ? toReplaced(replaces)
+        : null,
+    replacedBy:
+      last?.status === "APPROVED" && last.newCase
+        ? canSeeCase(viewer, last.newCase)
+          ? { ...toLink(last.newCase), amendment: { id: last.id, decidedAt: last.decidedAt } }
+          : null
+        : replacedBy && canSeeCase(viewer, replacedBy)
+          ? { ...toLink(replacedBy), amendment: null }
+          : null,
     documents: files.map((f) => ({ id: f.id, name: f.originalName })),
     release: release && {
       releasedOn: dateToDay(release.releasedOn),
@@ -382,6 +443,19 @@ export async function getCase(
       releasedOn: i.releasedOn && dateToDay(i.releasedOn),
     })),
     actsOn,
+    amendment:
+      last && (last.status === "WAITING" || last.status === "REJECTED")
+        ? {
+            ...amendmentPerson(last.details),
+            id: last.id,
+            status: last.status,
+            submittedAt: last.submittedAt,
+            reason: last.reason,
+            decidedAt: last.decidedAt,
+            rejectionReason: last.rejectionReason,
+          }
+        : null,
+    hasAmendments: _count.amendments > 0,
   };
 }
 
@@ -398,6 +472,7 @@ function toReplaced(
   const decision = found.decisions[0];
   return {
     ...toLink(found),
+    amendment: null,
     decision:
       decision && (decision.type === "REJECT" || decision.type === "STOP")
         ? { type: decision.type, at: decision.at, reason: decision.reason }
@@ -415,6 +490,9 @@ export type CaseFilter = {
   districtId?: number;
   /** The DS of residence or the DS where it is built (FND-1, CASE-13). */
   dsOfficeId?: number;
+  /** EXP-4: the first and last day the case was entered ("YYYY-MM-DD", in Colombo, ARC-6), each optional. */
+  enteredFrom?: string;
+  enteredUntil?: string;
   /** 1 is the first page. */
   page?: number;
 };
@@ -471,6 +549,9 @@ export function caseWhere(viewer: Viewer, filter: CaseFilter): Prisma.CaseWhereI
     });
   }
   if (filter.dsOfficeId) and.push({ OR: [{ dsOfficeId: filter.dsOfficeId }, { buildDsOfficeId: filter.dsOfficeId }] });
+  // EXP-4: from the start of the first Colombo day to the end of the last (ARC-6).
+  if (filter.enteredFrom) and.push({ createdAt: { gte: colomboStartOf(filter.enteredFrom) } });
+  if (filter.enteredUntil) and.push({ createdAt: { lt: colomboStartOf(addDays(filter.enteredUntil, 1)) } });
 
   const q = filter.q?.trim();
   if (q) {
@@ -558,7 +639,18 @@ export type TodoItem = TodoCase &
     | { type: "received"; /** "YYYY-MM-DD": the District's release. */ releasedOn: string }
     | { type: "due"; number: number; /** "YYYY-MM-DD" */ expectedOn: string; overdue: boolean }
     | { type: "stale"; days: number }
+    | {
+        type: "amendmentRejected";
+        /** The rejected amendment. */
+        amendmentId: string;
+        /** "YYYY-MM-DD": the day the Ministry rejected it. */
+        rejectedOn: string;
+        reason: string;
+      }
   );
+
+/** HOME-3: the Ministry's rejections of the last 30 days are shown to the DS of residence. */
+export const REJECTED_DAYS = 30;
 
 /** HOME-3: an installment being paid shows in the to-do panel from 7 days before its expected day. */
 export const DUE_SOON_DAYS = 7;
@@ -566,17 +658,36 @@ export const DUE_SOON_DAYS = 7;
 const TODO_TAKE = 20;
 
 /**
- * HOME-3, in this order: cases whose allocation was received and whose first installment hasn't started;
- * installments being paid whose expected day has passed or is within 7 days; cases in progress with no
- * update for 30 days. Each is the work of the DS where the case is built (CASE-13).
+ * HOME-3, in this order: the amendments the Ministry rejected in the last 30 days, for the DS of residence
+ * that submitted them (AMD-6); cases whose allocation was received and whose first installment hasn't
+ * started; installments being paid whose expected day has passed or is within 7 days; cases in progress
+ * with no update for 30 days. The last three are the work of the DS where the case is built (CASE-13), and
+ * leave out a case whose amendment waits for the Ministry, which holds its installments (AMD-3).
  */
 export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date()): Promise<TodoItem[]> {
-  const progress = officeFilter(viewer, actingOffice("installment"));
-  if (!progress) return [];
+  const built = officeFilter(viewer, actingOffice("installment"));
+  const residence = officeFilter(viewer, actingOffice("amend"));
+  if (!built || !residence) return [];
+  const progress = { ...built, amendments: { none: { status: "WAITING" } } } satisfies Prisma.CaseWhereInput;
   const today = colomboDay(now);
   const caseFields = { id: true, name: true, childName: true } as const;
 
-  const [received, due, stale] = await Promise.all([
+  const [rejected, received, due, stale] = await Promise.all([
+    // A rejection stays until a new amendment waits or the case leaves the statuses that allow one.
+    db.amendment.findMany({
+      where: {
+        status: "REJECTED",
+        decidedAt: { gte: new Date(now.getTime() - REJECTED_DAYS * 24 * 60 * 60 * 1000) },
+        case: {
+          ...residence,
+          status: { in: ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED"] },
+          amendments: { none: { status: "WAITING" } },
+        },
+      },
+      orderBy: [{ decidedAt: "desc" }, { id: "asc" }],
+      take: TODO_TAKE,
+      select: { id: true, decidedAt: true, rejectionReason: true, case: { select: caseFields } },
+    }),
     db.case.findMany({
       where: {
         ...progress,
@@ -609,6 +720,13 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
   ]);
 
   return [
+    ...rejected.map((a) => ({
+      ...a.case,
+      type: "amendmentRejected" as const,
+      amendmentId: a.id,
+      rejectedOn: a.decidedAt ? colomboDay(a.decidedAt) : today,
+      reason: a.rejectionReason ?? "",
+    })),
     ...received.map(({ release, ...c }) => ({
       ...c,
       type: "received" as const,

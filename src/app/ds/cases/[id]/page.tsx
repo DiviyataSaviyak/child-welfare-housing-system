@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import { AmendmentNotes } from "@/components/amendments/amendment-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
@@ -15,6 +16,7 @@ import { StageUpdate } from "@/components/progress/stage-update";
 import { colomboDay } from "@/lib/dates";
 import { isHouseKind } from "@/lib/validation/case";
 import { paidLimits, stageLimits, startLimits } from "@/lib/validation/progress";
+import { canAmend } from "@/server/amendments/rules";
 import { getCase, type InstallmentDetails } from "@/server/cases/queries";
 import { canDeleteCase, canEditDetails, takesProgress } from "@/server/cases/rules";
 import { requireRole } from "@/server/context";
@@ -73,14 +75,22 @@ export default async function DsCasePage({
   // CASE-13: only the DS where it is built pays the installments and records the stages, from the District's
   // release to it until the case is completed (INS-5, STG-5). The date rules start from that release.
   const receivedOn = details.release?.dsRelease?.releasedOn ?? null;
-  const running = takesProgress(details.status) && receivedOn !== null && details.actsOn.progress;
+  // AMD-3: an amendment waiting for the Ministry holds the installments and stages.
+  const waiting = details.amendment?.status === "WAITING";
+  const running = takesProgress(details.status) && receivedOn !== null && details.actsOn.progress && !waiting;
   const today = colomboDay(new Date());
   // A land case's next installment has no row until it is started (INS-7).
   const next = running ? nextInstallment(schedule(details.kind, details.installments)) : null;
   const house = isHouseKind(details.kind);
   // CASE-8, CASE-9: while it awaits its allocation, the DS of residence corrects or deletes it.
   const canEdit = details.actsOn.edit && canEditDetails(viewer.role, details.status);
-  const remove = details.actsOn.edit && canDeleteCase(viewer.role, details.status) && (
+  // AMD-1: the DS of residence asks the Ministry to replace the beneficiary, until installment 1 is paid.
+  const amendable = canAmend(
+    { role: viewer.role, residence: details.actsOn.amend },
+    { status: details.status, paid: details.installments.some((i) => i.status === "RELEASED"), waiting },
+  );
+  // CASE-8: a case with an amendment, waiting or decided, is kept with it.
+  const remove = details.actsOn.edit && canDeleteCase(viewer.role, details.status) && !details.hasAmendments && (
     <ReasonAction
       key={`delete-${details.version}`}
       id="delete"
@@ -173,6 +183,14 @@ export default async function DsCasePage({
         aside={
           <div className="flex items-center gap-3.5">
             <StatusChip status={details.status} />
+            {amendable && (
+              <Link
+                href={`/ds/cases/${details.id}/amend`}
+                className="flex h-11 items-center rounded-lg border border-primary px-5 font-semibold text-primary"
+              >
+                {t("amend.button")}
+              </Link>
+            )}
             {remove}
           </div>
         }
@@ -195,8 +213,10 @@ export default async function DsCasePage({
         </section>
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}
+      {notice === "amendmentSubmitted" && <FormNotice message={t("amend.submitted")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <ReplacementNotes details={details} audience="ds" />
+      <AmendmentNotes details={details} ownOffice={amendable} audience="ds" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

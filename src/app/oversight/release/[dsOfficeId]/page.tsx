@@ -35,6 +35,7 @@ export default async function DistrictReleaseFormPage({ params }: { params: Prom
     letter: t("district.letter", { number: c.letterNumber, date: formatDate(c.letterDate) }),
     residence: c.residenceName && t("letters.livesIn", { office: c.residenceName }),
     letterDate: c.letterDate,
+    amendmentWaiting: c.amendmentWaiting,
   }));
 
   return (

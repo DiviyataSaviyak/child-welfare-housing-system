@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import { AmendmentNotes } from "@/components/amendments/amendment-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
@@ -77,7 +78,8 @@ export default async function HoCasePage({
   };
 
   // CASE-8: a case awaiting its allocation can be deleted, with a reason.
-  const remove = canDeleteCase(viewer.role, details.status) && (
+  // CASE-8: a case with an amendment, waiting or decided, is kept with it.
+  const remove = canDeleteCase(viewer.role, details.status) && !details.hasAmendments && (
     <ReasonAction
       key={`delete-${details.version}`}
       id="delete"
@@ -153,6 +155,7 @@ export default async function HoCasePage({
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <ReviewNotice notice={notice} />
       <ReplacementNotes details={details} audience="ministry" />
+      <AmendmentNotes details={details} ownOffice={false} audience="ministry" />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

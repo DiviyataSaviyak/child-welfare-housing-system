@@ -30,7 +30,11 @@ export default async function OversightDashboardPage({
       districts={area.districts}
       oneDistrict={area.kind === "district" || area.kind === "office"}
       areaName={area.covers}
-      side={waiting && <WaitingPanel href="/oversight/release" label={t("waiting.dsRelease")} count={waiting.count} />}
+      side={
+        waiting && (
+          <WaitingPanel rows={[{ href: "/oversight/release", label: t("waiting.dsRelease"), count: waiting.count }]} />
+        )
+      }
     />
   );
 }

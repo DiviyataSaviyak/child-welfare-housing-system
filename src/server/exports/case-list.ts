@@ -70,6 +70,8 @@ export type ExportRow = {
   completedAt: Date | null;
   updatedAt: Date;
   remark: string | null;
+  /** AMD-7: the beneficiary this case replaced, if any; never their NIC or Application Number. */
+  replaces: PreviousBeneficiary | null;
   /** The Ministry's Rs. 2,000,000 allocation (REL-3), once its letter names the case; null before it. */
   release: ExportAllocation | null;
   /** Installments 1 to 4, made with the District's release (REL-7); null before it. */
@@ -77,6 +79,8 @@ export type ExportRow = {
   /** For each of the four building-progress columns, the day ("YYYY-MM-DD") its stage was reached, or null. */
   progress: (string | null)[];
 };
+
+export type PreviousBeneficiary = { name: string | null; childName: string | null; address: string | null };
 
 export type ExportAllocation = {
   amount: number;
@@ -154,6 +158,8 @@ export async function caseListRows(
         landGnDivision: true,
         centres: { orderBy: { position: "asc" }, select: { ...CENTRE_SELECT, province: { select: NAMES } } },
         remark: true,
+        // AMD-7: a replacement shares its DS of residence with the case it replaced, so the viewer sees both.
+        replaces: { select: { name: true, childName: true, address: true } },
         createdAt: true,
         completedAt: true,
         updatedAt: true,
@@ -238,6 +244,21 @@ function installmentNote(t: CasesT, locale: Locale, kind: Kind, item: ExportInst
     return amount ? t("export.progress.expectedAmount", { date, amount }) : t("export.progress.expected", { date });
   }
   return null;
+}
+
+/**
+ * AMD-7: the Notes cell. A replacement's begins with the previous beneficiary's name (with the child's, for a
+ * child at risk) and address on a line of its own, above the remark. Never their NIC or Application Number.
+ */
+export function notesCell(t: CasesT, r: Pick<ExportRow, "replaces" | "remark">): string | null {
+  const before = r.replaces;
+  if (!before) return r.remark;
+  const shown = before.name ?? t("noName");
+  const name = before.childName ? t("withChild", { name: shown, child: before.childName }) : shown;
+  const line = before.address
+    ? t("export.previousBeneficiary", { name, address: before.address })
+    : t("export.previousBeneficiaryNoAddress", { name });
+  return r.remark ? `${line}\n${r.remark}` : line;
 }
 
 /** A choice with its typed text when it is "other", as the case page shows it. */
@@ -359,7 +380,7 @@ export function caseListColumns(t: CasesT, locale: Locale): Column<ExportRow>[] 
     })),
     { header: t("export.columns.completedOn"), width: 14, value: (r) => day(r.completedAt) },
     { header: t("export.columns.updatedOn"), width: 14, value: (r) => day(r.updatedAt) },
-    { header: t("export.columns.remark"), width: 40, value: (r) => r.remark },
+    { header: t("export.columns.remark"), width: 40, wrap: true, value: (r) => notesCell(t, r) },
   ];
 }
 
@@ -373,11 +394,39 @@ function usedFilters(viewer: Viewer, filter: ListFilter): Prisma.InputJsonObject
   if (filter.kind) used.kind = filter.kind;
   if (filter.districtId) used.districtId = filter.districtId;
   if (filter.dsOfficeId) used.dsOfficeId = filter.dsOfficeId;
+  if (filter.enteredFrom) used.enteredFrom = filter.enteredFrom;
+  if (filter.enteredUntil) used.enteredUntil = filter.enteredUntil;
   const scope = caseScope(viewer);
   if (scope.kind === "office") used.officeScope = scope.dsOfficeId;
   if (scope.kind === "district") used.districtScope = scope.districtId;
   if (scope.kind === "province") used.provinceScope = scope.provinceId;
   return used;
+}
+
+/**
+ * EXP-1: the period a file holds, for its name, with the days as UI-3 writes them, such as
+ * "2026.10.01-2026.10.31"; an open end is left empty ("2026.10.01-"). Null with no period.
+ */
+export function periodName(filter: Pick<ListFilter, "enteredFrom" | "enteredUntil">): string | null {
+  if (!filter.enteredFrom && !filter.enteredUntil) return null;
+  const show = (day: string | undefined) => (day ? formatDate(day) : "");
+  return `${show(filter.enteredFrom)}-${show(filter.enteredUntil)}`;
+}
+
+/** EXP-1: the file's name in the screen's language, ending with the period when the list has one. */
+export function exportFileNames(
+  t: CasesT,
+  filter: Pick<ListFilter, "enteredFrom" | "enteredUntil">,
+  now: Date,
+): { fileName: string; asciiName: string } {
+  const date = colomboDay(now);
+  const period = periodName(filter);
+  return period
+    ? {
+        fileName: t("export.fileNamePeriod", { date, period }),
+        asciiName: `diviyata-saviyak-${date}_period_${period}.xlsx`,
+      }
+    : { fileName: t("export.fileName", { date }), asciiName: `diviyata-saviyak-${date}.xlsx` };
 }
 
 export type ExportedFile = { bytes: Uint8Array<ArrayBuffer>; fileName: string; asciiName: string; rows: number };
@@ -412,11 +461,5 @@ export async function exportCaseList(
     after: { filters: usedFilters(viewer, filter), rows: rows.length },
   });
 
-  const today = colomboDay(now);
-  return {
-    bytes,
-    fileName: t("export.fileName", { date: today }),
-    asciiName: `diviyata-saviyak-${today}.xlsx`,
-    rows: rows.length,
-  };
+  return { bytes, ...exportFileNames(t, filter, now), rows: rows.length };
 }

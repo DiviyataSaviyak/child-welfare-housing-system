@@ -368,12 +368,19 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
   });
 
   it("leaves the details to the DS of residence: the DS where it is built can't change or delete them", async () => {
+    // AMD-1: amendments go through the DS of residence too.
     expect((await getCase(db, resident, caseId, "si"))?.actsOn).toEqual({
       edit: true,
       progress: false,
       release: false,
+      amend: true,
     });
-    expect((await getCase(db, builder, caseId, "si"))?.actsOn).toEqual({ edit: false, progress: true, release: false });
+    expect((await getCase(db, builder, caseId, "si"))?.actsOn).toEqual({
+      edit: false,
+      progress: true,
+      release: false,
+      amend: false,
+    });
 
     const before = await current();
     const edit = await saveCase(db, builder, {

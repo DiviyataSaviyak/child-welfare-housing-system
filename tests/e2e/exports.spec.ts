@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 import ExcelJS from "exceljs";
 import {
@@ -11,6 +12,7 @@ import {
   TODAY,
 } from "./case-helpers";
 import { chooseLanguage, signInAs, TEST_CASE_NAME } from "./helpers";
+import type { PeriodCase } from "./made-up-cases";
 
 /** Screen and file text the test looks for (messages/si.json). */
 const EXPORT = "එක්සෙල් ගොනුවක් ලෙස බාගන්න";
@@ -172,7 +174,8 @@ test("the DS officer and the Ministry take their lists to Excel, with the screen
   await page.goto("/ds");
   await page.getByRole("searchbox").fill(nic);
   await page.getByRole("button", { name: "සොයන්න" }).click();
-  await expect(page).toHaveURL(new RegExp(`/ds\\?q=${nic}$`));
+  // EXP-4: the DS's form sends its category and period too, empty here.
+  await expect(page).toHaveURL(new RegExp(`/ds\\?q=${nic}&category=&from=&until=$`));
   const own = await exportList(page);
   expect(own.fileName).toMatch(FILE_NAME);
   expect(own.sheet.name).toBe("ප්‍රතිලාභීන්");
@@ -191,6 +194,90 @@ test("the DS officer and the Ministry take their lists to Excel, with the screen
   expect((await page.request.get("/ministry/cases/export")).status()).toBe(404);
   expect((await ho.request.get("/ds/export")).status()).toBe(404);
   await ho.context().close();
+});
+
+/** Runs the made-up data script (tests/e2e/made-up-cases.ts) and reads what it prints. */
+function madeUp<T>(command: "period" | "exports", marker: string): T {
+  return JSON.parse(execSync(`npx tsx tests/e2e/made-up-cases.ts ${command} ${marker}`, { encoding: "utf8" })) as T;
+}
+
+type ExportRecord = { actorId: string; entityId: string; after: { filters: Record<string, unknown>; rows: number } };
+
+test("AC-70: the period, category and district filters narrow the list and its Excel file, which names the period (EXP-4)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  // Ten cases entered over the last year, eight in Homagama and two in Biyagama (Gampaha), found by the marker.
+  const marker = String(Date.now());
+  const made = madeUp<PeriodCase[]>("period", marker);
+  const names = (cases: PeriodCase[]) => cases.map((c) => c.name).toSorted();
+  const fileNames = (rows: unknown[][]) => rows.map((row) => String(row[4])).toSorted();
+  const homagama = made.filter((c) => c.office === "HMG");
+
+  await signInAs(page, "ds0101", /\/ds$/);
+  await page.goto(`/ds?q=${marker}`);
+  const rows = page.getByRole("link", { name: new RegExp(`කාල සීමාව ${marker} `) });
+  await expect(rows).toHaveCount(homagama.length);
+
+  // The "one month" shortcut: whole months ending today, with the search kept.
+  await page.getByRole("navigation", { name: "කාල සීමාව" }).getByRole("link", { name: "මාසයක්" }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]until=${TODAY}`));
+  const from = new URL(page.url()).searchParams.get("from") ?? "";
+  expect(from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  const lastMonth = homagama.filter((c) => c.enteredDay >= from);
+  expect(lastMonth.length).toBeGreaterThan(0);
+  expect(lastMonth.length).toBeLessThan(homagama.length);
+  await expect(rows).toHaveCount(lastMonth.length);
+
+  // EXP-1: the file holds the same cases, and its name ends with the period.
+  const period = `${from.replaceAll("-", ".")}-${TODAY.replaceAll("-", ".")}`;
+  const monthFile = await exportList(page);
+  expect(monthFile.fileName).toBe(`දිවියට සවියක් ලැයිස්තුව ${TODAY} කාල සීමාව ${period}.xlsx`);
+  expect(fileNames(monthFile.rows)).toEqual(names(lastMonth));
+
+  // The category, chosen on the DS's form, keeps the period and the search.
+  await page.getByLabel("කාණ්ඩය", { exact: true }).selectOption({ label: "නිවාසගත" });
+  await page.getByRole("button", { name: "සොයන්න" }).click();
+  await expect(page).toHaveURL(/category=CARE_LEAVER/);
+  await expect(page).toHaveURL(new RegExp(`from=${from}`));
+  const careLeavers = lastMonth.filter((c) => c.category === "CARE_LEAVER");
+  await expect(rows).toHaveCount(careLeavers.length);
+  const careFile = await exportList(page);
+  expect(fileNames(careFile.rows)).toEqual(names(careLeavers));
+  for (const row of careFile.rows) expect(row[1]).toBe("නිවාසගත");
+
+  // The Ministry's list, narrowed to Gampaha district, gives only Biyagama's.
+  const ho = await openAs(browser, "ho0001");
+  await ho.goto(`/ministry/cases?q=${marker}`);
+  await expect(ho.getByText(`ගැළපෙන ප්‍රතිලාභීන් ${made.length}`)).toBeVisible();
+  await ho.getByLabel("දිස්ත්‍රික්කය", { exact: true }).selectOption({ label: "ගම්පහ" });
+  await ho.getByRole("button", { name: "සොයන්න" }).click();
+  await expect(ho).toHaveURL(/districtId=\d+/);
+  const gampaha = made.filter((c) => c.office === "BYG");
+  await expect(ho.getByText(`ගැළපෙන ප්‍රතිලාභීන් ${gampaha.length}`)).toBeVisible();
+  const districtFile = await exportList(ho);
+  expect(districtFile.fileName).toMatch(FILE_NAME);
+  expect(fileNames(districtFile.rows)).toEqual(names(gampaha));
+  const districtId = Number(new URL(ho.url()).searchParams.get("districtId"));
+  await ho.context().close();
+
+  // EXP-3: each download is recorded with the filters it used and the rows it held.
+  const records = madeUp<ExportRecord[]>("exports", marker);
+  expect(records.find((r) => r.entityId === "ds_cases" && r.after.filters.category === "CARE_LEAVER")?.after).toEqual({
+    filters: {
+      q: marker,
+      category: "CARE_LEAVER",
+      enteredFrom: from,
+      enteredUntil: TODAY,
+      officeScope: expect.any(Number),
+    },
+    rows: careLeavers.length,
+  });
+  expect(records.find((r) => r.entityId === "ho_cases")?.after).toEqual({
+    filters: { q: marker, districtId },
+    rows: gampaha.length,
+  });
 });
 
 test("an admin can't export any list (PRM-2, AC-2)", async ({ page }) => {

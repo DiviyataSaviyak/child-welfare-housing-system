@@ -25,6 +25,13 @@ const ACTIONS = [
   "case_started",
   "case_unstarted",
   "case_completed",
+  // Change 0008: the Ministry approved an amendment that replaced the beneficiary (AMD-5).
+  "case_replaced",
+  // Change 0008: a DS asked the Ministry to replace the beneficiary (AMD-1); the Ministry approved it, making
+  // the new beneficiary's case (AMD-5), or rejected it (AMD-6).
+  "amendment_submitted",
+  "amendment_approved",
+  "amendment_rejected",
   "case_stopped",
   "case_reopened",
 ] as const;
@@ -87,6 +94,8 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
     const shown = text(value);
     return shown ? formatDate(shown) : tc("none");
   };
+  /** A beneficiary as the case pages name them: a child at risk with the guardian. */
+  const person = (name: string, child: string | null) => (child ? tc("withChild", { name, child }) : name);
   // Records since change 0007 carry the installment's amount (INS-7); older ones don't.
   const rupees = (value: unknown) => (Number.isSafeInteger(value) ? formatRupees(value as number, locale) : null);
 
@@ -209,6 +218,65 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
         }
         if ("note" in after) lines.push(t("changedFields", { fields: t("fields.note") }));
         return { sentence: t("actions.installment_corrected", { installment: installment(after.number) }), lines };
+      }
+      case "amendment_submitted": {
+        // AMD-1: the new beneficiary it proposes; the reason is on its own line, as for every record.
+        const added = count(after.documentsAdded);
+        if (added > 0) lines.push(t("documentsAdded", { count: added }));
+        const name = text(after.name);
+        const number = text(after.applicationNumber);
+        return {
+          sentence:
+            name && number
+              ? t("actions.amendment_submittedFor", { name: person(name, text(after.childName)), number })
+              : t("actions.amendment_submitted"),
+          lines,
+        };
+      }
+      case "case_replaced": {
+        // AMD-5: named since task 3 of change 0008; the move's earlier records name nobody.
+        if (after.allocationMoved === true) lines.push(t("allocationMovedTo"));
+        const name = text(after.newName);
+        const number = text(after.newApplicationNumber);
+        return {
+          sentence:
+            name && number
+              ? t("actions.case_replacedBy", { name: person(name, text(after.newChildName)), number })
+              : t("actions.case_replaced"),
+          lines,
+        };
+      }
+      case "amendment_approved": {
+        // AMD-5: on the new case, which the approval made; the amendment's reason is on its own line.
+        if (after.allocationMoved === true) lines.push(t("allocationMovedFrom"));
+        const added = count(after.documentsAdded);
+        if (added > 0) lines.push(t("documentsAdded", { count: added }));
+        const name = text(after.replacedName);
+        const number = text(after.replacedApplicationNumber);
+        const newNumber = text(after.applicationNumber);
+        return {
+          sentence:
+            name && number && newNumber
+              ? t("actions.amendment_approvedFor", {
+                  name: person(name, text(after.replacedChildName)),
+                  number,
+                  newNumber,
+                })
+              : t("actions.amendment_approved"),
+          lines,
+        };
+      }
+      case "amendment_rejected": {
+        // AMD-6: the Ministry's reason is on its own line.
+        const name = text(after.name);
+        const number = text(after.applicationNumber);
+        return {
+          sentence:
+            name && number
+              ? t("actions.amendment_rejectedFor", { name: person(name, text(after.childName)), number })
+              : t("actions.amendment_rejected"),
+          lines,
+        };
       }
       case "installment_payment_undone":
         return { sentence: t("actions.installment_payment_undone", { installment: installment(after.number) }), lines };

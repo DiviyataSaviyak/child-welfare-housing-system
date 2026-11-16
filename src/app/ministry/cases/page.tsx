@@ -6,12 +6,13 @@ import { ExportLink } from "@/components/cases/export-link";
 import { FILTERS, filterQuery, positive, readFilters, STATUSES } from "@/components/cases/list-filters";
 import { Pager } from "@/components/cases/pager";
 import { FormNotice } from "@/components/forms/form-field";
+import { colomboDay } from "@/lib/dates";
 import { listCases, PAGE_SIZE } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { districtsWithOffices } from "@/server/lists/queries";
 
-/** FND-1: every case, filterable by name, NIC, number, district, DS, status, category and kind. */
+/** FND-1, EXP-4: every case, filterable by name, NIC, number, district, DS, status, category, kind and period. */
 export default async function HoCasesPage({
   searchParams,
 }: {
@@ -74,6 +75,7 @@ export default async function HoCasesPage({
           values={values}
           districts={districts}
           statuses={STATUSES}
+          today={colomboDay(new Date())}
         />
         <CaseTable rows={list.rows} href={(row) => `/ministry/cases/${row.id}`} />
         <Pager page={page} pageSize={PAGE_SIZE} total={list.total} href={pageHref} />

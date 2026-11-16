@@ -237,12 +237,7 @@ async function checkSave(
     if (refusal) return refusal;
   }
 
-  // CASE-14: each centre's province is one of the list. The form offers nothing else.
-  const provinceIds = [...new Set(input.values.centres.map((centre) => centre.provinceId))];
-  if (provinceIds.length > 0) {
-    const known = await db.province.count({ where: { id: { in: provinceIds } } });
-    if (known !== provinceIds.length) return "incomplete";
-  }
+  if (!(await centreProvincesKnown(db, input.values.centres))) return "incomplete";
 
   // A new case, or one moving to another office, needs an active office (LST-3).
   if (!current || office !== current.dsOfficeId) {
@@ -257,14 +252,45 @@ async function checkSave(
     if (!found.active) return "officeInactive";
   }
   // CASE-12: unique within the DS office of residence, without case or spaces.
-  const taken = await db.case.count({
-    where: {
-      dsOfficeId: office,
-      applicationKey: applicationKey(input.values.applicationNumber),
-      id: { not: input.id },
-    },
-  });
-  return taken > 0 ? "applicationNumberTaken" : null;
+  const taken = await applicationNumberTaken(db, office, input.values.applicationNumber, input.id);
+  return taken ? "applicationNumberTaken" : null;
+}
+
+/** CASE-14: each centre's province is one of the list. The form offers nothing else. */
+export async function centreProvincesKnown(db: PrismaClient, centres: CentreValues[]): Promise<boolean> {
+  const provinceIds = [...new Set(centres.map((centre) => centre.provinceId))];
+  if (provinceIds.length === 0) return true;
+  const known = await db.province.count({ where: { id: { in: provinceIds } } });
+  return known === provinceIds.length;
+}
+
+/**
+ * CASE-12, AMD-8: whether the Application Number is held in the DS office of residence, without case or
+ * spaces, by another case or by the new beneficiary of a waiting amendment.
+ */
+export async function applicationNumberTaken(
+  db: PrismaClient,
+  dsOfficeId: number,
+  applicationNumber: string,
+  exceptCaseId: string | null,
+  /** The amendment being approved, which holds the number itself until then (AMD-5). */
+  exceptAmendmentId: string | null = null,
+): Promise<boolean> {
+  const key = applicationKey(applicationNumber);
+  const [cases, amendments] = await Promise.all([
+    db.case.count({
+      where: { dsOfficeId, applicationKey: key, ...(exceptCaseId ? { id: { not: exceptCaseId } } : {}) },
+    }),
+    db.amendment.count({
+      where: {
+        dsOfficeId,
+        applicationKey: key,
+        status: "WAITING",
+        ...(exceptAmendmentId ? { id: { not: exceptAmendmentId } } : {}),
+      },
+    }),
+  ]);
+  return cases + amendments > 0;
 }
 
 async function writeCase(
@@ -275,32 +301,25 @@ async function writeCase(
   dsOfficeId: number,
   buildDsOfficeId: number,
 ): Promise<SavedCase> {
-  const { centres, dateOfBirth, ...rest } = input.values;
-  const fields = {
-    ...rest,
-    dateOfBirth: dayToDate(dateOfBirth),
-    applicationKey: applicationKey(input.values.applicationNumber),
-    nicKey: input.values.nic ? nicKey(input.values.nic) : null,
-    dsOfficeId,
-    buildDsOfficeId,
-  };
-
   if (current) {
     const updated = await tx.case.updateMany({
       where: { id: current.id, version: current.version, status: { in: [...editableStatuses(actor.role)] } },
-      data: { ...fields, version: { increment: 1 } },
+      data: { ...caseColumns(input.values, dsOfficeId, buildDsOfficeId), version: { increment: 1 } },
     });
     if (updated.count === 0) throw new Refusal("conflict");
     // CASE-14: saving replaces the centres.
     await tx.careCentre.deleteMany({ where: { caseId: current.id } });
+    await insertCentres(tx, input.id, input.values.centres);
   } else {
     // CASE-5: saved straight into AWAITING_ALLOCATION; no draft, no check, no generated number.
-    await tx.case.create({
-      data: { id: input.id, ...fields, status: "AWAITING_ALLOCATION", createdById: actor.userId },
+    await insertCase(tx, {
+      id: input.id,
+      values: input.values,
+      dsOfficeId,
+      buildDsOfficeId,
+      status: "AWAITING_ALLOCATION",
+      createdById: actor.userId,
     });
-  }
-  if (centres.length > 0) {
-    await tx.careCentre.createMany({ data: centres.map((centre, index) => centreRow(input.id, centre, index)) });
   }
   const documentIds = await attachDocuments(tx, actor, input.id, input.documentIds);
 
@@ -344,6 +363,55 @@ async function writeCase(
   return { id: input.id, applicationNumber: input.values.applicationNumber, status, created: !current };
 }
 
+/** The case's own columns for its form's values, as stored (CASE-12, CASE-13, CASE-6's NIC key). */
+function caseColumns(values: CompleteCaseValues, dsOfficeId: number, buildDsOfficeId: number) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the centres are rows of their own (CASE-14)
+  const { centres, dateOfBirth, ...rest } = values;
+  return {
+    ...rest,
+    dateOfBirth: dayToDate(dateOfBirth),
+    applicationKey: applicationKey(values.applicationNumber),
+    nicKey: values.nic ? nicKey(values.nic) : null,
+    dsOfficeId,
+    buildDsOfficeId,
+  };
+}
+
+async function insertCentres(tx: Prisma.TransactionClient, caseId: string, centres: CentreValues[]) {
+  if (centres.length === 0) return;
+  await tx.careCentre.createMany({ data: centres.map((centre, index) => centreRow(caseId, centre, index)) });
+}
+
+/**
+ * A new case's row and its centres, inside the caller's transaction: a new beneficiary saved on the form
+ * (CASE-5), or the one an approved amendment brings in, in the status of the case it replaces (AMD-5). The
+ * caller checks the rules, attaches the documents and writes the audit record.
+ */
+export async function insertCase(
+  tx: Prisma.TransactionClient,
+  input: {
+    id: string;
+    values: CompleteCaseValues;
+    dsOfficeId: number;
+    buildDsOfficeId: number;
+    status: CaseStatus;
+    createdById: string;
+    /** AMD-5: the case this one takes the place of. */
+    replacesCaseId?: string | null;
+  },
+): Promise<void> {
+  await tx.case.create({
+    data: {
+      id: input.id,
+      ...caseColumns(input.values, input.dsOfficeId, input.buildDsOfficeId),
+      status: input.status,
+      createdById: input.createdById,
+      replacesCaseId: input.replacesCaseId ?? null,
+    },
+  });
+  await insertCentres(tx, input.id, input.values.centres);
+}
+
 /** The fields a save logs, with their old and new values (HIS-1). */
 const AUDITED = ["dsOfficeId", "buildDsOfficeId", ...CASE_FIELDS, "centres"] as const;
 type Audited = (typeof AUDITED)[number];
@@ -381,11 +449,17 @@ async function findVisible(db: PrismaClient, actor: Actor, id: string) {
   return found && canSeeCase(actor, found) ? found : null;
 }
 
-export type DeleteCaseError = "notFound" | "notAllowedNow" | "conflict" | ReasonErrorKey;
+export type DeleteCaseError =
+  | "notFound"
+  | "notAllowedNow"
+  | "conflict"
+  /** An amendment was submitted for it, waiting or decided; it is kept with the case (AMD-3, CASE-8). */
+  | "hasAmendment"
+  | ReasonErrorKey;
 
 /**
  * CASE-8: deletes a case awaiting its allocation, with its documents, for example one entered twice. It
- * needs a reason. The record of the deletion keeps the Application Number, the DS office and the reason,
+ * needs a reason. A case with an amendment, waiting or decided, stays: the amendment is kept with it. The record of the deletion keeps the Application Number, the DS office and the reason,
  * without personal details; the earlier records of the case stay in the audit log, which can't be
  * changed (HIS-3).
  */
@@ -403,6 +477,7 @@ export async function deleteCase(
   const reason = parseReason(input.reason);
   if (!reason.ok) return { ok: false, error: reason.error };
   if (found.version !== input.version) return { ok: false, error: "conflict" };
+  if ((await db.amendment.count({ where: { caseId: found.id } })) > 0) return { ok: false, error: "hasAmendment" };
 
   let files: { id: string; storedName: string }[];
   try {
@@ -413,6 +488,8 @@ export async function deleteCase(
         data: { version: { increment: 1 } },
       });
       if (claimed.count === 0) throw new Refusal("conflict");
+      // An amendment submitted at the same moment: the database would refuse the delete anyway.
+      if ((await tx.amendment.count({ where: { caseId: found.id } })) > 0) throw new Refusal("hasAmendment");
       const onCase = await tx.storedFile.findMany({
         where: { caseId: found.id },
         select: { id: true, storedName: true },

@@ -1,12 +1,20 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
+import { amendmentsHref } from "@/components/amendments/tabs";
 import { caseName } from "@/components/cases/page-header";
 import { formatDate } from "@/lib/dates";
 import { formatNumber } from "@/lib/money";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
-import { CaseStatus } from "@/generated/prisma/enums";
+import { AMENDMENT_STATUSES } from "@/server/amendments/queries";
 import { STALE_DAYS } from "@/server/cases/queries";
-import { dashboard, type Figures, STALE_SHOWN, STATUS_FIGURE, tableRows } from "@/server/dashboard/queries";
+import {
+  COUNTED_STATUSES,
+  dashboard,
+  type Figures,
+  STALE_SHOWN,
+  STATUS_FIGURE,
+  tableRows,
+} from "@/server/dashboard/queries";
 import { db } from "@/server/db";
 import type { DistrictOptions } from "@/server/lists/queries";
 import type { Viewer } from "@/server/permissions";
@@ -28,7 +36,8 @@ const AMOUNTS = ["allocated", "releasedToDs", "paidOut"] as const satisfies (key
 
 /**
  * DSH-1, DSH-2: the dashboard for the cases a viewer may see, as in the prototype. Totals, a table by
- * district that opens into its DS offices, and the cases waiting longest for an update. The filters
+ * district that opens into its DS offices, the amendments in each status linked to their tab of the
+ * amendments list (AMD-9), and the cases waiting longest for an update. The filters
  * are in the address, so a view can be bookmarked or shared. The Ministry's page and a District officer's
  * add the cases waiting for them (`side`, `WaitingPanel`); the view-only area's page offers only the
  * districts of its area (PRM-4).
@@ -55,6 +64,7 @@ export async function DashboardScreen({
   side?: React.ReactNode;
 }) {
   const locale = await getLocale();
+  const audience = path === "/ministry" ? "ministry" : "oversight";
   const read = (key: string) => (typeof params[key] === "string" ? params[key] : "");
   // An area of one district has no district to choose: the table lists its DS offices.
   const district = oneDistrict ? districts[0] : districts.find((d) => String(d.id) === read("districtId"));
@@ -84,10 +94,11 @@ export async function DashboardScreen({
     t("asOf", { date: formatDate(new Date()) }),
   ].filter(Boolean);
 
-  // DSH-1: every case, then the cases in each of the five statuses, in the order a case goes through them.
+  // DSH-1: every case but the replaced ones, then the cases in each of the five statuses a beneficiary goes
+  // through, in that order.
   const counts = [
     { label: t("tiles.cases"), value: data.totals.cases },
-    ...Object.values(CaseStatus).map((status) => ({
+    ...COUNTED_STATUSES.map((status) => ({
       label: tc(`status.${status}`),
       value: data.totals[STATUS_FIGURE[status]],
     })),
@@ -174,6 +185,36 @@ export async function DashboardScreen({
               </div>
             ))}
           </dl>
+
+          <section aria-labelledby="amendments-title" className="flex flex-col gap-2">
+            <h2 id="amendments-title" className="text-xl font-bold">
+              {t("amendments.title")}
+            </h2>
+            <dl className="grid grid-cols-3 gap-4">
+              {AMENDMENT_STATUSES.map((status) => (
+                <div
+                  key={status}
+                  className="relative flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4 hover:bg-accent/60"
+                >
+                  <dt className="font-semibold">
+                    {/* The whole tile opens the tab: the link's area stretches over it. */}
+                    <Link
+                      href={amendmentsHref(audience, status)}
+                      className="text-primary underline underline-offset-3 after:absolute after:inset-0"
+                    >
+                      {t(`amendments.${status}`)}
+                    </Link>
+                  </dt>
+                  <dd className="text-[26px] leading-tight font-bold tabular-nums">
+                    {formatNumber(data.amendments[status])}
+                  </dd>
+                  {status === "APPROVED" && (
+                    <dd className="text-sm text-muted-foreground">{t("amendments.approvedNote")}</dd>
+                  )}
+                </div>
+              ))}
+            </dl>
+          </section>
 
           <section aria-labelledby="table-title" className="overflow-hidden rounded-xl border bg-card">
             <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
@@ -326,20 +367,23 @@ function Field({ id, label, children }: { id: string; label: string; children: R
 }
 
 /**
- * DSH-1: the cases waiting for the viewer's own step, linked to the screen that takes it: the Ministry's
- * allocation (REL-1) or a District officer's release to the DS offices (REL-5).
+ * DSH-1: what waits for the viewer's own step, each linked to the screen that takes it: the Ministry's
+ * allocation (REL-1) and the amendments it has to decide (AMD-9), or a District officer's release to the
+ * DS offices (REL-5). Each count is the whole queue, as the menu shows it, whatever the filters.
  */
-export async function WaitingPanel({ href, label, count }: { href: string; label: string; count: number }) {
+export async function WaitingPanel({ rows }: { rows: { href: string; label: string; count: number }[] }) {
   const t = await getTranslations("dashboard");
   return (
     <section aria-labelledby="waiting-title" className="flex flex-col rounded-xl border bg-card px-5 py-4.5">
       <h2 id="waiting-title" className="mb-1.5 text-[19px] font-bold">
         {t("waiting.title")}
       </h2>
-      <Link href={href} className="flex items-center justify-between gap-3 py-2.5 hover:text-primary">
-        <span className="font-semibold underline-offset-3 hover:underline">{label} →</span>
-        <span className="text-xl font-bold tabular-nums">{formatNumber(count)}</span>
-      </Link>
+      {rows.map(({ href, label, count }) => (
+        <Link key={href} href={href} className="flex items-center justify-between gap-3 py-2.5 hover:text-primary">
+          <span className="font-semibold underline-offset-3 hover:underline">{label} →</span>
+          <span className="text-xl font-bold tabular-nums">{formatNumber(count)}</span>
+        </Link>
+      ))}
     </section>
   );
 }

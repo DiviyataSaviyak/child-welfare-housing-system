@@ -73,6 +73,7 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
         }),
       })),
       enteredOn: colomboDay(c.createdAt),
+      amendmentWaiting: c.amendmentWaiting,
     });
   }
 

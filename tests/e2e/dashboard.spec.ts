@@ -17,13 +17,16 @@ const TILES = [
   "ප්‍රතිලාභීන්ට ගෙවූ (රු.)",
 ];
 const WAITING = "ඔබේ ක්‍රියාව අවශ්‍යයි";
+// The amendments' three counts, each linked to its tab of the amendments list (DSH-1, AMD-9).
+const AMENDMENTS = "සංශෝධන";
+const AMENDMENT_TILES = ["අනුමැතිය සඳහා ඉදිරිපත් කළ", "අනුමත කළ", "ප්‍රතික්ෂේප කළ"];
 const BY_DISTRICT = "දිස්ත්‍රික්ක අනුව";
 const COLOMBO_OFFICES = "කොළඹ දිස්ත්‍රික්කය: ප්‍රා.ලේ. කොට්ඨාස අනුව";
 const ALL_DISTRICTS = "සියලු දිස්ත්‍රික්ක පෙන්වන්න";
 
 // The figures themselves are checked against the database in src/server/dashboard/dashboard.db.test.ts
 // (AC-17): other tests add cases at the same time, so the numbers on screen keep changing here.
-test("the Ministry's dashboard: totals, a district's DS offices, filters and the waiting count (DSH-1)", async ({
+test("the Ministry's dashboard: totals, a district's DS offices, filters, amendments and the waiting counts (DSH-1, AC-69)", async ({
   page,
 }) => {
   // Seven page moves; beside the other workers, the dev server's first compiles can pass 30 seconds.
@@ -57,14 +60,26 @@ test("the Ministry's dashboard: totals, a district's DS offices, filters and the
   await page.getByRole("link", { name: "පෙරහන් ඉවත් කරන්න" }).click();
   await expect(page).toHaveURL(/\/ministry$/);
 
-  // The waiting count leads to the allocation letters; there is no check queue (change 0006).
+  // AC-69: the amendments' counts open their tabs.
+  const amendments = page.getByRole("region", { name: AMENDMENTS, exact: true });
+  for (const label of AMENDMENT_TILES)
+    await expect(amendments.getByRole("link", { name: label, exact: true })).toBeVisible();
+  await amendments.getByRole("link", { name: "අනුමත කළ", exact: true }).click();
+  await expect(page).toHaveURL(/\/ministry\/amendments\?tab=approved$/);
+  await page.goto("/ministry");
+
+  // The waiting counts lead to the allocation letters and the amendments' queue; there is no check queue
+  // (change 0006).
   const waiting = page.getByRole("region", { name: WAITING });
   await expect(waiting.getByRole("link", { name: /^පරීක්ෂා කිරීමට/ })).toHaveCount(0);
+  await waiting.getByRole("link", { name: /^තීරණය කළ යුතු සංශෝධන/ }).click();
+  await expect(page).toHaveURL(/\/ministry\/amendments$/);
+  await page.goto("/ministry");
   await waiting.getByRole("link", { name: /^ප්‍රතිපාදන මුදා හැරීමට/ }).click();
   await expect(page).toHaveURL(/\/ministry\/allocate$/);
 });
 
-test("a District CRPO's dashboard links to its release screen; a view-only account has nothing waiting (DSH-1)", async ({
+test("a District CRPO's dashboard links to its release screen; a view-only account has nothing waiting (DSH-1, AC-69)", async ({
   page,
   browser,
 }) => {
@@ -79,5 +94,11 @@ test("a District CRPO's dashboard links to its release screen; a view-only accou
   const secretary = await openAs(browser, "dt0101");
   await expect(secretary.getByRole("term").filter({ hasText: TILES[0] })).toBeVisible();
   await expect(secretary.getByRole("region", { name: WAITING })).toHaveCount(0);
+  // The view-only account's amendment counts open its own list (AMD-9).
+  await secretary
+    .getByRole("region", { name: AMENDMENTS, exact: true })
+    .getByRole("link", { name: "ප්‍රතික්ෂේප කළ", exact: true })
+    .click();
+  await expect(secretary).toHaveURL(/\/oversight\/amendments\?tab=rejected$/);
   await secretary.context().close();
 });

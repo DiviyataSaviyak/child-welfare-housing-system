@@ -5,12 +5,12 @@ import messages from "../../../messages/si.json";
 import { seed } from "../../../prisma/seed-data";
 import { addLoadData, LOAD_ID_PREFIX, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
-import { dateToDay } from "@/lib/dates";
+import { addDays, colomboStartOf, dateToDay } from "@/lib/dates";
 import { NAMES } from "@/lib/names";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { countCases, listCases, PAGE_SIZE } from "../cases/queries";
 import type { Viewer } from "../permissions";
-import { caseListRows, exportCaseList, type ListFilter, progressStages } from "./case-list";
+import { caseListRows, exportCaseList, type ListFilter, notesCell, progressStages } from "./case-list";
 
 const db = createTestClient();
 const t = createTranslator({ locale: "si", messages, namespace: "cases" });
@@ -400,6 +400,99 @@ describe("Excel export of a case list (EXP-1, EXP-3)", { timeout: 30_000 }, () =
       filters: { statuses: ["COMPLETED"], officeScope: busiestOffice },
       rows: own.rows,
     });
+  });
+
+  it("EXP-4: the period holds the cases entered from the start of its first Colombo day to the end of its last", async () => {
+    // A day long before any made-up case, so only these four are near it.
+    const day = "2020-01-15";
+    const start = colomboStartOf(day);
+    const next = colomboStartOf(addDays(day, 1));
+    const picked = await db.case.findMany({
+      where: { id: { startsWith: LOAD_ID_PREFIX }, dsOfficeId: busiestOffice },
+      orderBy: { id: "asc" },
+      take: 4,
+      select: { id: true, createdAt: true },
+    });
+    const [before, first, last, after] = picked.map((c) => c.id);
+    const moments = [new Date(start.getTime() - 1), start, new Date(next.getTime() - 1), next];
+    try {
+      for (const [index, item] of picked.entries())
+        await db.case.update({ where: { id: item.id }, data: { createdAt: moments[index] } });
+
+      const ids = async (filter: ListFilter) => {
+        const found = await db.case.findMany({
+          where: { id: { in: picked.map((c) => c.id) } },
+          select: { id: true, applicationNumber: true },
+        });
+        const rows = (await caseListRows(db, ho, { dsOfficeId: busiestOffice, ...filter }, "si"))!;
+        const numbers = new Set(rows.map((r) => r.applicationNumber));
+        return found
+          .filter((c) => numbers.has(c.applicationNumber))
+          .map((c) => c.id)
+          .sort();
+      };
+      expect(await ids({ enteredFrom: day, enteredUntil: day })).toEqual([first, last].sort());
+      expect(await ids({ enteredUntil: day })).toEqual([before, first, last].sort());
+      expect(await ids({ enteredFrom: addDays(day, 1), enteredUntil: addDays(day, 1) })).toEqual([after]);
+      expect(await ids({ enteredUntil: addDays(day, -1) })).toEqual([before]);
+
+      // The list counts the same, and the file is named by the period and recorded with it (EXP-1, EXP-3).
+      const filter: ListFilter = { dsOfficeId: busiestOffice, enteredFrom: day, enteredUntil: day };
+      expect(await countCases(db, ho, filter)).toBe(2);
+      const file = (await exportCaseList(db, ho, "ho_cases", filter, t, "si", new Date("2026-11-16T04:30:00Z")))!;
+      expect(file.rows).toBe(2);
+      expect(file.fileName).toBe("දිවියට සවියක් ලැයිස්තුව 2026-11-16 කාල සීමාව 2020.01.15-2020.01.15.xlsx");
+      expect((await lastExportAudit(ho.userId))?.after).toEqual({
+        filters: { dsOfficeId: busiestOffice, enteredFrom: day, enteredUntil: day },
+        rows: 2,
+      });
+    } finally {
+      for (const item of picked) await db.case.update({ where: { id: item.id }, data: { createdAt: item.createdAt } });
+    }
+  });
+
+  it("AMD-7: names the previous beneficiary of a replacement in its Notes, and never their NIC or number", async () => {
+    const [replaced, replacement] = await db.case.findMany({
+      where: { id: { startsWith: LOAD_ID_PREFIX }, dsOfficeId: busiestOffice, replacedBy: null, replacesCaseId: null },
+      orderBy: { id: "desc" },
+      take: 2,
+      select: {
+        id: true,
+        name: true,
+        childName: true,
+        address: true,
+        nic: true,
+        applicationNumber: true,
+        remark: true,
+      },
+    });
+    try {
+      await db.case.update({
+        where: { id: replacement!.id },
+        data: { replacesCaseId: replaced!.id, remark: "ඉඩම් ගැටලුව නිසා ප්‍රතිස්ථාපනය කළා." },
+      });
+      const rows = (await caseListRows(db, ho, { dsOfficeId: busiestOffice }, "si"))!;
+      const row = rows.find((r) => r.applicationNumber === replacement!.applicationNumber)!;
+      expect(row.replaces).toEqual({
+        name: replaced!.name,
+        childName: replaced!.childName,
+        address: replaced!.address,
+      });
+      const notes = notesCell(t, row)!;
+      const [line, remark] = notes.split("\n");
+      expect(notes.split("\n")).toHaveLength(2);
+      expect(line).toContain(replaced!.address!);
+      expect(remark).toBe("ඉඩම් ගැටලුව නිසා ප්‍රතිස්ථාපනය කළා.");
+      if (replaced!.nic) expect(notes).not.toContain(replaced!.nic);
+      expect(notes).not.toContain(replaced!.applicationNumber);
+      // Every other case's Notes is its remark alone.
+      for (const other of rows.filter((r) => r !== row)) expect(notesCell(t, other)).toBe(other.remark);
+    } finally {
+      await db.case.update({
+        where: { id: replacement!.id },
+        data: { replacesCaseId: null, remark: replacement!.remark },
+      });
+    }
   });
 
   it("PRF-4: every case goes to Excel in under 60 seconds, and the file opens again with one row per case", async () => {

@@ -79,6 +79,8 @@ export type LetterCase = {
   createdAt: Date;
   /** The other cases with the same NIC (CASE-6); empty for none. */
   duplicates: DuplicateCase[];
+  /** AMD-3: an amendment of the case waits for the Ministry. It can still be ticked. */
+  amendmentWaiting: boolean;
 };
 
 /**
@@ -110,6 +112,7 @@ export async function casesForLetter(
       buildDsOfficeId: true,
       dsOffice: { select: NAMES },
       buildDsOffice: { select: NAMES },
+      amendments: WAITING_AMENDMENT,
     },
   });
   const duplicates = await duplicatesOf(db, viewer, found, locale);
@@ -125,8 +128,12 @@ export async function casesForLetter(
     residenceName: c.dsOfficeId === c.buildDsOfficeId ? null : localName(c.dsOffice, locale),
     createdAt: c.createdAt,
     duplicates: duplicates.get(c.id) ?? [],
+    amendmentWaiting: c.amendments.length > 0,
   }));
 }
+
+/** Selects a case's waiting amendment, if it has one (AMD-3). */
+const WAITING_AMENDMENT = { where: { status: "WAITING" }, take: 1, select: { id: true } } as const;
 
 /** An allocation letter as the allocation screen and its notice show it. */
 export type LetterSummary = {
@@ -272,6 +279,8 @@ export type DsReleaseCase = {
   letterNumber: string;
   /** "YYYY-MM-DD" */
   letterDate: string;
+  /** AMD-3: an amendment of the case waits for the Ministry. It can still be ticked. */
+  amendmentWaiting: boolean;
 };
 
 /** The DS office a District release goes to, when it is in the District officer's district. */
@@ -308,6 +317,7 @@ export async function casesForDsRelease(
       dsOfficeId: true,
       dsOffice: { select: NAMES },
       release: { select: { letter: { select: { letterNumber: true, letterDate: true } } } },
+      amendments: WAITING_AMENDMENT,
     },
   });
   return {
@@ -326,6 +336,7 @@ export async function casesForDsRelease(
               residenceName: c.dsOfficeId === dsOfficeId ? null : localName(c.dsOffice, locale),
               letterNumber: c.release.letter.letterNumber,
               letterDate: dateToDay(c.release.letter.letterDate),
+              amendmentWaiting: c.amendments.length > 0,
             },
           ]
         : [],

@@ -14,6 +14,7 @@ import {
   type ReleaseErrors,
 } from "@/lib/validation/release";
 import { LetterFields, type LetterValues } from "./letter-fields";
+import { AmendmentFlag } from "./amendment-flag";
 import { type Scan, ScanPicker, type ScanUpload, TickAll } from "./scan-picker";
 
 /** A case awaiting its allocation on the district's letter, as the server gives it. */
@@ -30,6 +31,8 @@ export type LetterFormCase = {
   duplicates: { id: string; text: string }[];
   /** "YYYY-MM-DD", in Colombo: the day it was entered. */
   enteredOn: string;
+  /** AMD-3: an amendment of the case waits for the Ministry; it can still be ticked. */
+  amendmentWaiting: boolean;
 };
 
 export type LetterFormGroup = { office: string; cases: LetterFormCase[] };
@@ -155,6 +158,7 @@ export function LetterForm({
                       <span className="font-bold">{c.name}</span>
                       <span className="text-sm text-muted-foreground">{c.detail}</span>
                       {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                      {c.amendmentWaiting && <AmendmentFlag text={t("letters.amendmentFlag")} />}
                     </span>
                     <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>
                       {ticks ? formatRupees(RELEASE_AMOUNT, locale) : t("letters.notOnLetter")}

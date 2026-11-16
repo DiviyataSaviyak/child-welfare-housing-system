@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import type { CaseStatus, Category, Kind } from "@/generated/prisma/enums";
+import type { AmendmentStatus, CaseStatus, Category, Kind } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { daysBetween } from "@/lib/dates";
 import { localName, NAMES } from "@/lib/names";
@@ -12,9 +12,9 @@ export type DashboardFilter = { districtId?: number; category?: Category; kind?:
 
 /** DSH-1's figures for a group of cases. */
 export type Figures = {
-  /** Every case. */
+  /** Every case but the replaced ones, so it counts beneficiaries (DSH-1, change 0008). */
   cases: number;
-  /** The cases in each of the five statuses (STS-1), keyed as in `STATUS_FIGURE`. */
+  /** The cases in each of the five statuses a beneficiary goes through (STS-1), keyed as in `STATUS_FIGURE`. */
   awaiting: number;
   allocatedToDistrict: number;
   received: number;
@@ -28,6 +28,9 @@ export type Figures = {
   paidOut: number;
 };
 
+/** The statuses the dashboard counts: every one but `REPLACED`, whose beneficiary another case took over. */
+export type CountedStatus = Exclude<CaseStatus, "REPLACED">;
+
 /** Which figure counts the cases in each status. */
 export const STATUS_FIGURE = {
   AWAITING_ALLOCATION: "awaiting",
@@ -35,7 +38,10 @@ export const STATUS_FIGURE = {
   ALLOCATION_RECEIVED: "received",
   IN_PROGRESS: "inProgress",
   COMPLETED: "completed",
-} as const satisfies Record<CaseStatus, keyof Figures>;
+} as const satisfies Record<CountedStatus, keyof Figures>;
+
+/** The counted statuses, in the order a case goes through them. */
+export const COUNTED_STATUSES = Object.keys(STATUS_FIGURE) as CountedStatus[];
 
 const FIGURES = [
   "cases",
@@ -60,8 +66,18 @@ export type StaleCase = {
   days: number;
 };
 
+/** DSH-1: how many amendments are in each of AMD-9's tabs. */
+export type AmendmentCounts = Record<AmendmentStatus, number>;
+
+export const noAmendments = (): AmendmentCounts => ({ WAITING: 0, APPROVED: 0, REJECTED: 0 });
+
 export type Dashboard = {
   totals: Figures;
+  /**
+   * The amendments whose existing case is in the viewer's area and the chosen district and category, in
+   * each status (DSH-1). Each replaced case is counted once here, among the approved ones.
+   */
+  amendments: AmendmentCounts;
   /** Each DS office's figures; an office with no cases is left out. */
   byOffice: Map<number, Figures>;
   /** Cases in progress with no update for 30 days or more: how many, and the longest waiting. */
@@ -93,7 +109,10 @@ function add(into: Figures, more: Figures): Figures {
  * read from the database on every call, never kept, so the page is never more than a moment old (DSH-2).
  * A case counts once, under the DS office where it is built, and in the area of that office, as its
  * money does (CASE-13). The amounts count only the cases that have them: a case has its allocation once
- * the Ministry's letter names it, and its release once the District releases it to the DS.
+ * the Ministry's letter names it, and its release once the District releases it to the DS. A replaced case
+ * isn't counted (DSH-1): its allocation moved to the case that replaced it, and none of its installments
+ * was paid (AMD-2, AMD-5). The amendments count by their existing case, in the same area and district, and
+ * of the chosen category; the kind doesn't narrow them (DSH-1).
  */
 export async function dashboard(
   db: PrismaClient,
@@ -103,7 +122,8 @@ export async function dashboard(
   now = new Date(),
 ): Promise<Dashboard> {
   const scope = officeFilter(viewer, "built");
-  if (!scope) return { totals: noFigures(), byOffice: new Map(), stale: { total: 0, cases: [] } };
+  if (!scope)
+    return { totals: noFigures(), amendments: noAmendments(), byOffice: new Map(), stale: { total: 0, cases: [] } };
 
   const where: Prisma.CaseWhereInput = {
     // AND, not a spread: a chosen district must narrow the viewer's area, never replace it.
@@ -113,8 +133,19 @@ export async function dashboard(
   };
   const staleWhere: Prisma.CaseWhereInput = { ...where, status: "IN_PROGRESS", updatedAt: { lt: staleBefore(now) } };
 
-  const [counts, funded, staleTotal, stale] = await Promise.all([
-    db.case.groupBy({ by: ["buildDsOfficeId", "status"], where, _count: { _all: true } }),
+  // DSH-1: the amendments are narrowed by their existing case's district and category, never by its kind,
+  // since the two beneficiaries' kinds may differ.
+  const amendmentWhere: Prisma.CaseWhereInput = {
+    AND: where.AND,
+    ...(filter.category && { category: filter.category }),
+  };
+
+  const [counts, funded, staleTotal, stale, amendmentGroups] = await Promise.all([
+    db.case.groupBy({
+      by: ["buildDsOfficeId", "status"],
+      where: { ...where, status: { not: "REPLACED" } },
+      _count: { _all: true },
+    }),
     // Prisma can't sum a related table by office, so the cases with money come back one row each.
     db.case.findMany({
       where: { ...where, release: { isNot: null } },
@@ -138,7 +169,11 @@ export async function dashboard(
         buildDsOffice: { select: { ...NAMES, district: { select: NAMES } } },
       },
     }),
+    db.amendment.groupBy({ by: ["status"], where: { case: amendmentWhere }, _count: { _all: true } }),
   ]);
+
+  const amendments = noAmendments();
+  for (const { status, _count } of amendmentGroups) amendments[status] = _count._all;
 
   const byOffice = new Map<number, Figures>();
   const office = (id: number) => {
@@ -147,6 +182,7 @@ export async function dashboard(
     return figures;
   };
   for (const { buildDsOfficeId, status, _count } of counts) {
+    if (status === "REPLACED") continue;
     const figures = office(buildDsOfficeId);
     figures.cases += _count._all;
     figures[STATUS_FIGURE[status]] += _count._all;
@@ -161,6 +197,7 @@ export async function dashboard(
 
   return {
     totals: [...byOffice.values()].reduce(add, noFigures()),
+    amendments,
     byOffice,
     stale: {
       total: staleTotal,

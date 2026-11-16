@@ -8,6 +8,10 @@ import { Refusal } from "./refusal";
  * change is refused with "conflict" and the caller's transaction rolls back. The case's row then stays
  * locked until the transaction ends, so two changes to one case take turns. The case's last update
  * moves to now, which is how the "no update for 30 days" lists see it (HOME-3, DSH-1).
+ *
+ * Every installment and stage change goes through it, so it also refuses a case whose amendment waits for
+ * the Ministry, with "amendmentWaiting" (AMD-3, INS-5, STG-5). It reads that after taking the row, so an
+ * amendment submitted at the same moment either went first and is seen, or waits for this change.
  */
 export async function claimCase(
   tx: Prisma.TransactionClient,
@@ -19,4 +23,6 @@ export async function claimCase(
     data: { version: { increment: 1 } },
   });
   if (claimed.count === 0) throw new Refusal("conflict");
+  const waiting = await tx.amendment.count({ where: { caseId: current.id, status: "WAITING" } });
+  if (waiting > 0) throw new Refusal("amendmentWaiting");
 }

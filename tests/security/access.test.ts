@@ -186,6 +186,8 @@ const RULES: Record<string, Record<string, Rule>> = {
     stageUpdateAction: DS,
     uploadPhotoAction: DS,
   },
+  // AMD-1: a CRPO of the case's DS of residence; the command checks the office (AMD-1, AC-48).
+  "src/app/ds/cases/[id]/amend/actions.ts": { submitAmendmentAction: DS },
   "src/app/ds/notifications/actions.ts": { openNotificationAction: DS, markAllReadAction: DS },
   "src/app/ds/export/route.ts": { GET: DS },
   "src/app/ds/notifications/unread/route.ts": { GET: DS },
@@ -199,12 +201,18 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/ministry/cases/[id]/actions.ts": {
     undoInstallmentAction: MINISTRY,
   },
+  // AMD-4: a Ministry officer; the command checks the area and AMD-5 again (AC-48).
+  "src/app/ministry/amendments/[id]/actions.ts": {
+    approveAmendmentAction: MINISTRY,
+    rejectAmendmentAction: MINISTRY,
+  },
   "src/app/ministry/allocate/actions.ts": {
     recordLetterAction: MINISTRY,
     uploadLetterScanAction: MINISTRY,
     correctReleaseAction: MINISTRY,
   },
   "src/app/ministry/cases/export/route.ts": { GET: MINISTRY },
+  "src/app/ministry/amendments/waiting/route.ts": { GET: MINISTRY },
   "src/app/ministry/waiting/route.ts": { GET: MINISTRY },
   "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
   "src/app/oversight/release/actions.ts": {

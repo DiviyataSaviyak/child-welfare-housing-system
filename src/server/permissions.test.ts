@@ -145,10 +145,11 @@ describe("a case lived in one DS office and built in another (CASE-13)", () => {
   const kaduwelaCrpo = viewer("DS_CRPO", { dsOfficeId: KADUWELA.id });
   const farCommissioner = viewer("PROVINCE_COMMISSIONER", { provinceId: OTHER_PROVINCE });
 
-  it("goes through the DS of residence to edit or delete, and through the DS where built for the rest", () => {
+  it("goes through the DS of residence to edit, delete or amend, and through the DS where built for the rest", () => {
     const acting: Record<CaseAction, string> = {
       edit: "residence",
       delete: "residence",
+      amend: "residence",
       installment: "built",
       stage: "built",
       release: "built",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  addMonths,
   colomboDay,
   colomboStartOf,
   colomboYear,
@@ -77,5 +78,20 @@ describe("addDays and colomboStartOf", () => {
     expect(colomboStartOf("2026-10-03").toISOString()).toBe("2026-10-02T18:30:00.000Z");
     expect(colomboDay(colomboStartOf("2026-10-03"))).toBe("2026-10-03");
     expect(colomboDay(new Date(colomboStartOf("2026-10-03").getTime() - 1))).toBe("2026-10-02");
+  });
+});
+
+describe("addMonths", () => {
+  it("moves by whole months, across years both ways", () => {
+    expect(addMonths("2026-11-16", -1)).toBe("2026-10-16");
+    expect(addMonths("2026-11-16", -12)).toBe("2025-11-16");
+    expect(addMonths("2026-01-10", -2)).toBe("2025-11-10");
+    expect(addMonths("2026-12-05", 1)).toBe("2027-01-05");
+  });
+
+  it("takes the month's last day when the day doesn't exist there", () => {
+    expect(addMonths("2026-03-31", -1)).toBe("2026-02-28");
+    expect(addMonths("2028-03-30", -1)).toBe("2028-02-29");
+    expect(addMonths("2026-05-31", -1)).toBe("2026-04-30");
   });
 });

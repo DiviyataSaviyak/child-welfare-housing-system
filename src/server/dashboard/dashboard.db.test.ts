@@ -3,14 +3,22 @@ import { seed } from "../../../prisma/seed-data";
 import { addLoadData, removeLoadData } from "../../../scripts/seed-load";
 import { createTestClient } from "../../../tests/db/client";
 import type { Prisma } from "@/generated/prisma/client";
-import type { CaseStatus } from "@/generated/prisma/enums";
+import type { AmendmentStatus, CaseStatus } from "@/generated/prisma/enums";
 import { daysBetween } from "@/lib/dates";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import { STALE_DAYS } from "../cases/queries";
 import { districtsWithOffices, type DistrictOptions } from "../lists/queries";
 import type { Viewer } from "../permissions";
 import { awaitingAllocation } from "../releases/queries";
-import { dashboard, type DashboardFilter, type Figures, noFigures, STALE_SHOWN, tableRows } from "./queries";
+import {
+  dashboard,
+  type DashboardFilter,
+  type Figures,
+  noAmendments,
+  noFigures,
+  STALE_SHOWN,
+  tableRows,
+} from "./queries";
 
 const db = createTestClient();
 const ho: Viewer = {
@@ -58,11 +66,14 @@ const caseWhere = (filter: DashboardFilter): Prisma.CaseWhereInput => ({
 const count = (where: Prisma.CaseWhereInput, status: CaseStatus) =>
   db.case.count({ where: { AND: [where, { status }] } });
 
-/** DSH-1's figures summed by the database itself, without the dashboard's code (AC-17, AC-59). */
+/**
+ * DSH-1's figures summed by the database itself, without the dashboard's code (AC-17, AC-59). Every case but
+ * the replaced ones (change 0008).
+ */
 async function direct(where: Prisma.CaseWhereInput): Promise<Figures> {
   const [cases, awaiting, allocatedToDistrict, received, inProgress, completed, allocated, releasedToDs, paid] =
     await Promise.all([
-      db.case.count({ where }),
+      db.case.count({ where: { AND: [where, { status: { not: "REPLACED" } }] } }),
       count(where, "AWAITING_ALLOCATION"),
       count(where, "ALLOCATED_TO_DISTRICT"),
       count(where, "ALLOCATION_RECEIVED"),
@@ -158,6 +169,98 @@ describe("the Ministry's dashboard (DSH-1)", () => {
     }
   });
 
+  it("leaves replaced cases out of every count, so the total counts beneficiaries (DSH-1, change 0008)", async () => {
+    const before = await dashboard(db, ho, {}, "si");
+    const replaced = await db.case.findFirstOrThrow({
+      where: { status: "AWAITING_ALLOCATION", id: { startsWith: "load-" } },
+      orderBy: { id: "asc" },
+      select: { id: true, buildDsOfficeId: true },
+    });
+    await db.case.update({ where: { id: replaced.id }, data: { status: "REPLACED" } });
+    try {
+      const after = await dashboard(db, ho, {}, "si");
+      expect(after.totals).toEqual({
+        ...before.totals,
+        cases: before.totals.cases - 1,
+        awaiting: before.totals.awaiting - 1,
+      });
+      expect(after.totals).toEqual(await direct({}));
+      const office = before.byOffice.get(replaced.buildDsOfficeId)!;
+      expect(after.byOffice.get(replaced.buildDsOfficeId)?.cases ?? 0).toBe(office.cases - 1);
+    } finally {
+      await db.case.update({ where: { id: replaced.id }, data: { status: "AWAITING_ALLOCATION" } });
+    }
+  });
+
+  it("AC-69: counts the amendments waiting, approved and rejected by their existing case's district and category, never its kind", async () => {
+    const officer = await db.user.findFirstOrThrow({ where: { role: "MINISTRY_OFFICER" }, select: { id: true } });
+    // Made-up amendments on load cases spread over the districts, in each status in turn. An approved one
+    // names another load case as the one it made, as approving would.
+    const cases = await db.case.findMany({
+      where: { id: { startsWith: "load-" }, status: "AWAITING_ALLOCATION" },
+      orderBy: { id: "asc" },
+      take: 60,
+      select: { id: true, dsOfficeId: true },
+    });
+    const STATUSES: AmendmentStatus[] = ["WAITING", "APPROVED", "REJECTED"];
+    const made = cases.slice(0, 30).map((c, index) => {
+      const status = STATUSES[index % 3];
+      return {
+        id: `dashboard-amendment-${index}`,
+        caseId: c.id,
+        dsOfficeId: c.dsOfficeId,
+        applicationKey: `DASHBOARD${index}`,
+        details: {},
+        reason: "ඉඩමේ අයිතිය පිළිබඳ ගැටලුවක් ඇත",
+        status,
+        submittedById: officer.id,
+        ...(status !== "WAITING" && { decidedById: officer.id, decidedAt: new Date() }),
+        ...(status === "APPROVED" && { newCaseId: cases[30 + index].id }),
+        ...(status === "REJECTED" && { rejectionReason: "ලේඛන ප්‍රමාණවත් නැත" }),
+      };
+    });
+    await db.amendment.createMany({ data: made });
+    try {
+      const expected = async (filter: DashboardFilter) => {
+        const counts = noAmendments();
+        const where = caseWhere({ ...filter, kind: undefined });
+        for (const status of STATUSES) counts[status] = await db.amendment.count({ where: { status, case: where } });
+        return counts;
+      };
+      const all = await dashboard(db, ho, {}, "si");
+      expect(all.amendments).toEqual(await expected({}));
+      for (const status of STATUSES) expect(all.amendments[status]).toBeGreaterThanOrEqual(10);
+
+      const amended = await db.case.findMany({
+        where: { id: { in: made.map((m) => m.caseId) } },
+        select: { buildDsOffice: { select: { districtId: true } } },
+      });
+      const districtIds = [...new Set(amended.map((c) => c.buildDsOffice.districtId))].slice(0, 3);
+      for (const districtId of [undefined, ...districtIds])
+        for (const category of [undefined, ...CATEGORIES]) {
+          const filter = { districtId, category };
+          const data = await dashboard(db, ho, filter, "si");
+          expect(data.amendments, JSON.stringify(filter)).toEqual(await expected(filter));
+          // The two beneficiaries' kinds may differ, so the kind filter leaves the amendments as they are.
+          for (const kind of KINDS)
+            expect((await dashboard(db, ho, { ...filter, kind }, "si")).amendments).toEqual(data.amendments);
+        }
+
+      // A DS officer's area holds only its own amendments.
+      const office = made[0].dsOfficeId;
+      const own = await dashboard(
+        db,
+        { role: "DS_OFFICER", designation: "DS_CRPO", districtId: null, provinceId: null, dsOfficeId: office },
+        {},
+        "si",
+      );
+      const ownCount = await db.amendment.count({ where: { case: { buildDsOfficeId: office } } });
+      expect(Object.values(own.amendments).reduce((a, b) => a + b, 0)).toBe(ownCount);
+    } finally {
+      await db.amendment.deleteMany({ where: { id: { in: made.map((m) => m.id) } } });
+    }
+  }, 60_000);
+
   it("keeps to what the viewer may see: a DS officer only their own office, an admin nothing (PRM-1)", async () => {
     const all = await dashboard(db, ho, {}, "si");
     const [officeId] = [...all.byOffice.entries()].toSorted(([, a], [, b]) => b.cases - a.cases)[0];
@@ -177,7 +280,12 @@ describe("the Ministry's dashboard (DSH-1)", () => {
       {},
       "si",
     );
-    expect(admin).toEqual({ totals: noFigures(), byOffice: new Map(), stale: { total: 0, cases: [] } });
+    expect(admin).toEqual({
+      totals: noFigures(),
+      amendments: noAmendments(),
+      byOffice: new Map(),
+      stale: { total: 0, cases: [] },
+    });
   });
 
   it("AC-21: with 5,000 cases, everything the page reads takes under 2 seconds", async () => {

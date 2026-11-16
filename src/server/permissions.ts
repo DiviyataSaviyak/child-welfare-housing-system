@@ -70,12 +70,14 @@ export const CASE_PLACES = { dsOffice: OFFICE_PLACE, buildDsOffice: OFFICE_PLACE
 export type CaseOffice = "residence" | "built";
 
 /** What an office does to a case, each through one of its two offices (`actingOffice`). */
-export type CaseAction = "edit" | "delete" | "installment" | "stage" | "release";
+export type CaseAction = "edit" | "delete" | "amend" | "installment" | "stage" | "release";
 
 const ACTING: Record<CaseAction, CaseOffice> = {
   // CASE-8, CASE-9: the DS of residence entered the case, so it corrects or deletes it.
   edit: "residence",
   delete: "residence",
+  // AMD-1: the DS of residence asks the Ministry to replace its beneficiary.
+  amend: "residence",
   // CASE-13: the DS where it is built pays the installments and records the stages.
   installment: "built",
   stage: "built",

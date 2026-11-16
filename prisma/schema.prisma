@@ -63,13 +63,22 @@ enum Category {
 /// A case's status (application spec, Case statuses and transitions). Only the moves listed there are allowed (STS-1).
 /// Change 0006 has five: awaiting the Ministry's allocation, allocated to the district, released to the DS
 /// (allocation received), in progress and completed. The migration `20261109120000_allocation_flow` moved
-/// every case to them.
+/// every case to them. Change 0008 adds a sixth, replaced: the case of a beneficiary whom an approved
+/// amendment replaced (AMD-5). Completed and replaced are final (STS-2).
 enum CaseStatus {
   AWAITING_ALLOCATION
   ALLOCATED_TO_DISTRICT
   ALLOCATION_RECEIVED
   IN_PROGRESS
   COMPLETED
+  REPLACED
+}
+
+/// An amendment's status (AMD-1, AMD-4): submitted for approval, then approved or rejected by the Ministry.
+enum AmendmentStatus {
+  WAITING
+  APPROVED
+  REJECTED
 }
 
 enum DecisionType {
@@ -111,6 +120,10 @@ enum NotificationType {
   ALLOCATED
   /// For a District officer: a Ministry letter to the district (NTF-1).
   DISTRICT_LETTER
+  /// The Ministry approved an amendment; the notice hangs on the new case (AMD-10).
+  AMENDMENT_APPROVED
+  /// The Ministry rejected an amendment; the notice hangs on the existing case (AMD-10).
+  AMENDMENT_REJECTED
 }
 
 /// Places and stages carry a name in each screen language (UI-9).
@@ -162,6 +175,8 @@ model DsOffice {
   /// The cases whose house is built, or land bought, in this DS division (CASE-13).
   casesBuilt Case[]      @relation("CaseBuilt")
   dsReleases DsRelease[]
+  /// The amendments of this DS's beneficiaries (AMD-8: the new beneficiary lives here too).
+  amendments Amendment[]
 
   @@unique([districtId, nameSi])
   @@index([districtId])
@@ -263,6 +278,8 @@ model User {
   notifications          Notification[]
   stageUpdates           StageUpdate[]
   resetCodes             ResetCode[]
+  amendmentsSubmitted    Amendment[]     @relation("AmendmentSubmittedBy")
+  amendmentsDecided      Amendment[]     @relation("AmendmentDecidedBy")
 
   @@index([dsOfficeId])
   @@index([districtId])
@@ -451,6 +468,10 @@ model Case {
   stageUpdates      StageUpdate[]
   /// A care leaver's child development centres, in the order they lived in them (CASE-14).
   centres           CareCentre[]
+  /// The amendments asking to replace this case's beneficiary (AMD-1); at most one waits (a database rule).
+  amendments        Amendment[]    @relation("AmendmentOf")
+  /// The approved amendment that made this case, if one did (AMD-5).
+  madeBy            Amendment?     @relation("AmendmentNewCase")
 
   @@unique([dsOfficeId, applicationKey])
   @@index([dsOfficeId, status])
@@ -521,6 +542,10 @@ model StoredFile {
   /// a District release (a database check).
   dsReleaseId   String?        @map("ds_release_id")
   dsRelease     DsRelease?     @relation(fields: [dsReleaseId], references: [id], onDelete: Restrict)
+  /// A document of an amendment's new beneficiary, until the approval moves it to the new case (AMD-5).
+  /// A document belongs to a case or to an amendment, never both (a database check).
+  amendmentId   String?        @map("amendment_id")
+  amendment     Amendment?     @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
   /// A random name with no extension; the type comes from the contents (SEC-7).
   storedName    String         @unique @map("stored_name")
   /// A photo's small copy for thumbnails (STG-6), under its own random name; empty for a document.
@@ -541,6 +566,7 @@ model StoredFile {
   @@index([stageUpdateId])
   @@index([letterId])
   @@index([dsReleaseId])
+  @@index([amendmentId])
   @@map("file")
 }
 
@@ -693,4 +719,52 @@ model StageUpdate {
   @@unique([caseId, stageId])
   @@index([caseId, at])
   @@map("stage_update")
+}
+
+// ---------------------------------------------------------------------------
+// Amendments (change 0008). Application spec, Amendments (AMD).
+// ---------------------------------------------------------------------------
+
+/// A DS's request to the Ministry to replace a case's beneficiary with another (AMD-1). The new beneficiary
+/// waits here, as the case form's values, until the Ministry approves it and the approval makes their case
+/// (AMD-5). Never deleted. Database rules the schema can't hold (hand-written in the migration
+/// `20261116090100_amendments`): at most one WAITING amendment per case, and per DS office and Application
+/// Number among the WAITING ones; who decided and when are set only once decided; the rejection's reason only
+/// when rejected; the new case only when approved.
+model Amendment {
+  id              String          @id
+  /// The case whose beneficiary is to be replaced. Restricted, so a case with an amendment can't be deleted.
+  caseId          String          @map("case_id")
+  case            Case            @relation("AmendmentOf", fields: [caseId], references: [id], onDelete: Restrict)
+  /// The case's DS of residence, copied when submitted: the new beneficiary's too (AMD-8).
+  dsOfficeId      Int             @map("ds_office_id")
+  dsOffice        DsOffice        @relation(fields: [dsOfficeId], references: [id])
+  /// The new beneficiary's Application Number as CASE-12 compares it (`applicationKey`).
+  applicationKey  String          @map("application_key")
+  /// The case form's values for the new beneficiary (`CompleteCaseValues`, with the centres), without the
+  /// documents. Personal data, like a case's (SEC-8).
+  details         Json
+  /// 5 to 1,000 characters (a database check).
+  reason          String
+  status          AmendmentStatus @default(WAITING)
+  submittedById   String          @map("submitted_by_id")
+  submittedBy     User            @relation("AmendmentSubmittedBy", fields: [submittedById], references: [id])
+  submittedAt     DateTime        @default(now()) @map("submitted_at")
+  decidedById     String?         @map("decided_by_id")
+  decidedBy       User?           @relation("AmendmentDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt       DateTime?       @map("decided_at")
+  /// 5 to 1,000 characters, set only when rejected (a database check).
+  rejectionReason String?         @map("rejection_reason")
+  /// The case the approval made; set only when approved (a database check).
+  newCaseId       String?         @unique @map("new_case_id")
+  newCase         Case?           @relation("AmendmentNewCase", fields: [newCaseId], references: [id], onDelete: Restrict)
+  /// Goes up by one on every change, so a page opened earlier can't decide it again (CASE-10).
+  version         Int             @default(1)
+  /// Its documents, until the approval moves them to the new case.
+  files           StoredFile[]
+
+  @@index([caseId])
+  @@index([dsOfficeId])
+  @@index([status, submittedAt])
+  @@map("amendment")
 }
