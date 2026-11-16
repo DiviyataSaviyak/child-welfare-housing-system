@@ -16,7 +16,7 @@ import { recordLetter } from "../releases/commands";
 import { casesForDsRelease, casesForLetter } from "../releases/queries";
 import { recordStageUpdate } from "../stages/commands";
 import { approveAmendment, rejectAmendment, type SubmitAmendmentInput, submitAmendment } from "./commands";
-import { getAmendment } from "./queries";
+import { amendmentsWaiting, countAmendments, getAmendment, listAmendments } from "./queries";
 
 const db = createTestClient();
 
@@ -772,5 +772,94 @@ describe("a replaced case (STS-2, CASE-9, AC-71)", () => {
     ).toMatchObject({ ok: false });
     expect(await amend(replaced)).toEqual({ ok: false, error: "amendmentNotAllowed" });
     expect((await todoItems(db, dsA)).some((item) => item.id === replaced.id)).toBe(false);
+  });
+});
+
+describe("the amendments lists (AMD-9, AC-67, AC-68)", () => {
+  /** What each account should see: the amendments whose case is in its area (PRM-4), by a query of its own. */
+  const visibleTo = (officeId: number | null, status: "WAITING" | "APPROVED" | "REJECTED") =>
+    db.amendment.findMany({
+      where: {
+        status,
+        ...(officeId === null ? {} : { case: { OR: [{ dsOfficeId: officeId }, { buildDsOfficeId: officeId }] } }),
+      },
+      select: { id: true },
+    });
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+  it("lists each tab in the viewer's area only, waiting oldest first and decided newest first", async () => {
+    // Two waiting, oldest first whatever order they were made in; one approved, two rejected a day apart.
+    const later = await submitted(await newCase("ලැයිස්තු පසු"), {
+      values: values("ලැයිස්තු නව පසු", { applicationNumber: "LST/2" }),
+    });
+    const earlier = await submitted(await newCase("ලැයිස්තු පෙර"), {
+      values: values("ලැයිස්තු නව පෙර", { applicationNumber: "LST/1" }),
+    });
+    await db.amendment.update({ where: { id: earlier }, data: { submittedAt: new Date("2026-01-01T03:00:00Z") } });
+    await db.amendment.update({ where: { id: later }, data: { submittedAt: new Date("2026-01-02T03:00:00Z") } });
+    const approved = await submitted(await newCase("ලැයිස්තු අනුමත"));
+    expect(await approve(approved)).toMatchObject({ ok: true });
+    const rejectedFirst = await submitted(await newCase("ලැයිස්තු ප්‍රතික්ෂේප 1"));
+    const rejectedLast = await submitted(await newCase("ලැයිස්තු ප්‍රතික්ෂේප 2"));
+    for (const id of [rejectedFirst, rejectedLast]) {
+      expect(await rejectAmendment(db, ministry, { amendmentId: id, version: 1, reason: "ලේඛන නොමැත" })).toMatchObject({
+        ok: true,
+      });
+    }
+    await db.amendment.update({ where: { id: rejectedFirst }, data: { decidedAt: new Date("2026-02-01T03:00:00Z") } });
+
+    // dsA and its accountant see the office's amendments, each tab with its count.
+    for (const who of [dsA, accountant]) {
+      const counts = await countAmendments(db, who);
+      for (const status of ["WAITING", "APPROVED", "REJECTED"] as const) {
+        const expected = ids(await visibleTo(dsA.dsOfficeId, status));
+        const list = await listAmendments(db, who, { status }, "si");
+        expect(ids(list.rows), `${who.userId} ${status}`).toEqual(expected);
+        expect(list.total).toBe(expected.length);
+        expect(counts[status]).toBe(expected.length);
+      }
+    }
+
+    const waiting = (await listAmendments(db, dsA, { status: "WAITING" }, "si")).rows.map((row) => row.id);
+    expect(waiting.indexOf(earlier)).toBeLessThan(waiting.indexOf(later));
+    const rejected = (await listAmendments(db, dsA, { status: "REJECTED" }, "si")).rows.map((row) => row.id);
+    expect(rejected.indexOf(rejectedLast)).toBeLessThan(rejected.indexOf(rejectedFirst));
+
+    // Each row names both beneficiaries and the DS office; a rejected one has its reason.
+    const row = (await listAmendments(db, dsA, { status: "WAITING" }, "si")).rows.find((r) => r.id === earlier);
+    const office = await db.dsOffice.findUniqueOrThrow({ where: { id: dsA.dsOfficeId ?? 0 } });
+    expect(row).toMatchObject({
+      status: "WAITING",
+      decidedAt: null,
+      officeName: office.nameSi,
+      existing: { name: "ලැයිස්තු පෙර" },
+      proposed: { name: "ලැයිස්තු නව පෙර", applicationNumber: "LST/1" },
+    });
+    expect((await listAmendments(db, dsA, { status: "REJECTED" }, "si")).rows[0]).toMatchObject({
+      rejectionReason: "ලේඛන නොමැත",
+    });
+
+    // Another district's CRPO sees none of them; the Ministry and its Secretary see them all.
+    for (const status of ["WAITING", "APPROVED", "REJECTED"] as const) {
+      const far = ids((await listAmendments(db, dsFar, { status }, "si")).rows);
+      expect(far).toEqual(ids(await visibleTo(dsFar.dsOfficeId, status)));
+      expect(far).not.toContain(earlier);
+      const all = ids(await visibleTo(null, status));
+      for (const who of [ministry, secretary]) {
+        expect((await countAmendments(db, who))[status]).toBe(all.length);
+        expect((await listAmendments(db, who, { status }, "si")).total).toBe(all.length);
+      }
+    }
+  });
+
+  it("counts the waiting ones in the Ministry's menu only, and nothing for an admin", async () => {
+    const waiting = await db.amendment.count({ where: { status: "WAITING" } });
+    expect(waiting).toBeGreaterThan(0);
+    expect((await amendmentsWaiting(db, ministry)).count).toBe(waiting);
+    for (const who of [dsA, secretary]) expect((await amendmentsWaiting(db, who)).count).toBe(0);
+
+    const admin = actor("amend-test-admin", "ADMIN", "");
+    expect(await countAmendments(db, admin)).toEqual({ WAITING: 0, APPROVED: 0, REJECTED: 0 });
+    expect(await listAmendments(db, admin, { status: "WAITING" }, "si")).toEqual({ rows: [], total: 0 });
   });
 });

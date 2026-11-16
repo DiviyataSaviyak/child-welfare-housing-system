@@ -30,9 +30,12 @@
     "adminLists": "Lists",
     "ministryCases": "Beneficiaries",
     "ministryAllocate": "To release allocations",
+    "ministryAmendments": "Amendments",
     "oversightDashboard": "Summary",
     "oversightCases": "Beneficiaries",
+    "oversightAmendments": "Amendments",
     "waiting": "Beneficiaries waiting: {count}",
+    "amendmentsWaiting": "Amendments waiting: {count}",
     "districtRelease": "To release to DS offices"
   },
   "shell": {
@@ -466,8 +469,11 @@
       "subtitle": "{office} DS division · {district} District",
       "add": "Add a new beneficiary",
       "tabsLabel": "Beneficiaries to show",
+      "amendmentsGroup": "Amendments",
       "tabs": {
         "all": "All ({count})",
+        "notAllocated": "Not yet allocated ({count})",
+        "received": "Allocation received ({count})",
         "inProgress": "Work in progress ({count})",
         "completed": "Completed ({count})"
       },
@@ -528,6 +534,7 @@
       "category": "Category",
       "kind": "Assistance",
       "all": "All",
+      "notAllocated": "Not yet allocated",
       "apply": "Search",
       "clear": "Clear filters",
       "inactive": "{office} (inactive)",
@@ -1002,6 +1009,26 @@
         "WAITING": "Submitted for approval",
         "APPROVED": "Approved",
         "REJECTED": "Rejected"
+      },
+      "list": {
+        "title": "Amendments",
+        "subtitle": "Amendments proposing another beneficiary in an existing beneficiary's place",
+        "tabsLabel": "Amendments to show",
+        "tabs": {
+          "WAITING": "Submitted for approval ({count})",
+          "APPROVED": "Approved ({count})",
+          "REJECTED": "Rejected ({count})"
+        },
+        "columns": {
+          "submitted": "Submitted",
+          "decided": "Decided",
+          "reason": "Reason for rejecting"
+        },
+        "empty": {
+          "WAITING": "No amendment awaits approval.",
+          "APPROVED": "No amendment has been approved.",
+          "REJECTED": "No amendment has been rejected."
+        }
       }
     }
   },

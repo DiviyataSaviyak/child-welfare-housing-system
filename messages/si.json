@@ -30,9 +30,12 @@
     "adminLists": "ලැයිස්තු",
     "ministryCases": "ප්‍රතිලාභීන්",
     "ministryAllocate": "ප්‍රතිපාදන මුදා හැරීමට",
+    "ministryAmendments": "සංශෝධන",
     "oversightDashboard": "සාරාංශය",
     "oversightCases": "ප්‍රතිලාභීන්",
+    "oversightAmendments": "සංශෝධන",
     "waiting": "බලා සිටින ප්‍රතිලාභීන් {count}",
+    "amendmentsWaiting": "අනුමැතිය සඳහා ඇති සංශෝධන {count}",
     "districtRelease": "ප්‍රා.ලේ. කාර්යාලවලට මුදා හැරීමට"
   },
   "shell": {
@@ -466,8 +469,11 @@
       "subtitle": "{office} ප්‍රාදේශීය ලේකම් කොට්ඨාසය · {district} දිස්ත්‍රික්කය",
       "add": "නව ප්‍රතිලාභියෙකු ඇතුළත් කරන්න",
       "tabsLabel": "පෙන්විය යුතු ප්‍රතිලාභීන්",
+      "amendmentsGroup": "සංශෝධන",
       "tabs": {
         "all": "සියල්ල ({count})",
+        "notAllocated": "ප්‍රතිපාදන නොලැබූ ({count})",
+        "received": "ප්‍රතිපාදන ලැබූ ({count})",
         "inProgress": "වැඩ සිදුවෙමින් ({count})",
         "completed": "නිමයි ({count})"
       },
@@ -528,6 +534,7 @@
       "category": "කාණ්ඩය",
       "kind": "ආධාරය",
       "all": "සියල්ල",
+      "notAllocated": "ප්‍රතිපාදන නොලැබූ",
       "apply": "සොයන්න",
       "clear": "පෙරහන් ඉවත් කරන්න",
       "inactive": "{office} (අක්‍රියයි)",
@@ -1002,6 +1009,26 @@
         "WAITING": "අනුමැතිය සඳහා ඉදිරිපත් කළ",
         "APPROVED": "අනුමත කළ",
         "REJECTED": "ප්‍රතික්ෂේප කළ"
+      },
+      "list": {
+        "title": "සංශෝධන",
+        "subtitle": "පවතින ප්‍රතිලාභියෙකු වෙනුවට වෙනත් ප්‍රතිලාභියෙකු යෝජනා කළ සංශෝධන",
+        "tabsLabel": "පෙන්විය යුතු සංශෝධන",
+        "tabs": {
+          "WAITING": "අනුමැතිය සඳහා ඉදිරිපත් කළ ({count})",
+          "APPROVED": "අනුමත කළ ({count})",
+          "REJECTED": "ප්‍රතික්ෂේප කළ ({count})"
+        },
+        "columns": {
+          "submitted": "ඉදිරිපත් කළ දිනය",
+          "decided": "තීරණය කළ දිනය",
+          "reason": "ප්‍රතික්ෂේප කිරීමට හේතුව"
+        },
+        "empty": {
+          "WAITING": "අනුමැතිය සඳහා ඇති සංශෝධන නැත.",
+          "APPROVED": "අනුමත කළ සංශෝධන නැත.",
+          "REJECTED": "ප්‍රතික්ෂේප කළ සංශෝධන නැත."
+        }
       }
     }
   },

@@ -8,7 +8,7 @@ import { oversightArea } from "./area";
 
 /**
  * The area for the district, province, Department and Ministry accounts that see cases without entering
- * them (PRM-4, PRM-5): the dashboard and the case list of the account's own area. A District officer also
+ * them (PRM-4, PRM-5): the dashboard, the case list and the amendments (AMD-9) of the account's own area. A District officer also
  * releases the Ministry's allocations to the district's DS offices (REL-5), with the menu's count of cases
  * waiting and the bell (NTF-1), each read again after every move from /oversight/waiting and
  * /oversight/notifications/unread. Every other account here only views and has no notifications.
@@ -24,6 +24,7 @@ export default async function OversightLayout({ children }: { children: React.Re
   const nav: NavEntry[] = [
     { href: "/oversight", labelKey: "oversightDashboard", exact: true },
     { href: "/oversight/cases", labelKey: "oversightCases" },
+    { href: "/oversight/amendments", labelKey: "oversightAmendments" },
   ];
   if (waiting) {
     nav.push({

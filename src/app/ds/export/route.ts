@@ -7,11 +7,18 @@ import { exportCaseList } from "@/server/exports/case-list";
 import { xlsxResponse } from "@/server/exports/workbook";
 import { readHomeList } from "../list";
 
-/** EXP-1: the DS officer's own cases as an Excel file, with the tab and search the home page shows (HOME-2). */
+/**
+ * EXP-1: the DS officer's own cases as an Excel file, with the tab and search the home page shows (HOME-2).
+ * An amendment tab has no file (AMD-9).
+ */
 export async function GET(request: NextRequest) {
   const viewer = await requireRole("DS_OFFICER");
   const params = request.nextUrl.searchParams;
-  const { filter } = readHomeList({ tab: params.get("tab") ?? undefined, q: params.get("q") ?? undefined });
+  const { filter, amendments } = readHomeList({
+    tab: params.get("tab") ?? undefined,
+    q: params.get("q") ?? undefined,
+  });
+  if (amendments) notFound();
   const [t, locale] = await Promise.all([getTranslations("cases"), getLocale()]);
   const file = await exportCaseList(db, viewer, "ds_cases", filter, t, locale);
   if (!file) notFound();

@@ -134,12 +134,9 @@ export function caseFieldRows(
   ];
 }
 
-/**
- * An amendment's page on the reader's own pages (AMD-4), or null where there is none yet: the DS's and the
- * view-only area's come with change 0008's task 4.
- */
-export function amendmentHref(audience: Audience, id: string): string | null {
-  return audience === "ministry" ? `/ministry/amendments/${id}` : null;
+/** An amendment's page on the reader's own pages (AMD-4): the DS's, the Ministry's or the view-only area's. */
+export function amendmentHref(audience: Audience, id: string): string {
+  return `/${audience}/amendments/${id}`;
 }
 
 /**

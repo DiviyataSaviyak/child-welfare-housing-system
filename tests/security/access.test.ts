@@ -212,6 +212,7 @@ const RULES: Record<string, Record<string, Rule>> = {
     correctReleaseAction: MINISTRY,
   },
   "src/app/ministry/cases/export/route.ts": { GET: MINISTRY },
+  "src/app/ministry/amendments/waiting/route.ts": { GET: MINISTRY },
   "src/app/ministry/waiting/route.ts": { GET: MINISTRY },
   "src/app/oversight/cases/export/route.ts": { GET: OVERSIGHT },
   "src/app/oversight/release/actions.ts": {

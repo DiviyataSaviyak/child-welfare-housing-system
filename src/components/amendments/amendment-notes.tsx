@@ -11,7 +11,7 @@ import type { CaseDetails } from "@/server/cases/queries";
  * waiting for the Ministry, with the new beneficiary it proposes and its reason, and what it holds until
  * then; or else the last one, if the Ministry rejected it, with the Ministry's reason. `ownOffice` adds the
  * line for the DS of residence that another amendment may be submitted. It links to the amendment's page
- * where the reader has one (`amendmentHref`).
+ * on the reader's own pages (`amendmentHref`).
  */
 export async function AmendmentNotes({
   details,
@@ -25,9 +25,11 @@ export async function AmendmentNotes({
   const amendment = details.amendment;
   if (!amendment) return null;
   const t = await getTranslations("cases");
-  const href = amendmentHref(audience, amendment.id);
-  const open = href && (
-    <Link href={href} className="self-start font-semibold underline underline-offset-2">
+  const open = (
+    <Link
+      href={amendmentHref(audience, amendment.id)}
+      className="self-start font-semibold underline underline-offset-2"
+    >
       {t("amend.openAmendment")}
     </Link>
   );

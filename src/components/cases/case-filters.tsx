@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import type { DistrictOptions } from "@/server/lists/queries";
-import type { FilterValues } from "./list-filters";
+import { type FilterValues, NOT_ALLOCATED } from "./list-filters";
 
 const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-base";
 
@@ -99,6 +99,8 @@ export function CaseFilters({
       <Field id="status" label={t("list.status")}>
         <select id="status" name="status" defaultValue={values.status} className={selectClass}>
           <option value="">{t("list.all")}</option>
+          {/* FND-1: the first two statuses together, the cases whose money hasn't reached the DS. */}
+          <option value={NOT_ALLOCATED}>{t("list.notAllocated")}</option>
           {statuses.map((s) => (
             <option key={s} value={s}>
               {t(`status.${s}`)}

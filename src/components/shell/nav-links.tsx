@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { useLiveCount } from "./live-count";
-import type { LiveCount } from "./types";
+import type { CountWords, LiveCount } from "./types";
 
 export type NavLinkItem = {
   href: string;
@@ -14,6 +14,8 @@ export type NavLinkItem = {
   alsoActive?: string[];
   /** How many cases wait there, shown in a badge when more than 0. */
   count?: LiveCount;
+  /** What the number counts, for a screen reader. */
+  countWords?: CountWords;
 };
 
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
@@ -46,7 +48,7 @@ export function NavLinks({ label, items }: { label: string; items: NavLinkItem[]
               <span aria-hidden="true" className="absolute inset-x-3 -bottom-2 h-[3px] rounded-t-full bg-primary" />
             )}
             {item.label}
-            {item.count && <WaitingBadge live={item.count} />}
+            {item.count && <WaitingBadge live={item.count} words={item.countWords ?? "waiting"} />}
           </Link>
         );
       })}
@@ -55,7 +57,7 @@ export function NavLinks({ label, items }: { label: string; items: NavLinkItem[]
 }
 
 /** A number in a badge, with the words a screen reader says for it. */
-function WaitingBadge({ live }: { live: LiveCount }) {
+function WaitingBadge({ live, words }: { live: LiveCount; words: CountWords }) {
   const t = useTranslations("nav");
   const count = useLiveCount(live);
   if (count === 0) return null;
@@ -67,7 +69,7 @@ function WaitingBadge({ live }: { live: LiveCount }) {
       >
         {count}
       </span>
-      <span className="sr-only">({t("waiting", { count })})</span>
+      <span className="sr-only">({t(words, { count })})</span>
     </>
   );
 }

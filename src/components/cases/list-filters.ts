@@ -3,6 +3,13 @@ import { CATEGORIES, KINDS } from "@/lib/validation/case";
 import type { CaseFilter } from "@/server/cases/queries";
 
 export const STATUSES = Object.values(CaseStatus);
+
+/**
+ * FND-1, HOME-2: "not yet allocated", the cases whose money hasn't reached the DS, as one choice of the status
+ * filter (`NOT_ALLOCATED`) and one tab of the DS's list.
+ */
+export const NOT_ALLOCATED_STATUSES = ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT"] as const satisfies CaseStatus[];
+export const NOT_ALLOCATED = "NOT_ALLOCATED";
 export const FILTERS = ["q", "districtId", "dsOfficeId", "status", "category", "kind"] as const;
 
 /** The filters as the address holds them. */
@@ -26,13 +33,14 @@ export function readFilters(read: (key: string) => string): { values: FilterValu
     kind: read("kind"),
   };
   const status = oneOf(STATUSES, values.status);
+  const statuses = values.status === NOT_ALLOCATED ? [...NOT_ALLOCATED_STATUSES] : status ? [status] : undefined;
   return {
     values,
     filter: {
       q: values.q,
       districtId: positive(values.districtId),
       dsOfficeId: positive(values.dsOfficeId),
-      statuses: status ? [status] : undefined,
+      statuses,
       category: oneOf(CATEGORIES, values.category),
       kind: oneOf(KINDS, values.kind),
     },

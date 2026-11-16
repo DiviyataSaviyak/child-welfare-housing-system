@@ -1,12 +1,12 @@
-import type { PrismaClient } from "@/generated/prisma/client";
-import type { AmendmentStatus } from "@/generated/prisma/enums";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { AmendmentStatus } from "@/generated/prisma/enums";
 import type { Locale } from "@/i18n/locales";
 import { localName, NAMES } from "@/lib/names";
 import { type CaseValues, completeValues } from "@/lib/validation/case";
-import { type CaseDetails, type CaseLink, type CentreDetails, getCase } from "../cases/queries";
-import { canSeeCase, CASE_PLACES, type Viewer } from "../permissions";
+import { type CaseDetails, type CaseLink, type CentreDetails, getCase, PAGE_SIZE } from "../cases/queries";
+import { canSeeCase, CASE_PLACES, officeFilter, type Viewer } from "../permissions";
 import { accountLabel, LABEL_SELECT } from "../users/label";
-import { readDetails } from "./details";
+import { type AmendmentPerson, amendmentPerson, readDetails } from "./details";
 
 /**
  * The new beneficiary as the amendment holds them, with the place names the case page's details show (in
@@ -156,4 +156,101 @@ async function proposedBeneficiary(
     buildProvinceName: localName(office.district.province, locale),
     createdAt: null,
   };
+}
+
+/** AMD-9: the three tabs of an amendments list, in order. */
+export const AMENDMENT_STATUSES = Object.values(AmendmentStatus);
+
+/** One row of an amendments list (AMD-9). */
+export type AmendmentRow = {
+  id: string;
+  status: AmendmentStatus;
+  submittedAt: Date;
+  decidedAt: Date | null;
+  rejectionReason: string | null;
+  /** The DS office of residence, the existing beneficiary's and the new one's (AMD-8), with its district. */
+  officeName: string;
+  districtName: string;
+  existing: CaseLink;
+  proposed: AmendmentPerson;
+};
+
+/**
+ * AMD-9, PRM-4: the amendments a viewer may see, those whose existing case is in the viewer's area, as
+ * `getAmendment` allows; null for an account that sees no cases (an admin).
+ */
+function amendmentWhere(viewer: Viewer, status?: AmendmentStatus): Prisma.AmendmentWhereInput | null {
+  const scope = officeFilter(viewer);
+  if (!scope) return null;
+  return { case: { AND: [scope] }, ...(status ? { status } : {}) };
+}
+
+/**
+ * AMD-9: one tab of the amendments list, a page at a time. The waiting tab is a queue, oldest first; the
+ * decided ones are newest first, by the day they were decided. Names are as typed; place names are in the
+ * screen's language (UI-9).
+ */
+export async function listAmendments(
+  db: PrismaClient,
+  viewer: Viewer,
+  { status, page = 1 }: { status: AmendmentStatus; page?: number },
+  locale: Locale,
+): Promise<{ rows: AmendmentRow[]; total: number }> {
+  const where = amendmentWhere(viewer, status);
+  if (!where) return { rows: [], total: 0 };
+  const orderBy: Prisma.AmendmentOrderByWithRelationInput[] =
+    status === "WAITING" ? [{ submittedAt: "asc" }, { id: "asc" }] : [{ decidedAt: "desc" }, { id: "desc" }];
+  const [found, total] = await Promise.all([
+    db.amendment.findMany({
+      where,
+      orderBy,
+      skip: (Math.max(1, page) - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      select: {
+        id: true,
+        status: true,
+        submittedAt: true,
+        decidedAt: true,
+        rejectionReason: true,
+        details: true,
+        dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+        case: { select: { id: true, applicationNumber: true, name: true, childName: true } },
+      },
+    }),
+    db.amendment.count({ where }),
+  ]);
+  return {
+    total,
+    rows: found.map((row) => ({
+      id: row.id,
+      status: row.status,
+      submittedAt: row.submittedAt,
+      decidedAt: row.decidedAt,
+      rejectionReason: row.rejectionReason,
+      officeName: localName(row.dsOffice, locale),
+      districtName: localName(row.dsOffice.district, locale),
+      existing: row.case,
+      proposed: amendmentPerson(row.details),
+    })),
+  };
+}
+
+/** AMD-9: how many amendments each tab holds, in the viewer's area. */
+export async function countAmendments(db: PrismaClient, viewer: Viewer): Promise<Record<AmendmentStatus, number>> {
+  const counts: Record<AmendmentStatus, number> = { WAITING: 0, APPROVED: 0, REJECTED: 0 };
+  const where = amendmentWhere(viewer);
+  if (!where) return counts;
+  const groups = await db.amendment.groupBy({ by: ["status"], where, _count: { _all: true } });
+  for (const group of groups) counts[group.status] = group._count._all;
+  return counts;
+}
+
+/**
+ * AMD-9, NTF-1: the Ministry's menu count of amendments waiting for its decision, with the server time it
+ * was read, as `awaitingAllocation` gives the allocations' (`useLiveCount` shows the newer reading).
+ */
+export async function amendmentsWaiting(db: PrismaClient, viewer: Viewer): Promise<{ count: number; at: number }> {
+  const at = Date.now();
+  const where = viewer.role === "MINISTRY_OFFICER" ? amendmentWhere(viewer, "WAITING") : null;
+  return { count: where ? await db.amendment.count({ where }) : 0, at };
 }

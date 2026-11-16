@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { KINDS } from "@/lib/validation/case";
-import { readFilters } from "./list-filters";
+import { NOT_ALLOCATED, readFilters, STATUSES } from "./list-filters";
 
 const fromAddress = (query: string) => {
   const params = new URLSearchParams(query);
@@ -16,5 +16,29 @@ describe("the case list's kind filter (FND-1)", () => {
   it("ignores a kind that isn't one", () => {
     expect(fromAddress("kind=LAND").kind).toBeUndefined();
     expect(fromAddress("").kind).toBeUndefined();
+  });
+});
+
+describe("the case list's status filter (FND-1)", () => {
+  it("takes each of the six statuses, replaced last", () => {
+    expect(STATUSES).toEqual([
+      "AWAITING_ALLOCATION",
+      "ALLOCATED_TO_DISTRICT",
+      "ALLOCATION_RECEIVED",
+      "IN_PROGRESS",
+      "COMPLETED",
+      "REPLACED",
+    ]);
+    for (const status of STATUSES) expect(fromAddress(`status=${status}`).statuses, status).toEqual([status]);
+  });
+
+  it("takes 'not yet allocated' as the first two statuses together", () => {
+    expect(fromAddress(`status=${NOT_ALLOCATED}`).statuses).toEqual(["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT"]);
+  });
+
+  it("ignores a status that isn't one", () => {
+    for (const status of ["", "DRAFT", "not_allocated", "toString"]) {
+      expect(fromAddress(`status=${status}`).statuses, status).toBeUndefined();
+    }
   });
 });

@@ -23,8 +23,7 @@ export async function AmendmentStatusChip({ status }: { status: AmendmentStatus 
 }
 
 /**
- * AMD-4: one amendment, shared by the Ministry's page and (from change 0008's task 4) the DS's and the
- * view-only area's: who submitted it and why, the decision, and the existing and the new beneficiary side by
+ * AMD-4: one amendment, shared by the Ministry's page, the DS's and the view-only area's: who submitted it and why, the decision, and the existing and the new beneficiary side by
  * side, each as the case page's details show a case. `actions` are the Ministry's approve and reject, and
  * `above` what goes over the two beneficiaries, such as the new NIC's matches (CASE-6).
  */
