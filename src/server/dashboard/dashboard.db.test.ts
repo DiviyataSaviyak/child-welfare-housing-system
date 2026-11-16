@@ -58,11 +58,14 @@ const caseWhere = (filter: DashboardFilter): Prisma.CaseWhereInput => ({
 const count = (where: Prisma.CaseWhereInput, status: CaseStatus) =>
   db.case.count({ where: { AND: [where, { status }] } });
 
-/** DSH-1's figures summed by the database itself, without the dashboard's code (AC-17, AC-59). */
+/**
+ * DSH-1's figures summed by the database itself, without the dashboard's code (AC-17, AC-59). Every case but
+ * the replaced ones (change 0008).
+ */
 async function direct(where: Prisma.CaseWhereInput): Promise<Figures> {
   const [cases, awaiting, allocatedToDistrict, received, inProgress, completed, allocated, releasedToDs, paid] =
     await Promise.all([
-      db.case.count({ where }),
+      db.case.count({ where: { AND: [where, { status: { not: "REPLACED" } }] } }),
       count(where, "AWAITING_ALLOCATION"),
       count(where, "ALLOCATED_TO_DISTRICT"),
       count(where, "ALLOCATION_RECEIVED"),
@@ -155,6 +158,29 @@ describe("the Ministry's dashboard (DSH-1)", () => {
       expect(days.get(c.id)).toBe(c.days);
       expect(c.officeName).not.toBe("");
       expect(c.districtName).not.toBe("");
+    }
+  });
+
+  it("leaves replaced cases out of every count, so the total counts beneficiaries (DSH-1, change 0008)", async () => {
+    const before = await dashboard(db, ho, {}, "si");
+    const replaced = await db.case.findFirstOrThrow({
+      where: { status: "AWAITING_ALLOCATION", id: { startsWith: "load-" } },
+      orderBy: { id: "asc" },
+      select: { id: true, buildDsOfficeId: true },
+    });
+    await db.case.update({ where: { id: replaced.id }, data: { status: "REPLACED" } });
+    try {
+      const after = await dashboard(db, ho, {}, "si");
+      expect(after.totals).toEqual({
+        ...before.totals,
+        cases: before.totals.cases - 1,
+        awaiting: before.totals.awaiting - 1,
+      });
+      expect(after.totals).toEqual(await direct({}));
+      const office = before.byOffice.get(replaced.buildDsOfficeId)!;
+      expect(after.byOffice.get(replaced.buildDsOfficeId)?.cases ?? 0).toBe(office.cases - 1);
+    } finally {
+      await db.case.update({ where: { id: replaced.id }, data: { status: "AWAITING_ALLOCATION" } });
     }
   });
 

@@ -80,6 +80,7 @@ export default async function DsHomePage({
       case "ALLOCATED_TO_DISTRICT":
       case "ALLOCATION_RECEIVED":
       case "COMPLETED":
+      case "REPLACED":
         return t(`home.progress.${row.status}`);
       default:
         return t("none");

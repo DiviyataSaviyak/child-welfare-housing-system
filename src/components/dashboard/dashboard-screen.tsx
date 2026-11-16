@@ -4,9 +4,15 @@ import { caseName } from "@/components/cases/page-header";
 import { formatDate } from "@/lib/dates";
 import { formatNumber } from "@/lib/money";
 import { CATEGORIES, KINDS } from "@/lib/validation/case";
-import { CaseStatus } from "@/generated/prisma/enums";
 import { STALE_DAYS } from "@/server/cases/queries";
-import { dashboard, type Figures, STALE_SHOWN, STATUS_FIGURE, tableRows } from "@/server/dashboard/queries";
+import {
+  COUNTED_STATUSES,
+  dashboard,
+  type Figures,
+  STALE_SHOWN,
+  STATUS_FIGURE,
+  tableRows,
+} from "@/server/dashboard/queries";
 import { db } from "@/server/db";
 import type { DistrictOptions } from "@/server/lists/queries";
 import type { Viewer } from "@/server/permissions";
@@ -84,10 +90,11 @@ export async function DashboardScreen({
     t("asOf", { date: formatDate(new Date()) }),
   ].filter(Boolean);
 
-  // DSH-1: every case, then the cases in each of the five statuses, in the order a case goes through them.
+  // DSH-1: every case but the replaced ones, then the cases in each of the five statuses a beneficiary goes
+  // through, in that order.
   const counts = [
     { label: t("tiles.cases"), value: data.totals.cases },
-    ...Object.values(CaseStatus).map((status) => ({
+    ...COUNTED_STATUSES.map((status) => ({
       label: tc(`status.${status}`),
       value: data.totals[STATUS_FIGURE[status]],
     })),

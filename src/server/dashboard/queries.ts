@@ -12,9 +12,9 @@ export type DashboardFilter = { districtId?: number; category?: Category; kind?:
 
 /** DSH-1's figures for a group of cases. */
 export type Figures = {
-  /** Every case. */
+  /** Every case but the replaced ones, so it counts beneficiaries (DSH-1, change 0008). */
   cases: number;
-  /** The cases in each of the five statuses (STS-1), keyed as in `STATUS_FIGURE`. */
+  /** The cases in each of the five statuses a beneficiary goes through (STS-1), keyed as in `STATUS_FIGURE`. */
   awaiting: number;
   allocatedToDistrict: number;
   received: number;
@@ -28,6 +28,9 @@ export type Figures = {
   paidOut: number;
 };
 
+/** The statuses the dashboard counts: every one but `REPLACED`, whose beneficiary another case took over. */
+export type CountedStatus = Exclude<CaseStatus, "REPLACED">;
+
 /** Which figure counts the cases in each status. */
 export const STATUS_FIGURE = {
   AWAITING_ALLOCATION: "awaiting",
@@ -35,7 +38,10 @@ export const STATUS_FIGURE = {
   ALLOCATION_RECEIVED: "received",
   IN_PROGRESS: "inProgress",
   COMPLETED: "completed",
-} as const satisfies Record<CaseStatus, keyof Figures>;
+} as const satisfies Record<CountedStatus, keyof Figures>;
+
+/** The counted statuses, in the order a case goes through them. */
+export const COUNTED_STATUSES = Object.keys(STATUS_FIGURE) as CountedStatus[];
 
 const FIGURES = [
   "cases",
@@ -93,7 +99,9 @@ function add(into: Figures, more: Figures): Figures {
  * read from the database on every call, never kept, so the page is never more than a moment old (DSH-2).
  * A case counts once, under the DS office where it is built, and in the area of that office, as its
  * money does (CASE-13). The amounts count only the cases that have them: a case has its allocation once
- * the Ministry's letter names it, and its release once the District releases it to the DS.
+ * the Ministry's letter names it, and its release once the District releases it to the DS. A replaced case
+ * isn't counted (DSH-1): its allocation moved to the case that replaced it, and none of its installments
+ * was paid (AMD-2, AMD-5).
  */
 export async function dashboard(
   db: PrismaClient,
@@ -114,7 +122,11 @@ export async function dashboard(
   const staleWhere: Prisma.CaseWhereInput = { ...where, status: "IN_PROGRESS", updatedAt: { lt: staleBefore(now) } };
 
   const [counts, funded, staleTotal, stale] = await Promise.all([
-    db.case.groupBy({ by: ["buildDsOfficeId", "status"], where, _count: { _all: true } }),
+    db.case.groupBy({
+      by: ["buildDsOfficeId", "status"],
+      where: { ...where, status: { not: "REPLACED" } },
+      _count: { _all: true },
+    }),
     // Prisma can't sum a related table by office, so the cases with money come back one row each.
     db.case.findMany({
       where: { ...where, release: { isNot: null } },
@@ -147,6 +159,7 @@ export async function dashboard(
     return figures;
   };
   for (const { buildDsOfficeId, status, _count } of counts) {
+    if (status === "REPLACED") continue;
     const figures = office(buildDsOfficeId);
     figures.cases += _count._all;
     figures[STATUS_FIGURE[status]] += _count._all;

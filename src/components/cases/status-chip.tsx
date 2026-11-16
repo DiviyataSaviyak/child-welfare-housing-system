@@ -8,6 +8,8 @@ const STYLE: Record<CaseStatus, string> = {
   ALLOCATION_RECEIVED: "bg-[#E3EFEB] text-[#0E5A4B]",
   IN_PROGRESS: "bg-[#EDE7F6] text-[#4B3A7A]",
   COMPLETED: "bg-primary text-primary-foreground",
+  // Change 0008: final, and no longer the beneficiary's case (AMD-5), so it reads as set aside.
+  REPLACED: "bg-[#ECECEC] text-[#4A4A4A]",
 };
 
 export function StatusChip({ status }: { status: CaseStatus }) {

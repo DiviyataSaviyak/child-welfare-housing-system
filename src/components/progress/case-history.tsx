@@ -25,6 +25,8 @@ const ACTIONS = [
   "case_started",
   "case_unstarted",
   "case_completed",
+  // Change 0008: the Ministry approved an amendment that replaced the beneficiary (AMD-5).
+  "case_replaced",
   "case_stopped",
   "case_reopened",
 ] as const;

@@ -8,7 +8,7 @@ export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) 
   if (matches.length === 0) return null;
   const t = await getTranslations();
   // A namespaced translator: the whole file's keys are too many for TypeScript to check a built one.
-  const statusLabel = await getTranslations("cases.status");
+  const tc = await getTranslations("cases");
   const name = (match: DuplicateCase) =>
     match.childName
       ? t("cases.withChild", { name: match.name ?? t("cases.noName"), child: match.childName })
@@ -32,7 +32,7 @@ export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) 
                   number: match.applicationNumber,
                   name: name(match),
                   office: match.officeName,
-                  status: statusLabel(match.status),
+                  status: tc(`status.${match.status}`),
                 })}
               </Link>
             </li>

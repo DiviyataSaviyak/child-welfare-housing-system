@@ -29,8 +29,8 @@ const EDITABLE: Record<Role, readonly CaseStatus[]> = {
 
 /**
  * CASE-9: while a case awaits its allocation, its DS of residence or the Ministry may change any of its
- * details; after that, only the Ministry, and every changed field is logged. A completed case can't be
- * changed (STS-2).
+ * details; after that, only the Ministry, and every changed field is logged. A completed or replaced case
+ * can't be changed (STS-2, change 0008): neither is in any role's list.
  */
 export function canEditDetails(role: Role, status: CaseStatus): boolean {
   return EDITABLE[role].includes(status);

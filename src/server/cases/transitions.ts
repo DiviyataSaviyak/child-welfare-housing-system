@@ -18,9 +18,9 @@ export type Mover = Role | "SYSTEM";
 /**
  * Change 0006's moves: `save` (a new case), `allocate` (the Ministry's letter), `release` (the District's
  * release to the DS), and the system's `start` (installment 1 paid), `unstart` (that payment undone) and
- * `complete`.
+ * `complete`. Change 0008 adds `replace` (the Ministry's approval of an amendment).
  */
-export type Move = "save" | "allocate" | "release" | "start" | "unstart" | "complete";
+export type Move = "save" | "allocate" | "release" | "start" | "unstart" | "complete" | "replace";
 
 type MoveRule = {
   /** The statuses it moves from; null is a case not yet saved. */
@@ -82,6 +82,17 @@ export const MOVES: Record<Move, MoveRule> = {
     who: ["SYSTEM"],
     notify: "COMPLETED",
     audit: "case_completed",
+  },
+  // Change 0008: the Ministry approves an amendment, and the case that takes this one's place starts in the
+  // status this one had (AMD-5). Only while no installment has been paid (AMD-1, AMD-2), so never from
+  // IN_PROGRESS. REPLACED is final, like COMPLETED (STS-2). The officers are told of the approval on the
+  // new case (AMD-10), not here.
+  replace: {
+    from: ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED"],
+    to: "REPLACED",
+    who: ["MINISTRY_OFFICER"],
+    notify: null,
+    audit: "case_replaced",
   },
 };
 
