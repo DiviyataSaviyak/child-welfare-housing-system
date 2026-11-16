@@ -19,7 +19,9 @@ ARG NODE_IMAGE=node:22.23.3-bookworm-slim
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 # Prisma picks its migration engine by the OpenSSL it finds, so OpenSSL must be there before npm ci.
-RUN apt-get update -q && apt-get install -y -q --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+# The upgrade takes Debian's fixes for the base image's own packages (the release's scan stops on them).
+RUN apt-get update -q && apt-get upgrade -y -q && apt-get install -y -q --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
 ENV NEXT_TELEMETRY_DISABLED=1
 # prisma.config.ts reads it; nothing connects while the image is built.
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
@@ -53,8 +55,9 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     FILES_DIR=/data/files \
     APP_COMMIT=${COMMIT}
-# No package managers (see the top of this file).
-RUN rm -rf /usr/local/lib/node_modules /opt/yarn-v* \
+# Debian's fixes for the base image's own packages, then no package managers (see the top of this file).
+RUN apt-get update -q && apt-get upgrade -y -q && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /usr/local/lib/node_modules /opt/yarn-v* \
       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 # The code belongs to root and only the uploads folder and Next's cache are writable by the app.
