@@ -501,7 +501,9 @@
         "staleText": "Days without an update: {days}.",
         "open": "Open",
         "received": "{name}: allocation received",
-        "receivedText": "Received on {date}. Start paying the first installment."
+        "receivedText": "Received on {date}. Start paying the first installment.",
+        "amendmentRejected": "{name}: amendment rejected",
+        "amendmentRejectedText": "On {date}. Reason: {reason}"
       },
       "paid": "{paid} / {total}",
       "money": {
@@ -592,7 +594,8 @@
         "notDone": "Not complete yet",
         "optional": "Optional",
         "attached": "Attached",
-        "family": "The family and aid"
+        "family": "The family and aid",
+        "reason": "Reason for the amendment"
       },
       "duplicate": {
         "title": "These beneficiaries already have this NIC number:",
@@ -684,7 +687,13 @@
         "monthNeedsYear": "Give the year with the month.",
         "dayNeedsMonth": "Give the month with the day.",
         "untilBeforeFrom": "\"Until\" can't be before \"from\".",
-        "inCentre": "Centre {number}: {message}"
+        "inCentre": "Centre {number}: {message}",
+        "reasonRequired": "Enter the reason for the amendment.",
+        "reasonTooShort": "The reason must be at least 5 characters.",
+        "reasonTooLong": "The reason can't be longer than 1,000 characters.",
+        "amendmentNotAllowed": "An amendment can't be submitted now: an installment has been paid, or the case is completed or replaced.",
+        "amendmentWaiting": "An amendment of this beneficiary already awaits approval.",
+        "buildOfficeNotAllowed": "The allocation has already gone to the district or DS office where the existing beneficiary's land is, so the new beneficiary's land must be there too."
       },
       "saveChanges": "Save the changes",
       "changeIntro": "The Ministry has allocated funds for this beneficiary. Every change you make is recorded in the history, with the old and new values. Required parts can't be left empty.",
@@ -942,6 +951,31 @@
       "10": "October",
       "11": "November",
       "12": "December"
+    },
+    "amend": {
+      "button": "Submit an amendment",
+      "title": "Propose another beneficiary",
+      "existing": "Existing beneficiary",
+      "newBeneficiary": "New beneficiary",
+      "person": "{name} ({number})",
+      "intro": "Enter the new beneficiary's details and the reason for the amendment on the form below. Until the Ministry approves or rejects it, the existing beneficiary stays, and no installment can be started or paid.",
+      "reason": "Reason for the amendment",
+      "reasonHelp": "Why the existing beneficiary can't go ahead, for example a problem with the land.",
+      "landInDistrict": "The allocation has already gone to this district, so the new beneficiary's land must be in one of its DS divisions.",
+      "submit": "Submit an amendment",
+      "confirmTitle": "Send the amendment to the Ministry?",
+      "confirmText": "Check both beneficiaries' details and the reason.",
+      "confirmAfter": "The Ministry approves or rejects the amendment. If it approves, the new beneficiary takes the existing beneficiary's place.",
+      "confirmSend": "Send to the Ministry",
+      "submitted": "The amendment was sent to the Ministry for approval.",
+      "waitingTitle": "An amendment awaits approval",
+      "waitingText": "Submitted on {date}, proposing {name} ({number}) in this beneficiary's place.",
+      "reasonLine": "Reason: {reason}",
+      "waitingHold": "Until the Ministry decides, no installment can be started or paid, no physical progress can be recorded, and this beneficiary can't be deleted.",
+      "rejectedTitle": "The Ministry rejected the amendment on {date}",
+      "rejectedText": "It proposed {name} ({number}) in this beneficiary's place.",
+      "rejectionReason": "The Ministry's reason: {reason}",
+      "again": "Another amendment can be submitted if needed."
     }
   },
   "review": {
@@ -993,7 +1027,8 @@
       "working": "Saving...",
       "caseTitle": "Releasing the Rs. 2,000,000 allocation",
       "caseText": "The allocation for this beneficiary is released with an allocation letter to the {district} District Secretary. Once the letter has gone, record it on the “To release allocations” screen.",
-      "caseGo": "Go and record the letter →"
+      "caseGo": "Go and record the letter →",
+      "amendmentFlag": "An amendment awaits approval"
     },
     "correct": {
       "button": "Correct the letter's details",
@@ -1211,7 +1246,9 @@
       "fileType": "Add only a JPEG, PNG or WebP photo.",
       "photoUnreadable": "This photo can't be opened. Choose another photo.",
       "fileFailed": "The upload failed. Try again.",
-      "notAllowed": "You can't add photos."
+      "notAllowed": "You can't add photos.",
+      "amendmentWaiting": "An amendment of this beneficiary awaits the Ministry's approval, so this can't be done until the Ministry decides.",
+      "hasAmendment": "An amendment was submitted for this beneficiary, so it can't be deleted."
     }
   },
   "history": {
@@ -1256,7 +1293,9 @@
       "case_reopened": "The project was reopened",
       "other": "A change was recorded",
       "case_ds_released": "The {district} District Secretariat released Rs. 2,000,000 to the {office} DS office (reference number {reference})",
-      "ds_release_corrected": "The District release's details were corrected"
+      "ds_release_corrected": "The District release's details were corrected",
+      "amendment_submitted": "Submitted an amendment",
+      "amendment_submittedFor": "Submitted an amendment proposing {name} ({number}) in this beneficiary's place"
     },
     "reason": "Reason: {reason}",
     "note": "Note: {note}",

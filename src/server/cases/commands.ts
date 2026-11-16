@@ -237,12 +237,7 @@ async function checkSave(
     if (refusal) return refusal;
   }
 
-  // CASE-14: each centre's province is one of the list. The form offers nothing else.
-  const provinceIds = [...new Set(input.values.centres.map((centre) => centre.provinceId))];
-  if (provinceIds.length > 0) {
-    const known = await db.province.count({ where: { id: { in: provinceIds } } });
-    if (known !== provinceIds.length) return "incomplete";
-  }
+  if (!(await centreProvincesKnown(db, input.values.centres))) return "incomplete";
 
   // A new case, or one moving to another office, needs an active office (LST-3).
   if (!current || office !== current.dsOfficeId) {
@@ -257,14 +252,36 @@ async function checkSave(
     if (!found.active) return "officeInactive";
   }
   // CASE-12: unique within the DS office of residence, without case or spaces.
-  const taken = await db.case.count({
-    where: {
-      dsOfficeId: office,
-      applicationKey: applicationKey(input.values.applicationNumber),
-      id: { not: input.id },
-    },
-  });
-  return taken > 0 ? "applicationNumberTaken" : null;
+  const taken = await applicationNumberTaken(db, office, input.values.applicationNumber, input.id);
+  return taken ? "applicationNumberTaken" : null;
+}
+
+/** CASE-14: each centre's province is one of the list. The form offers nothing else. */
+export async function centreProvincesKnown(db: PrismaClient, centres: CentreValues[]): Promise<boolean> {
+  const provinceIds = [...new Set(centres.map((centre) => centre.provinceId))];
+  if (provinceIds.length === 0) return true;
+  const known = await db.province.count({ where: { id: { in: provinceIds } } });
+  return known === provinceIds.length;
+}
+
+/**
+ * CASE-12, AMD-8: whether the Application Number is held in the DS office of residence, without case or
+ * spaces, by another case or by the new beneficiary of a waiting amendment.
+ */
+export async function applicationNumberTaken(
+  db: PrismaClient,
+  dsOfficeId: number,
+  applicationNumber: string,
+  exceptCaseId: string | null,
+): Promise<boolean> {
+  const key = applicationKey(applicationNumber);
+  const [cases, amendments] = await Promise.all([
+    db.case.count({
+      where: { dsOfficeId, applicationKey: key, ...(exceptCaseId ? { id: { not: exceptCaseId } } : {}) },
+    }),
+    db.amendment.count({ where: { dsOfficeId, applicationKey: key, status: "WAITING" } }),
+  ]);
+  return cases + amendments > 0;
 }
 
 async function writeCase(
@@ -381,11 +398,17 @@ async function findVisible(db: PrismaClient, actor: Actor, id: string) {
   return found && canSeeCase(actor, found) ? found : null;
 }
 
-export type DeleteCaseError = "notFound" | "notAllowedNow" | "conflict" | ReasonErrorKey;
+export type DeleteCaseError =
+  | "notFound"
+  | "notAllowedNow"
+  | "conflict"
+  /** An amendment was submitted for it, waiting or decided; it is kept with the case (AMD-3, CASE-8). */
+  | "hasAmendment"
+  | ReasonErrorKey;
 
 /**
  * CASE-8: deletes a case awaiting its allocation, with its documents, for example one entered twice. It
- * needs a reason. The record of the deletion keeps the Application Number, the DS office and the reason,
+ * needs a reason. A case with an amendment, waiting or decided, stays: the amendment is kept with it. The record of the deletion keeps the Application Number, the DS office and the reason,
  * without personal details; the earlier records of the case stay in the audit log, which can't be
  * changed (HIS-3).
  */
@@ -403,6 +426,7 @@ export async function deleteCase(
   const reason = parseReason(input.reason);
   if (!reason.ok) return { ok: false, error: reason.error };
   if (found.version !== input.version) return { ok: false, error: "conflict" };
+  if ((await db.amendment.count({ where: { caseId: found.id } })) > 0) return { ok: false, error: "hasAmendment" };
 
   let files: { id: string; storedName: string }[];
   try {
@@ -413,6 +437,8 @@ export async function deleteCase(
         data: { version: { increment: 1 } },
       });
       if (claimed.count === 0) throw new Refusal("conflict");
+      // An amendment submitted at the same moment: the database would refuse the delete anyway.
+      if ((await tx.amendment.count({ where: { caseId: found.id } })) > 0) throw new Refusal("hasAmendment");
       const onCase = await tx.storedFile.findMany({
         where: { caseId: found.id },
         select: { id: true, storedName: true },

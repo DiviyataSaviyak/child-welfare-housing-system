@@ -27,6 +27,8 @@ const ACTIONS = [
   "case_completed",
   // Change 0008: the Ministry approved an amendment that replaced the beneficiary (AMD-5).
   "case_replaced",
+  // Change 0008: a DS asked the Ministry to replace the beneficiary (AMD-1).
+  "amendment_submitted",
   "case_stopped",
   "case_reopened",
 ] as const;
@@ -211,6 +213,24 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
         }
         if ("note" in after) lines.push(t("changedFields", { fields: t("fields.note") }));
         return { sentence: t("actions.installment_corrected", { installment: installment(after.number) }), lines };
+      }
+      case "amendment_submitted": {
+        // AMD-1: the new beneficiary it proposes; the reason is on its own line, as for every record.
+        const added = count(after.documentsAdded);
+        if (added > 0) lines.push(t("documentsAdded", { count: added }));
+        const name = text(after.name);
+        const child = text(after.childName);
+        const number = text(after.applicationNumber);
+        return {
+          sentence:
+            name && number
+              ? t("actions.amendment_submittedFor", {
+                  name: child ? tc("withChild", { name, child }) : name,
+                  number,
+                })
+              : t("actions.amendment_submitted"),
+          lines,
+        };
       }
       case "installment_payment_undone":
         return { sentence: t("actions.installment_payment_undone", { installment: installment(after.number) }), lines };

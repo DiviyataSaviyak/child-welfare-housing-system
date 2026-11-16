@@ -33,11 +33,15 @@ async function main() {
     // Cases the tests created, with everything that hangs off them. Their audit records stay (HIS-3).
     const cases = await prisma.case.findMany({ where: { name: { startsWith: TEST_CASE_NAME } }, select: { id: true } });
     const caseIds = cases.map((c) => c.id);
+    // Their amendments (change 0008), with the new beneficiaries' documents, first: they hold the cases.
+    const amendments = { OR: [{ caseId: { in: caseIds } }, { newCaseId: { in: caseIds } }] };
+    const theirFiles = { OR: [{ caseId: { in: caseIds } }, { amendment: amendments }] };
     const files = await prisma.storedFile.findMany({
-      where: { caseId: { in: caseIds } },
+      where: theirFiles,
       select: { storedName: true, thumbName: true },
     });
-    await prisma.storedFile.deleteMany({ where: { caseId: { in: caseIds } } });
+    await prisma.storedFile.deleteMany({ where: theirFiles });
+    await prisma.amendment.deleteMany({ where: amendments });
     await prisma.notification.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.installment.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.release.deleteMany({ where: { caseId: { in: caseIds } } });
@@ -75,6 +79,8 @@ async function main() {
         filesUploaded: { none: {} },
         releases: { none: {} },
         stageUpdates: { none: {} },
+        amendmentsSubmitted: { none: {} },
+        amendmentsDecided: { none: {} },
       },
       select: { id: true },
     });

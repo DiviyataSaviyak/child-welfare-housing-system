@@ -25,6 +25,7 @@ import { readHomeList, type Tab, TABS, tabFilter } from "./list";
 
 /** The colour of each kind of to-do item, as in the prototype. */
 const TODO_COLOUR: Record<TodoItem["type"], string> = {
+  amendmentRejected: "bg-[#FDE7E4]",
   received: "bg-[#FBEBD3]",
   due: "bg-[#E4EDF8]",
   stale: "bg-muted",
@@ -238,7 +239,7 @@ export default async function DsHomePage({
             ) : (
               <ul className="flex flex-col gap-2.5">
                 {todo.map((item) => (
-                  <li key={`${item.type}-${item.id}`}>
+                  <li key={`${item.type}-${item.type === "amendmentRejected" ? item.amendmentId : item.id}`}>
                     <TodoLink item={item} t={t} />
                   </li>
                 ))}
@@ -279,6 +280,14 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
   const name = caseName(t, item.name, item.childName);
   const content = (() => {
     switch (item.type) {
+      case "amendmentRejected":
+        // HOME-3, AMD-6: the case page shows the Ministry's reason, and another amendment can be submitted.
+        return {
+          href: `/ds/cases/${item.id}`,
+          title: t("home.todo.amendmentRejected", { name }),
+          text: t("home.todo.amendmentRejectedText", { date: formatDate(item.rejectedOn), reason: item.reason }),
+          action: t("home.todo.open"),
+        };
       case "received":
         // HOME-3: the District released it; the first installment is waiting to start.
         return {

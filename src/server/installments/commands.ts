@@ -38,6 +38,8 @@ export type InstallmentError =
    * completed (INS-5).
    */
   | "caseNotRunning"
+  /** An amendment of the case waits for the Ministry (AMD-3, INS-5). */
+  | "amendmentWaiting"
   /** Someone changed the case after the page showed it (CASE-10). */
   | "conflict"
   /** INS-6: no installment has been paid. */
@@ -77,6 +79,8 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       version: true,
       kind: true,
       release: { select: { dsReleasedOn: true } },
+      // AMD-3: a waiting amendment holds every installment step.
+      amendments: { where: { status: "WAITING" }, take: 1, select: { id: true } },
       installments: {
         orderBy: { number: "asc" },
         select: {
@@ -93,8 +97,10 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
     },
   });
   if (!found || !canSeeCase(actor, found)) return null;
+  const { amendments, ...rest } = found;
   return {
-    ...found,
+    ...rest,
+    amendmentWaiting: amendments.length > 0,
     dsReleasedOn: found.release?.dsReleasedOn ? dateToDay(found.release.dsReleasedOn) : null,
     installments: found.installments.map((i) => ({
       ...i,
@@ -103,6 +109,10 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
     })),
   };
 }
+
+/** A refusal from inside a change's transaction: a waiting amendment (AMD-3), or someone else's change. */
+const claimRefusal = (error: Refusal): InstallmentError =>
+  error.reason === "amendmentWaiting" ? "amendmentWaiting" : "conflict";
 
 /**
  * Checks what every DS installment step shares: the case is the officer's to see (PRM-1), only the DS
@@ -118,6 +128,7 @@ async function prepareStep(db: PrismaClient, actor: Actor, target: Target, step:
     return { refusal: refused("roleNotAllowed") };
   }
   if (!takesProgress(found.status) || !found.dsReleasedOn) return { refusal: refused("caseNotRunning") };
+  if (found.amendmentWaiting) return { refusal: refused("amendmentWaiting") };
   // A land case's next installment has no row until it is started (INS-7).
   const scheduled = schedule(found.kind, found.installments);
   const refusal = stepRefusal(scheduled, target.number, step);
@@ -196,7 +207,8 @@ export async function startInstallment(
     });
   } catch (error) {
     // Two starts at once: the second finds the case claimed or the number taken (INS-7).
-    if (error instanceof Refusal || isUniqueViolation(error)) return refused("conflict");
+    if (error instanceof Refusal) return refused(claimRefusal(error));
+    if (isUniqueViolation(error)) return refused("conflict");
     throw error;
   }
   return { ok: true, completed: false };
@@ -260,7 +272,7 @@ export async function correctInstallment(
       });
     });
   } catch (error) {
-    if (error instanceof Refusal) return refused("conflict");
+    if (error instanceof Refusal) return refused(claimRefusal(error));
     throw error;
   }
   return { ok: true, completed: false };
@@ -317,7 +329,7 @@ export async function markInstallmentPaid(
     });
     return { ok: true, completed };
   } catch (error) {
-    if (error instanceof Refusal) return refused("conflict");
+    if (error instanceof Refusal) return refused(claimRefusal(error));
     throw error;
   }
 }
@@ -370,7 +382,7 @@ export async function undoInstallmentPayment(
       }
     });
   } catch (error) {
-    if (error instanceof Refusal) return refused("conflict");
+    if (error instanceof Refusal) return refused(claimRefusal(error));
     throw error;
   }
   return { ok: true, completed: false };

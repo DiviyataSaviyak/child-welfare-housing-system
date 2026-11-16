@@ -17,6 +17,8 @@ export type StageError =
   | "roleNotAllowed"
   /** Stage updates are allowed only once the allocation is received, until the case is completed (STG-5). */
   | "caseNotRunning"
+  /** An amendment of the case waits for the Ministry (AMD-3, STG-5). */
+  | "amendmentWaiting"
   | "conflict"
   /** More than 10 photos (STG-1). */
   | "tooManyPhotos"
@@ -57,6 +59,7 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
       version: true,
       kind: true,
       release: { select: { dsReleasedOn: true } },
+      amendments: { where: { status: "WAITING" }, take: 1, select: { id: true } },
     },
   });
   if (!found || !canSeeCase(actor, found)) return refused("notFound");
@@ -65,6 +68,7 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
   // STG-5: from the District's release to the DS until it is completed; a stage never moves the status.
   const dsReleasedOn = found.release?.dsReleasedOn;
   if (!takesProgress(found.status) || !dsReleasedOn) return refused("caseNotRunning");
+  if (found.amendments.length > 0) return refused("amendmentWaiting");
 
   const now = new Date();
   // Sinhala names for the audit record, which also keeps all three (UI-9).
@@ -128,7 +132,10 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
     });
     return { ok: true, completed };
   } catch (error) {
-    if (error instanceof Refusal) return refused(error.reason === "photoUnavailable" ? "photoUnavailable" : "conflict");
+    if (error instanceof Refusal) {
+      const reason = error.reason;
+      return refused(reason === "photoUnavailable" || reason === "amendmentWaiting" ? reason : "conflict");
+    }
     throw error;
   }
 }

@@ -133,11 +133,15 @@ async function store(
   return { id, name: file.name };
 }
 
-/** Removes the person's uploads never saved with a case, a letter or a District release, once a day old. */
+/**
+ * Removes the person's uploads never saved with a case, an amendment, a letter or a District release, once a
+ * day old.
+ */
 async function removeUnusedUploads(db: PrismaClient, userId: string): Promise<void> {
   const where = {
     uploadedById: userId,
     caseId: null,
+    amendmentId: null,
     letterId: null,
     dsReleaseId: null,
     uploadedAt: { lt: new Date(Date.now() - UNUSED_UPLOAD_MS) },
@@ -145,7 +149,7 @@ async function removeUnusedUploads(db: PrismaClient, userId: string): Promise<vo
   const unused = await db.storedFile.findMany({ where, select: { id: true, storedName: true, thumbName: true } });
   if (unused.length === 0) return;
   await db.storedFile.deleteMany({
-    where: { id: { in: unused.map((f) => f.id) }, caseId: null, letterId: null, dsReleaseId: null },
+    where: { id: { in: unused.map((f) => f.id) }, caseId: null, amendmentId: null, letterId: null, dsReleaseId: null },
   });
   for (const file of unused) {
     for (const name of [file.storedName, file.thumbName]) {
@@ -161,8 +165,9 @@ export type FileToSend = { storedName: string; originalName: string; mimeType: s
 
 /**
  * A file the viewer may open (SEC-7): a case's file under the same office rules as the case itself
- * (PRM-1), a letter's or a District release's scan for anyone who may see one of its cases, or the
- * viewer's own upload that is not on a case, letter or release yet. Anything else is "not found".
+ * (PRM-1), an amendment's document under its case's rules (AMD-4), a letter's or a District release's
+ * scan for anyone who may see one of its cases, or the viewer's own upload that is not on a case,
+ * amendment, letter or release yet. Anything else is "not found".
  * `thumb` asks for a photo's thumbnail (STG-6); a document has none.
  */
 export async function fileForViewer(
@@ -182,14 +187,16 @@ export async function fileForViewer(
       uploadedById: true,
       removedAt: true,
       case: { select: CASE_PLACES },
+      amendment: { select: { case: { select: CASE_PLACES } } },
       letter: { select: { releases: { select: { case: { select: CASE_PLACES } } } } },
       dsRelease: { select: { releases: { select: { case: { select: CASE_PLACES } } } } },
     },
   });
   if (!file || file.removedAt) return null;
   const onCases = file.letter ?? file.dsRelease;
-  const allowed = file.case
-    ? canSeeCase(viewer, file.case)
+  const owner = file.case ?? file.amendment?.case;
+  const allowed = owner
+    ? canSeeCase(viewer, owner)
     : onCases
       ? onCases.releases.some((release) => canSeeCase(viewer, release.case))
       : file.uploadedById === viewer.userId;

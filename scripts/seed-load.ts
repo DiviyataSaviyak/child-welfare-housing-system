@@ -1044,12 +1044,18 @@ export async function removeMadeUp(
   finish?: (tx: Prisma.TransactionClient) => Promise<void>,
 ): Promise<number> {
   const theirs = { caseId: { startsWith: idPrefix } };
-  const files = await db.storedFile.findMany({ where: theirs, select: { storedName: true, thumbName: true } });
+  // Amendments of these cases, or that made one of them (change 0008), with their documents.
+  const amendments: Prisma.AmendmentWhereInput = {
+    OR: [{ caseId: { startsWith: idPrefix } }, { newCaseId: { startsWith: idPrefix } }],
+  };
+  const theirFiles: Prisma.StoredFileWhereInput = { OR: [theirs, { amendment: amendments }] };
+  const files = await db.storedFile.findMany({ where: theirFiles, select: { storedName: true, thumbName: true } });
   const letterScans: { storedName: string; thumbName: string | null }[] = [];
 
   const removed = await db.$transaction(
     async (tx) => {
-      await tx.storedFile.deleteMany({ where: theirs });
+      await tx.storedFile.deleteMany({ where: theirFiles });
+      await tx.amendment.deleteMany({ where: amendments });
       await tx.notification.deleteMany({ where: theirs });
       await tx.installment.deleteMany({ where: theirs });
       await tx.release.deleteMany({ where: theirs });

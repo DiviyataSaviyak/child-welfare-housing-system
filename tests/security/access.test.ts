@@ -186,6 +186,8 @@ const RULES: Record<string, Record<string, Rule>> = {
     stageUpdateAction: DS,
     uploadPhotoAction: DS,
   },
+  // AMD-1: a CRPO of the case's DS of residence; the command checks the office (AMD-1, AC-48).
+  "src/app/ds/cases/[id]/amend/actions.ts": { submitAmendmentAction: DS },
   "src/app/ds/notifications/actions.ts": { openNotificationAction: DS, markAllReadAction: DS },
   "src/app/ds/export/route.ts": { GET: DS },
   "src/app/ds/notifications/unread/route.ts": { GET: DS },
