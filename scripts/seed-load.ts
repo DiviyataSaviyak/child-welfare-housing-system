@@ -43,6 +43,7 @@ import { NAMES, type Names } from "../src/lib/names";
 import { nicKey } from "../src/lib/nic";
 import {
   type CentreValues,
+  type CompleteCaseValues,
   type HouseKind,
   isHouseKind,
   type LandKind,
@@ -278,7 +279,7 @@ type Json = Prisma.InputJsonValue | null;
  * writer fills in what is known only then: the Application Number, the Ministry's letter, the District's
  * release.
  */
-type Step = {
+export type Step = {
   at: Date;
   actorId: string | null;
   action: string;
@@ -286,6 +287,11 @@ type Step = {
   entityId: string;
   before?: Record<string, Json>;
   after: Record<string, Json>;
+  /**
+   * Fields of `after` the writer fills with an Application Number once it has given them (CASE-12): each
+   * names the case or amendment whose number it takes, such as `{ applicationNumber: <the case's id> }`.
+   */
+  numbers?: Record<string, string>;
 };
 
 /** The District's release of a case to the DS where it is built (REL-6), before the release itself is known. */
@@ -304,12 +310,17 @@ type PlannedRelease = Omit<Prisma.ReleaseCreateManyInput, "letterId" | "dsReleas
 /** A case before its Application Number is known; the writer gives it one. */
 type PlannedCase = Omit<Prisma.CaseCreateManyInput, "applicationNumber" | "applicationKey">;
 
+/** The case form's values as `saveCase` takes them (CASE-2), without the Application Number, which the writer gives. */
+export type PlannedForm = Omit<CompleteCaseValues, "applicationNumber">;
+
 export type Planned = {
   /** The DS office of residence, which entered it. */
   office: Office;
   /** The DS office where it is built, which the money follows (CASE-13). */
   build: Office;
   case: PlannedCase;
+  /** What the form held, for an amendment that proposes this person instead (change 0008). */
+  form: PlannedForm;
   /** A care leaver's child development centres, in order (CASE-14). */
   centres: Prisma.CareCentreCreateManyInput[];
   release: PlannedRelease | null;
@@ -318,6 +329,19 @@ export type Planned = {
   history: Step[];
   /** The notices the steps send the office's officers (NTF-1); the older ones have been read. */
   notifications: Prisma.NotificationCreateManyInput[];
+};
+
+/**
+ * An amendment (change 0008) before its Application Number is known: an approved one takes its new case's,
+ * any other one a number of its own in the DS of residence, after its cases' (CASE-12, AMD-8). Its history
+ * and notices are on the cases' `Planned`.
+ */
+export type PlannedAmendment = {
+  /** The existing case's DS of residence, which is the new beneficiary's too (AMD-8). */
+  office: Office;
+  row: Omit<Prisma.AmendmentCreateManyInput, "dsOfficeId" | "applicationKey" | "details">;
+  /** The new beneficiary as the form gave them, and the DS where they would be built (`AmendmentDetails`). */
+  details: PlannedForm & { buildDsOfficeId: number };
 };
 
 type Event = "pay" | "start" | "stage" | "note";
@@ -417,7 +441,7 @@ function madeUpCentres(
  * One case and everything that hangs off it, with a story that follows the application spec's Case
  * statuses and transitions. The kind of help is chosen at random unless `kind` names it.
  */
-export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind): Planned {
+export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind, category?: Category): Planned {
   const { r, today, cast } = ctx;
   const upToToday = (day: string) => (day > today ? today : day);
   // A moment during office hours on `day`, after `after`, and never after now.
@@ -434,7 +458,7 @@ export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind):
   const builder = cast.officers(build)[0]!;
   const told = [...new Set([...cast.officers(office), ...cast.officers(build)])];
   const ministry = cast.ministry(r);
-  const category: Category = r.chance(1 / 3) ? "CARE_LEAVER" : "CHILD_AT_RISK";
+  category ??= r.chance(1 / 3) ? "CARE_LEAVER" : "CHILD_AT_RISK";
   kind ??= r.weighted(KIND_SHARES);
 
   const allocated = path !== "AWAITING_ALLOCATION";
@@ -473,8 +497,7 @@ export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind):
       ? "MARRIED"
       : "UNMARRIED";
   // What the form takes (CASE-2), as saveCase stores and logs it.
-  const values = {
-    dsOfficeId: office.id,
+  const form = {
     category,
     careGroup,
     kind,
@@ -501,6 +524,7 @@ export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind):
     aid,
     aidOther: aid.includes("OTHER") ? r.pick(OTHER_AIDS) : null,
   };
+  const values = { dsOfficeId: office.id, ...form };
   const fields = { ...values, dateOfBirth: dayToDate(dateOfBirth) };
 
   const history: Step[] = [];
@@ -546,6 +570,8 @@ export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind):
       status: "AWAITING_ALLOCATION",
       documentsAdded: [],
     },
+    // CASE-12: entered with its Application Number, as saveCase logs it.
+    numbers: { applicationNumber: id },
   });
 
   let completedAt: Date | null = null;
@@ -774,6 +800,7 @@ export function planCase(ctx: Context, office: Office, path: Path, kind?: Kind):
   return {
     office,
     build,
+    form: { ...form, centres },
     case: {
       id,
       ...fields,
@@ -861,6 +888,8 @@ export type WriteOptions = {
   history: boolean;
   /** The District officers told of each of a district's letters (NTF-1), with the history. */
   districtOfficers?: (districtId: number) => string[];
+  /** Amendments of the planned cases (change 0008), written after them. */
+  amendments?: PlannedAmendment[];
   /** Runs first, in the same transaction. */
   prepare?: (tx: Prisma.TransactionClient) => Promise<void>;
 };
@@ -879,7 +908,7 @@ export async function writePlanned(
   db: PrismaClient,
   r: Random,
   planned: Planned[],
-  { idPrefix, history, districtOfficers, prepare }: WriteOptions,
+  { idPrefix, history, districtOfficers, amendments = [], prepare }: WriteOptions,
 ): Promise<void> {
   // REL-2: one allocation letter for the cases of a district allocated on the same day. REL-6: one District
   // release for the cases released to a DS office on the same day.
@@ -972,19 +1001,24 @@ export async function writePlanned(
     }
   }
 
-  // CASE-12: numbers in the order of entering, within each DS office of residence.
-  const groups = new Map<number, { office: Office; cases: PlannedCase[] }>();
-  for (const { office, case: c } of planned) {
-    const group = groups.get(office.id) ?? { office, cases: [] };
-    group.cases.push(c);
+  // CASE-12: numbers in the order of entering, within each DS office of residence, then the new beneficiaries
+  // of the amendments that made no case, which the paper applications brought later.
+  const groups = new Map<number, { office: Office; cases: PlannedCase[]; amendments: PlannedAmendment[] }>();
+  const groupOf = (office: Office) => {
+    const group = groups.get(office.id) ?? { office, cases: [], amendments: [] };
     groups.set(office.id, group);
-  }
+    return group;
+  };
+  for (const { office, case: c } of planned) groupOf(office).cases.push(c);
+  for (const a of amendments) if (!a.row.newCaseId) groupOf(a.office).amendments.push(a);
 
   await db.$transaction(
     async (tx) => {
       await prepare?.(tx);
       const cases: Prisma.CaseCreateManyInput[] = [];
-      for (const { office, cases: group } of groups.values()) {
+      // Each case's and amendment's Application Number, by its id.
+      const numbers = new Map<string, string>();
+      for (const { office, cases: group, amendments: waiting } of groups.values()) {
         group.sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime());
         // After the highest number of this form the office already has, so none is taken twice (CASE-12).
         const prefix = madeUpApplicationNumber(office.code, 0).slice(0, -1);
@@ -996,8 +1030,14 @@ export async function writePlanned(
         group.forEach((c, index) => {
           const applicationNumber = madeUpApplicationNumber(office.code, highest + index + 1);
           cases.push({ ...c, applicationNumber, applicationKey: applicationKey(applicationNumber) });
+          numbers.set(c.id!, applicationNumber);
+        });
+        waiting.forEach((a, index) => {
+          numbers.set(a.row.id, madeUpApplicationNumber(office.code, highest + group.length + index + 1));
         });
       }
+      // An approved amendment's new beneficiary is its new case.
+      for (const a of amendments) if (a.row.newCaseId) numbers.set(a.row.id, numbers.get(a.row.newCaseId)!);
       for (const rows of chunks(cases)) await tx.case.createMany({ data: rows });
       for (const rows of chunks(planned.flatMap((p) => p.centres))) await tx.careCentre.createMany({ data: rows });
       for (const rows of chunks([...letters.values()])) await tx.releaseLetter.createMany({ data: rows });
@@ -1007,15 +1047,24 @@ export async function writePlanned(
         await tx.installment.createMany({ data: rows });
       for (const rows of chunks(planned.flatMap((p) => p.stageUpdates)))
         await tx.stageUpdate.createMany({ data: rows });
+      // AMD-1: the amendment holds its new beneficiary, Application Number and all, until the Ministry decides.
+      const amendmentRows = amendments.map(({ office, row, details }) => {
+        const applicationNumber = numbers.get(row.id)!;
+        return {
+          ...row,
+          dsOfficeId: office.id,
+          applicationKey: applicationKey(applicationNumber),
+          details: { ...details, applicationNumber } as Prisma.InputJsonValue,
+        };
+      });
+      for (const rows of chunks(amendmentRows)) await tx.amendment.createMany({ data: rows });
 
       if (!history) return;
-      // CASE-12: a case is entered with its Application Number, as saveCase logs it.
-      const numbers = new Map(cases.map((c) => [c.id, c.applicationNumber]));
       // In the order things happened, so steps at the same moment keep their order in the history.
       const audit = planned
         .flatMap((p) =>
-          p.history.map((step) => {
-            if (step.action === "case_created") step.after.applicationNumber = numbers.get(p.case.id) ?? null;
+          p.history.map(({ numbers: numbered, ...step }) => {
+            for (const [field, id] of Object.entries(numbered ?? {})) step.after[field] = numbers.get(id) ?? null;
             return { ...step, caseId: p.case.id };
           }),
         )

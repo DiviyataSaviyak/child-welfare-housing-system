@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { colomboDay, dateToDay } from "@/lib/dates";
 import { INSTALLMENT_AMOUNT } from "@/lib/money";
-import { isHouseKind, LAND_KINDS } from "@/lib/validation/case";
+import { completeValues, isHouseKind, LAND_KINDS } from "@/lib/validation/case";
+import { readDetails } from "@/server/amendments/details";
+import { applicationKey } from "@/server/cases/numbers";
 import { caseHistory } from "@/server/history/queries";
 import { seed } from "../prisma/seed-data";
 import { createTestClient, freeOfficeId } from "../tests/db/client";
@@ -81,7 +83,8 @@ describe("demo data", { timeout: 120_000 }, () => {
         centres: true,
       },
     });
-    expect(cases).toHaveLength(15);
+    // 15, and the beneficiary the first one replaced (change 0008).
+    expect(cases).toHaveLength(16);
     // CASE-17: a few cases of each land kind, among the houses.
     for (const kind of LAND_KINDS) expect(cases.some((c) => c.kind === kind)).toBe(true);
     // INS-7: a land case paid is paid in amounts of its own.
@@ -92,9 +95,16 @@ describe("demo data", { timeout: 120_000 }, () => {
           c.installments.some((i) => i.amount !== INSTALLMENT_AMOUNT && i.status === "RELEASED"),
       ),
     ).toBe(true);
-    // STS-1: every one of the five statuses.
+    // STS-1: every one of the six statuses.
     expect(new Set(cases.map((c) => c.status))).toEqual(
-      new Set(["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED", "IN_PROGRESS", "COMPLETED"]),
+      new Set([
+        "AWAITING_ALLOCATION",
+        "ALLOCATED_TO_DISTRICT",
+        "ALLOCATION_RECEIVED",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "REPLACED",
+      ]),
     );
 
     const viewer = {
@@ -119,7 +129,12 @@ describe("demo data", { timeout: 120_000 }, () => {
 
       // HIS-2: the history reads as if the case had been entered on the screens.
       const history = (await caseHistory(db, viewer, c.id, "si"))!.toReversed();
-      expect(history[0]).toMatchObject({ action: "case_created", actor: { role: "DS_OFFICER" } });
+      // AMD-5: a replacement was entered by the Ministry's approval of its amendment.
+      expect(history[0]).toMatchObject(
+        c.replacesCaseId
+          ? { action: "amendment_approved", actor: { role: "MINISTRY_OFFICER" } }
+          : { action: "case_created", actor: { role: "DS_OFFICER" } },
+      );
       // CASE-12: entered with its Application Number, as saveCase logs it.
       expect(history[0].after.applicationNumber).toBe(c.applicationNumber);
       // CASE-14 to CASE-16: and with change 0007's details, the centres as one field.
@@ -153,7 +168,7 @@ describe("demo data", { timeout: 120_000 }, () => {
       // REL-6, REL-7: the District's release to the DS where it is built, on or after the letter, by the
       // district's CRPO.
       const dsRelease = c.release?.dsRelease;
-      expect(dsRelease == null).toBe(["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT"].includes(c.status));
+      expect(dsRelease == null).toBe(["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "REPLACED"].includes(c.status));
       if (dsRelease) {
         expect(dsRelease.dsOfficeId).toBe(c.buildDsOfficeId);
         expect(dateToDay(dsRelease.releasedOn) >= dateToDay(c.release!.letter.letterDate)).toBe(true);
@@ -182,6 +197,63 @@ describe("demo data", { timeout: 120_000 }, () => {
       }
     }
 
+    // Change 0008: one amendment in each status, each as the commands would have left it (AMD-9).
+    const amendments = await db.amendment.findMany({ where: { case: { dsOfficeId: officeId } } });
+    expect(amendments.map((a) => a.status).toSorted()).toEqual(["APPROVED", "REJECTED", "WAITING"]);
+    const taken = new Set(cases.map((c) => c.applicationKey));
+    for (const a of amendments) {
+      const existing = cases.find((c) => c.id === a.caseId)!;
+      expect(a.dsOfficeId).toBe(officeId);
+      expect(a.submittedById).toBe(OFFICER);
+      expect(a.submittedAt.getTime()).toBeGreaterThan(existing.createdAt.getTime());
+      if (a.decidedAt) expect(a.decidedAt.getTime()).toBeGreaterThan(a.submittedAt.getTime());
+      // AMD-5: the details are a complete case form, so the approval would take them.
+      const stored = readDetails(a.details)!;
+      const values = completeValues(stored.values)!;
+      expect(values).not.toBeNull();
+      expect(applicationKey(values.applicationNumber)).toBe(a.applicationKey);
+      const history = (await caseHistory(db, viewer, existing.id, "si"))!;
+      const proposed = history.find((e) => e.action === "amendment_submitted" && e.after.reason === a.reason);
+      expect(proposed?.after.applicationNumber).toBe(values.applicationNumber);
+
+      if (a.status === "APPROVED") {
+        // AMD-5: the earlier beneficiary is replaced by the new case, which holds the amendment's number.
+        const replacement = cases.find((c) => c.id === a.newCaseId)!;
+        expect(existing.status).toBe("REPLACED");
+        expect(replacement.replacesCaseId).toBe(existing.id);
+        expect(replacement.applicationNumber).toBe(values.applicationNumber);
+        expect(stored.buildDsOfficeId).toBe(replacement.buildDsOfficeId);
+        expect(existing.createdAt.getTime()).toBeLessThan(replacement.createdAt.getTime());
+        expect(replacement.createdAt).toEqual(a.decidedAt);
+        expect(history.find((e) => e.action === "case_replaced")?.after).toMatchObject({
+          newApplicationNumber: replacement.applicationNumber,
+          newCaseId: replacement.id,
+        });
+        const approved = (await caseHistory(db, viewer, replacement.id, "si"))!.at(-1)!;
+        expect(approved.after).toMatchObject({ replacedApplicationNumber: existing.applicationNumber });
+        expect(
+          await db.notification.count({
+            where: { caseId: replacement.id, type: "AMENDMENT_APPROVED", userId: OFFICER },
+          }),
+        ).toBe(1);
+      } else {
+        // CASE-12: a number of its own, which no case of the office holds; built where the case is (AMD-8).
+        expect(taken.has(a.applicationKey)).toBe(false);
+        expect(stored.buildDsOfficeId).toBe(existing.buildDsOfficeId);
+        expect(existing.status).toBe(a.status === "WAITING" ? "AWAITING_ALLOCATION" : "ALLOCATED_TO_DISTRICT");
+      }
+      if (a.status === "REJECTED") {
+        expect(a.rejectionReason).toBeTruthy();
+        expect(history.find((e) => e.action === "amendment_rejected")?.after).toMatchObject({
+          reason: a.rejectionReason,
+          applicationNumber: values.applicationNumber,
+        });
+        expect(
+          await db.notification.count({ where: { caseId: existing.id, type: "AMENDMENT_REJECTED", userId: OFFICER } }),
+        ).toBe(1);
+      }
+    }
+
     // NTF-1: the officer has the notices the steps sent; only the last week's are unread.
     const notices = await db.notification.findMany({ where: { userId: OFFICER, case: { dsOfficeId: officeId } } });
     expect(notices.length).toBeGreaterThan(0);
@@ -202,7 +274,7 @@ describe("demo data", { timeout: 120_000 }, () => {
   it("leaves an office that already has demo cases alone", async () => {
     const { offices } = await addDemoData(db, { seed: 4 });
     expect(offices).toEqual([]);
-    expect(await db.case.count({ where: { ...demoCases, dsOfficeId: officeId } })).toBe(15);
+    expect(await db.case.count({ where: { ...demoCases, dsOfficeId: officeId } })).toBe(16);
   });
 
   it("removes them again with their letters and District releases, keeping their audit records", async () => {
@@ -210,6 +282,7 @@ describe("demo data", { timeout: 120_000 }, () => {
     expect(await removeDemoData(db)).toBe(ids.length);
 
     expect(await db.case.count({ where: demoCases })).toBe(0);
+    expect(await db.amendment.count({ where: { caseId: { in: ids } } })).toBe(0);
     expect(await db.notification.count({ where: { caseId: { in: ids } } })).toBe(0);
     expect(await db.releaseLetter.count({ where: { id: { startsWith: DEMO_ID_PREFIX } } })).toBe(0);
     expect(await db.dsRelease.count({ where: { id: { startsWith: DEMO_ID_PREFIX } } })).toBe(0);

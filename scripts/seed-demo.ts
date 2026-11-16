@@ -21,6 +21,9 @@
  *   a notice of each letter.
  * - A few cases are built in another office that has an officer (CASE-13), so it pays them.
  * - Each office's cases include each of the land kinds (CASE-17), paid in amounts of their own (INS-7).
+ * - Each office has an amendment in each status (change 0008): one waiting for the Ministry, one it rejected,
+ *   and one it approved, so the office's first case took the place of a beneficiary entered before it, whose
+ *   case is the office's sixteenth, replaced (AMD-5).
  *
  * Every name, NIC and phone number is made up (SEC-11). It runs on development, test and staging
  * databases only, never in production. The cases' ids start with "demo-", which is how --remove finds
@@ -30,10 +33,11 @@
  * cases before running the end-to-end tests, as with the load-test data.
  */
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import type { PrismaClient } from "../src/generated/prisma/client";
-import type { Category, Kind } from "../src/generated/prisma/enums";
-import { addDays, colomboDay } from "../src/lib/dates";
+import type { Prisma, PrismaClient } from "../src/generated/prisma/client";
+import type { Category, Kind, NotificationType } from "../src/generated/prisma/enums";
+import { addDays, colomboDay, colomboStartOf } from "../src/lib/dates";
 import { createPrismaClient } from "../src/server/db";
 import { generator, madeUpPhone, MEN_RELATIVES, type Random, SIDES, WOMEN_RELATIVES } from "./made-up";
 import {
@@ -44,11 +48,14 @@ import {
   type Office,
   type Path,
   type Person,
+  type Planned,
+  type PlannedAmendment,
   planCase,
   readOffices,
   readProvinceIds,
   readStages,
   removeMadeUp,
+  type Step,
   writePlanned,
 } from "./seed-load";
 
@@ -220,6 +227,208 @@ function demoPerson(r: Random, office: Office, category: Category, born: string)
   };
 }
 
+// --- Amendments (change 0008) ----------------------------------------------------------------------
+
+/** Why a DS proposes another beneficiary (AMD-1), and why the Ministry refuses one (AMD-6). */
+const AMENDMENT_REASONS = [
+  "ඉඩමේ අයිතිය පිළිබඳ ගැටලුවක් ඇති බැවින් නිවස ඉදිකළ නොහැක.",
+  "ප්‍රතිලාභියා පවුල සමඟ වෙනත් ප්‍රදේශයකට පදිංචියට ගොස් ඇත.",
+  "ප්‍රතිලාභියාට වෙනත් ආයතනයකින් නිවසක් ලැබී ඇත.",
+];
+const REJECTION_REASONS = [
+  "ඉඩම් ඔප්පුවේ පිටපත අමුණා නැත.",
+  "නව ප්‍රතිලාභියාගේ පදිංචිය ග්‍රාම නිලධාරී මගින් තහවුරු කර නැත.",
+];
+
+const MINUTE = 60_000;
+/** Notices older than this have been read, as the planner's are. */
+const UNREAD_DAYS = 7;
+
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / DAY);
+
+/** A moment during office hours on `day`, after `after`, and never after now, as the planner picks them. */
+function momentOn(ctx: Context, day: string, after: Date): Date {
+  let at = new Date(colomboStartOf(day).getTime() + ctx.r.int(510, 990) * MINUTE);
+  if (at <= after) at = new Date(after.getTime() + ctx.r.int(5, 90) * MINUTE);
+  return at > ctx.now ? ctx.now : at;
+}
+
+/** NTF-1, AMD-10: a notice on `p` to every officer of its two DS offices, each once. */
+function notifyOffices(ctx: Context, p: Planned, type: NotificationType, at: Date) {
+  const read = ctx.now.getTime() - at.getTime() > UNREAD_DAYS * DAY;
+  for (const userId of new Set([...ctx.cast.officers(p.office), ...ctx.cast.officers(p.build)])) {
+    p.notifications.push({
+      id: randomUUID(),
+      userId,
+      caseId: p.case.id!,
+      type,
+      createdAt: at,
+      readAt: read ? new Date(at.getTime() + 60 * MINUTE) : null,
+    });
+  }
+}
+
+/** The values without the empty ones, as a case's or an amendment's audit record holds them (HIS-1). */
+const withoutEmpty = (values: object) =>
+  Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== null && !(Array.isArray(value) && value.length === 0)),
+  ) as Record<string, Prisma.InputJsonValue>;
+
+/** AMD-1: the DS of residence's officer proposes the amendment's beneficiary, as `submitAmendment` logs it. */
+function submitted(ctx: Context, existing: Planned, amendment: PlannedAmendment, at: Date): Step {
+  return {
+    at,
+    actorId: ctx.cast.officers(existing.office)[0]!,
+    action: "amendment_submitted",
+    entityType: "amendment",
+    entityId: amendment.row.id,
+    after: { ...withoutEmpty(amendment.details), reason: amendment.row.reason, documentsAdded: [] },
+    numbers: { applicationNumber: amendment.row.id },
+  };
+}
+
+/**
+ * Change 0008: an amendment of each status among an office's cases, planned in `STATUSES`' order (AMD-9).
+ * - Approved: the office's first case is the beneficiary the Ministry put in the place of one entered 20 to 60
+ *   days earlier, while that one still awaited its allocation (AMD-5). The approval entered the new case, so
+ *   its history starts with it; the earlier one is returned, replaced, to be written with the others.
+ * - Waiting: on the next case awaiting its allocation, proposed since it was entered (AMD-3).
+ * - Rejected: on the first case allocated to its district, refused 1 to 7 days after it was proposed (AMD-6),
+ *   so the to-do panel mostly still shows it (HOME-3).
+ * The last two's new beneficiaries would be built where their case is, which AMD-8 always allows.
+ */
+function planAmendments(ctx: Context, cases: Planned[]): { replaced: Planned[]; amendments: PlannedAmendment[] } {
+  const { r, cast, today } = ctx;
+  const amendments: PlannedAmendment[] = [];
+  const replaced: Planned[] = [];
+  const newId = () => `${cast.idPrefix}${randomUUID()}`;
+
+  const approvedIn = cases[0];
+  if (approvedIn) {
+    const created = approvedIn.history.find((step) => step.action === "case_created")!;
+    const decidedAt = created.at;
+    const newDay = colomboDay(decidedAt);
+    const gap = r.int(20, 60);
+    const earlier = planCase(
+      { ...ctx, cast: { ...cast, age: () => daysBetween(newDay, today) + gap } },
+      approvedIn.office,
+      "AWAITING_ALLOCATION",
+    );
+    const submittedAt = momentOn(ctx, addDays(newDay, -r.int(3, gap - 1)), new Date(earlier.case.createdAt!));
+    const ministry = cast.ministry(r);
+    const amendment: PlannedAmendment = {
+      office: approvedIn.office,
+      row: {
+        id: newId(),
+        caseId: earlier.case.id!,
+        reason: r.pick(AMENDMENT_REASONS),
+        status: "APPROVED",
+        submittedById: cast.officers(approvedIn.office)[0]!,
+        submittedAt,
+        decidedById: ministry,
+        decidedAt,
+        newCaseId: approvedIn.case.id!,
+        version: 2,
+      },
+      details: { ...approvedIn.form, buildDsOfficeId: approvedIn.build.id },
+    };
+    amendments.push(amendment);
+
+    // The earlier beneficiary: proposed to be replaced, then replaced by the approval (the `replace` move).
+    earlier.case.status = "REPLACED";
+    earlier.case.version = Number(earlier.case.version) + 1;
+    earlier.case.updatedAt = decidedAt;
+    earlier.history.push(submitted(ctx, earlier, amendment, submittedAt), {
+      at: decidedAt,
+      actorId: ministry,
+      action: "case_replaced",
+      entityType: "case",
+      entityId: earlier.case.id!,
+      before: { status: "AWAITING_ALLOCATION" },
+      after: {
+        status: "REPLACED",
+        amendmentId: amendment.row.id,
+        newCaseId: approvedIn.case.id!,
+        newName: approvedIn.case.name ?? null,
+        newChildName: approvedIn.case.childName ?? null,
+        allocationMoved: false,
+      },
+      numbers: { newApplicationNumber: approvedIn.case.id! },
+    });
+    replaced.push(earlier);
+
+    // The approval entered the new case, and its history says so (`approveAmendment`).
+    approvedIn.case.replacesCaseId = earlier.case.id!;
+    Object.assign(created, {
+      actorId: ministry,
+      action: "amendment_approved",
+      entityType: "amendment",
+      entityId: amendment.row.id,
+      numbers: { applicationNumber: approvedIn.case.id!, replacedApplicationNumber: earlier.case.id! },
+    });
+    Object.assign(created.after, {
+      reason: amendment.row.reason,
+      replacesCaseId: earlier.case.id!,
+      replacedName: earlier.case.name ?? null,
+      replacedChildName: earlier.case.childName ?? null,
+      allocationMoved: false,
+    });
+    notifyOffices(ctx, approvedIn, "AMENDMENT_APPROVED", decidedAt);
+  }
+
+  // Proposed on a day since `existing` was entered; rejected `decideAfter` days later when that is given.
+  const propose = (existing: Planned | undefined, decideAfter?: number) => {
+    if (!existing) return;
+    const enteredAt = new Date(existing.case.createdAt!);
+    const enteredDay = colomboDay(enteredAt);
+    const day = addDays(enteredDay, r.int(0, daysBetween(enteredDay, today)));
+    const submittedAt = momentOn(ctx, day, enteredAt);
+    // The person the DS proposes, as they were on that day, built where the case is.
+    const proposed = planCase(
+      { ...ctx, cast: { ...cast, buildOffice: () => existing.build, age: () => daysBetween(day, today) } },
+      existing.office,
+      "AWAITING_ALLOCATION",
+    );
+    const amendment: PlannedAmendment = {
+      office: existing.office,
+      row: {
+        id: newId(),
+        caseId: existing.case.id!,
+        reason: r.pick(AMENDMENT_REASONS),
+        status: "WAITING",
+        submittedById: cast.officers(existing.office)[0]!,
+        submittedAt,
+      },
+      details: { ...proposed.form, buildDsOfficeId: existing.build.id },
+    };
+    amendments.push(amendment);
+    existing.history.push(submitted(ctx, existing, amendment, submittedAt));
+    if (decideAfter === undefined) return;
+
+    const decidedAt = momentOn(ctx, addDays(day, decideAfter), submittedAt);
+    const ministry = cast.ministry(r);
+    const rejectionReason = r.pick(REJECTION_REASONS);
+    Object.assign(amendment.row, { status: "REJECTED", decidedById: ministry, decidedAt, rejectionReason, version: 2 });
+    existing.history.push({
+      at: decidedAt,
+      actorId: ministry,
+      action: "amendment_rejected",
+      entityType: "amendment",
+      entityId: amendment.row.id,
+      after: { reason: rejectionReason, name: amendment.details.name, childName: amendment.details.childName },
+      numbers: { applicationNumber: amendment.row.id },
+    });
+    notifyOffices(ctx, existing, "AMENDMENT_REJECTED", decidedAt);
+  };
+  const others = cases.slice(1);
+  propose(others.find((p) => p.case.status === "AWAITING_ALLOCATION"));
+  propose(
+    others.find((p) => p.case.status === "ALLOCATED_TO_DISTRICT"),
+    r.int(1, 7),
+  );
+  return { replaced, amendments };
+}
+
 // --- Adding and removing ------------------------------------------------------------------------
 
 export type DemoOptions = {
@@ -308,20 +517,26 @@ export async function addDemoData(db: PrismaClient, options: DemoOptions = {}): 
     provinceIds: await readProvinceIds(db),
     cast,
   };
-  const planned = offices.flatMap((office) =>
-    Array.from({ length: perOffice }, (_, index) =>
+  const planned: Planned[] = [];
+  const amendments: PlannedAmendment[] = [];
+  for (const office of offices) {
+    const cases = Array.from({ length: perOffice }, (_, index) =>
       planCase(
         ctx,
         office,
         STATUSES[index % STATUSES.length],
         KINDS[index % STATUSES.length] ?? (r.chance(HOUSE_SHARE_NEW) ? "NEW_HOUSE" : "RENOVATION"),
       ),
-    ),
-  );
+    );
+    const theirs = planAmendments(ctx, cases);
+    planned.push(...cases, ...theirs.replaced);
+    amendments.push(...theirs.amendments);
+  }
   await writePlanned(db, r, planned, {
     idPrefix: DEMO_ID_PREFIX,
     history: true,
     districtOfficers: cast.districtOfficers,
+    amendments,
   });
   return { offices: offices.map((o) => o.nameSi) };
 }
@@ -352,7 +567,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(
       offices.length === 0
         ? "Every DS office with an officer already has demo cases."
-        : `Added ${perOffice} demo cases to each of ${offices.length} DS offices: ${offices.join(", ")}.`,
+        : `Added ${perOffice} demo cases, a replaced one and three amendments to each of ${offices.length} DS offices: ${offices.join(", ")}.`,
     );
   };
   run()
