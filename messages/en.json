@@ -241,13 +241,6 @@
       "MINISTRY_CHIEF_ACCOUNTANT": "Chief Accountant",
       "MINISTRY_PROGRAMME_OFFICER": "Diviyata Saviyak Programme Officer"
     },
-    "roleHints": {
-      "DS_OFFICER": "Adds beneficiaries, pays installments, updates progress",
-      "DISTRICT_OFFICER": "Views the district's beneficiaries",
-      "MINISTRY_OFFICER": "All beneficiaries, allocations and money",
-      "VIEWER": "View only",
-      "ADMIN": "Accounts and lists only"
-    },
     "officeOf": "{office} DS",
     "districtOf": "{district} District",
     "provinceOf": "{province} Province",

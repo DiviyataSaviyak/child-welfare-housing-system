@@ -16,7 +16,7 @@ import {
   TEXT,
 } from "./helpers";
 
-/** The account form's office type, then designation (ADM-2). Each designation's card also says what it can do. */
+/** The account form's office type, then designation (ADM-2). Each designation's card shows only its name (UI-11). */
 async function chooseDesignation(page: Page, officeType: string, designation: string) {
   await page.getByRole("radio", { name: officeType, exact: true }).check();
   await page.getByRole("radio", { name: new RegExp(`^${designation}`) }).check();
@@ -113,10 +113,16 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
   await expect(page.getByRole("radio", { name: DIVISIONAL_SECRETARIAT, exact: true })).toBeChecked();
 });
 
-test("each office type offers its own designations and asks for its own place (AC-38)", async ({ page }) => {
+test("each office type offers its own designations and asks for its own place (AC-38, AC-74)", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
   await page.goto("/admin/users/new");
   const designations = page.getByRole("group", { name: "තනතුර *" }).getByRole("radio");
+
+  // AC-74: a designation's card shows its name and nothing about what its role can do.
+  await page.getByRole("radio", { name: DIVISIONAL_SECRETARIAT, exact: true }).check();
+  await expect(page.getByRole("radio", { name: CRPO, exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "සහකාර ප්‍රාදේශීය ලේකම්", exact: true })).toBeVisible();
+  await expect(page.getByText("නැරඹීමට පමණි")).toHaveCount(0);
 
   await page.getByRole("radio", { name: "දිස්ත්‍රික් ලේකම් කාර්යාලය", exact: true }).check();
   await expect(designations).toHaveCount(4);

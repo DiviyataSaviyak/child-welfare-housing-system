@@ -241,13 +241,6 @@
       "MINISTRY_CHIEF_ACCOUNTANT": "ප්‍රධාන ගණකාධිකාරී",
       "MINISTRY_PROGRAMME_OFFICER": "දිවියට සවියක් වැඩසටහන් නිලධාරී"
     },
-    "roleHints": {
-      "DS_OFFICER": "ප්‍රතිලාභීන් ඇතුළත් කරයි, වාරික ගෙවයි, ප්‍රගතිය යාවත්කාලීන කරයි",
-      "DISTRICT_OFFICER": "දිස්ත්‍රික්කයේ ප්‍රතිලාභීන් නරඹයි",
-      "MINISTRY_OFFICER": "සියලු ප්‍රතිලාභීන්, ප්‍රතිපාදන සහ මුදල්",
-      "VIEWER": "නැරඹීමට පමණි",
-      "ADMIN": "ගිණුම් සහ ලැයිස්තු පමණි"
-    },
     "officeOf": "{office} ප්‍රා.ලේ.",
     "districtOf": "{district} දිස්ත්‍රික්කය",
     "provinceOf": "{province} පළාත",
