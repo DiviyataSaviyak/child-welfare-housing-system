@@ -365,42 +365,140 @@ describe("disabling an account (ADM-6)", () => {
   });
 });
 
-describe("the account list (ADM-1)", () => {
-  it("finds accounts by office name and filters by office type", async () => {
-    const { user, dsOfficeId } = await newOfficer();
-    const office = await db.dsOffice.findUniqueOrThrow({ where: { id: dsOfficeId } });
+/** Writes accounts straight into the table, without a temporary password each, for the list's tests. */
+async function madeUpAccounts(
+  marker: string,
+  accounts: {
+    name: string;
+    designation: AccountInput["designation"];
+    role: AccountInput["role"];
+    place?: Partial<Pick<AccountInput, "dsOfficeId" | "districtId" | "provinceId">>;
+    banned?: boolean;
+    lastSignInAt?: Date;
+  }[],
+) {
+  await db.user.createMany({
+    data: accounts.map((a, i) => ({
+      id: `${marker}-${i}`,
+      name: `ලැයිස්තු ${marker} ${a.name}`,
+      email: `${marker}-${i}@no-email.invalid`,
+      // Not a prefix and four digits, so the usernames the form gives next (ADM-2) stay as they were.
+      username: `list-${marker}-${i}`,
+      role: a.role,
+      designation: a.designation,
+      banned: a.banned ?? false,
+      lastSignInAt: a.lastSignInAt ?? null,
+      ...a.place,
+    })),
+  });
+}
 
-    const found = await listAccounts(db, { q: office.nameSi, officeType: "DS" }, "si");
-    expect(found.map((row) => row.id)).toContain(user.id);
-    expect(found.every((row) => row.officeType === "DS")).toBe(true);
-    expect(found.find((row) => row.id === user.id)).toMatchObject({
-      designation: "DS_CRPO",
-      place: { kind: "dsOffice", office: office.nameSi },
+describe("the account list (ADM-1, ADM-12)", () => {
+  it("narrows by province, district and DS office, and counts each choice (AC-72)", async () => {
+    const kandy = await db.district.findFirstOrThrow({
+      where: { nameEn: "Kandy" },
+      include: { dsOffices: { orderBy: { id: "asc" } } },
     });
-    expect(await listAccounts(db, { officeType: "MINISTRY", q: office.nameSi }, "si")).toEqual([]);
+    const [office, otherOffice] = kandy.dsOffices;
+    const matale = await db.district.findFirstOrThrow({
+      where: { provinceId: kandy.provinceId, id: { gt: kandy.id } },
+      include: { dsOffices: true },
+    });
+    const elsewhere = await db.dsOffice.findFirstOrThrow({
+      where: { district: { provinceId: { not: kandy.provinceId } } },
+    });
+    await madeUpAccounts("places", [
+      { name: "අ", designation: "DS_CRPO", role: "DS_OFFICER", place: { dsOfficeId: office.id } },
+      { name: "ආ", designation: "DS_ACCOUNTANT", role: "VIEWER", place: { dsOfficeId: office.id } },
+      { name: "ඇ", designation: "DS_CRPO", role: "DS_OFFICER", place: { dsOfficeId: otherOffice.id } },
+      { name: "ඈ", designation: "DS_CRPO", role: "DS_OFFICER", place: { dsOfficeId: matale.dsOffices[0].id } },
+      { name: "ඉ", designation: "DISTRICT_SECRETARY", role: "VIEWER", place: { districtId: kandy.id } },
+      { name: "ඊ", designation: "PROVINCE_COMMISSIONER", role: "VIEWER", place: { provinceId: kandy.provinceId } },
+      { name: "උ", designation: "DS_CRPO", role: "DS_OFFICER", place: { dsOfficeId: elsewhere.id } },
+      { name: "ඌ", designation: "MINISTRY_SECRETARY", role: "VIEWER" },
+    ]);
+    const list = (filter: Parameters<typeof listAccounts>[1]) =>
+      listAccounts(db, { q: "ලැයිස්තු places", ...filter }, "en");
+
+    const all = await list({});
+    expect(all.total).toBe(8);
+    expect(all.counts.provinces[kandy.provinceId]).toBe(6);
+    expect(all.counts.districts[kandy.id]).toBe(4);
+    expect(all.counts.districts[matale.id]).toBe(1);
+    expect(all.counts.dsOffices[office.id]).toBe(2);
+
+    // A place leaves out the accounts with none, such as the Ministry's.
+    const province = await list({ provinceId: kandy.provinceId });
+    expect(province.rows.map((r) => r.name.at(-1))).toEqual(["ඊ", "ඉ", "අ", "ආ", "ඇ", "ඈ"]);
+    // The office type tabs count under the place, the places under the office type.
+    expect(province.counts.officeTypes).toMatchObject({ all: 6, DS: 4, DISTRICT: 1, PROVINCE: 1, MINISTRY: 0 });
+    expect(province.counts.provinces[kandy.provinceId]).toBe(6);
+
+    const district = await list({ provinceId: kandy.provinceId, districtId: kandy.id });
+    expect(district.total).toBe(4);
+    const dsOffice = await list({ provinceId: kandy.provinceId, districtId: kandy.id, dsOfficeId: office.id });
+    expect(dsOffice.rows.map((r) => r.name.at(-1))).toEqual(["අ", "ආ"]);
+    expect(dsOffice.rows[0].place).toEqual({ kind: "dsOffice", office: office.nameEn, district: "Kandy" });
+    // The other offices still count, so the list can offer them.
+    expect(dsOffice.counts.dsOffices[otherOffice.id]).toBe(1);
+
+    const ds = await list({ officeType: "DS", provinceId: kandy.provinceId });
+    expect(ds.total).toBe(4);
+    expect(ds.counts.provinces[kandy.provinceId]).toBe(4);
+    expect(ds.counts.officeTypes.all).toBe(6);
+
+    // With no place, the accounts with none come first.
+    expect(all.rows[0].name.at(-1)).toBe("ඌ");
+    expect(all.rows[0].place).toBeNull();
   });
 
-  it("finds a District or Provincial account by its place, in any language", async () => {
-    const district = await db.district.findFirstOrThrow({ orderBy: { id: "desc" } });
-    const province = await db.province.findFirstOrThrow({ orderBy: { id: "desc" } });
-    const made = await Promise.all([
-      createAccount(db, ADMIN, nameless("DISTRICT_CRPO", "DISTRICT_OFFICER", { districtId: district.id })),
-      createAccount(db, ADMIN, nameless("PROVINCE_PROBATION_OFFICER", "VIEWER", { provinceId: province.id })),
-    ]);
-    const [districtUser, provinceUser] = made.map((m) => (m.ok ? m.value.username : ""));
+  it("searches by name or username only", async () => {
+    const kandy = await db.district.findFirstOrThrow({ where: { nameEn: "Kandy" } });
+    expect((await listAccounts(db, { q: "Kandy" }, "en")).rows.some((r) => r.name.includes("places"))).toBe(false);
+    const [account] = (await listAccounts(db, { q: "ලැයිස්තු places", districtId: kandy.id }, "si")).rows;
+    const byUsername = await listAccounts(db, { q: account.username.toUpperCase() }, "si");
+    expect(byUsername.rows.map((r) => r.id)).toEqual([account.id]);
+  });
 
-    const byDistrict = await listAccounts(db, { q: district.nameEn.toLowerCase(), officeType: "DISTRICT" }, "ta");
-    expect(byDistrict.find((row) => row.username === districtUser)).toMatchObject({
-      officeType: "DISTRICT",
-      role: "DISTRICT_OFFICER",
-      place: { kind: "district", district: district.nameTa },
-    });
-    const byProvince = await listAccounts(db, { q: province.nameSi, officeType: "PROVINCE" }, "en");
-    expect(byProvince.find((row) => row.username === provinceUser)).toMatchObject({
-      place: { kind: "province", province: province.nameEn },
-    });
-    const admins = await listAccounts(db, { officeType: "ADMINISTRATOR" }, "si");
-    expect(admins.length).toBeGreaterThan(0);
-    expect(admins.every((row) => row.role === "ADMIN" && row.designation === null && row.place === null)).toBe(true);
+  it("filters by status, sorts by a column either way and shows 50 to a page (AC-73)", async () => {
+    const dsOfficeId = (await db.dsOffice.findFirstOrThrow({ orderBy: { id: "desc" } })).id;
+    const day = (n: number) => new Date(Date.UTC(2026, 9, n));
+    await madeUpAccounts(
+      "pages",
+      Array.from({ length: 55 }, (_, i) => ({
+        name: String(i + 10),
+        designation: "DS_CRPO" as const,
+        role: "DS_OFFICER" as const,
+        place: { dsOfficeId },
+        // Every fifth is disabled, every third signed in on a day of its own; the rest never signed in.
+        banned: i % 5 === 0,
+        ...(i % 3 === 0 && { lastSignInAt: day(1 + (i % 28)) }),
+      })),
+    );
+    const q = "ලැයිස්තු pages";
+
+    const first = await listAccounts(db, { q }, "si");
+    expect([first.total, first.page, first.rows.length]).toEqual([55, 1, 50]);
+    const second = await listAccounts(db, { q, page: 2 }, "si");
+    expect(second.rows).toHaveLength(5);
+    expect(new Set([...first.rows, ...second.rows].map((r) => r.id)).size).toBe(55);
+    // A page past the end shows the last.
+    expect((await listAccounts(db, { q, page: 9 }, "si")).page).toBe(2);
+
+    const never = await listAccounts(db, { q, status: "neverSignedIn" }, "si");
+    expect(never.total).toBe(55 - 11 - 19 + 4);
+    expect(never.rows.every((r) => r.active && r.lastSignInAt === null)).toBe(true);
+    expect((await listAccounts(db, { q, status: "disabled" }, "si")).total).toBe(11);
+    expect((await listAccounts(db, { q, status: "active" }, "si")).total).toBe(44);
+
+    const latest = await listAccounts(db, { q, sort: "lastSignIn" }, "si");
+    const signIns = latest.rows.map((r) => r.lastSignInAt?.getTime() ?? 0);
+    expect(signIns).toEqual([...signIns].sort((a, b) => b - a));
+    expect(latest.rows[0].lastSignInAt).toEqual(day(28));
+    const earliest = await listAccounts(db, { q, sort: "lastSignIn", reversed: true }, "si");
+    expect(earliest.rows[0].lastSignInAt).toBeNull();
+
+    const byName = await listAccounts(db, { q, sort: "name", reversed: true, page: 2 }, "si");
+    expect(byName.rows.map((r) => r.name.split(" ").at(-1))).toEqual(["14", "13", "12", "11", "10"]);
   });
 });

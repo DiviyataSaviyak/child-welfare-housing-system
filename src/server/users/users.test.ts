@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseAccountForm, parseProfileForm } from "@/lib/validation/user";
 import en from "../../../messages/en.json";
 import si from "../../../messages/si.json";
-import { accountLabel, designationsNamed } from "./label";
+import { accountLabel } from "./label";
 import { generateTemporaryPassword } from "./passwords";
 import { checkDisable, checkRoleChange } from "./rules";
 import { nextUsername } from "./usernames";
@@ -243,13 +243,5 @@ describe("accountLabel (ADM-10)", () => {
       en.users.designations.MINISTRY_SECRETARY,
     );
     expect(accountLabel(nameless, "si")).toBe(si.users.officeTypes.ADMINISTRATOR);
-  });
-});
-
-describe("searching by designation (ADM-1)", () => {
-  it("finds the designations whose label holds the text, in the screen's language", () => {
-    expect(designationsNamed(en.users.designations.DS_ACCOUNTANT.toUpperCase(), "en")).toContain("DS_ACCOUNTANT");
-    expect(designationsNamed(si.users.designations.DS_CRPO, "si")).toContain("DS_CRPO");
-    expect(designationsNamed("nothing like it", "en")).toEqual([]);
   });
 });

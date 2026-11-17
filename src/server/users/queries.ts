@@ -1,9 +1,10 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
+import { ACCOUNTS_PER_PAGE, type AccountSort, type AccountStatus } from "@/lib/account-filters";
 import { localName, NAMES, type Names } from "@/lib/names";
-import { type Designation, designationsOf, isDesignation, type OfficeType, officeTypeOf } from "../auth/designations";
+import { type Designation, isDesignation, OFFICE_TYPES, type OfficeType, officeTypeOf } from "../auth/designations";
 import { isRole, type Role } from "../auth/roles";
-import { accountLabel, designationsNamed, LABEL_SELECT } from "./label";
+import { accountLabel, LABEL_SELECT } from "./label";
 
 export type AccountRow = {
   id: string;
@@ -50,80 +51,168 @@ function placeOfRow(u: PlaceRow, locale: Locale): AccountPlace | null {
   return null;
 }
 
-/** Matches a place's name in any of its three languages. */
-const nameMatches = (q: string) => [
-  { nameSi: { contains: q } },
-  { nameTa: { contains: q } },
-  { nameEn: { contains: q, mode: "insensitive" as const } },
-];
+export type AccountFilter = {
+  q?: string;
+  officeType?: OfficeType;
+  provinceId?: number;
+  districtId?: number;
+  dsOfficeId?: number;
+  status?: AccountStatus;
+  sort?: AccountSort;
+  /** Turns the sort round. */
+  reversed?: boolean;
+  /** From 1. */
+  page?: number;
+};
 
-/** The accounts of one office type: an administrator is the one with no designation (ADM-8). */
-function officeTypeWhere(officeType: OfficeType): Prisma.UserWhereInput {
-  return officeType === "ADMINISTRATOR" ? { role: "ADMIN" } : { designation: { in: designationsOf(officeType) } };
+export type AccountList = {
+  rows: AccountRow[];
+  /** How many accounts the filters leave, over every page. */
+  total: number;
+  /** The page shown: a page past the end shows the last. */
+  page: number;
+  /** ADM-12: how many accounts each choice would leave, under the other filters. */
+  counts: {
+    /** Each office type's tab, under the places, status and search; `all` is the first tab. */
+    officeTypes: Record<OfficeType | "all", number>;
+    /** Each place, under the office type, status and search, but not the places chosen. */
+    provinces: Record<number, number>;
+    districts: Record<number, number>;
+    dsOffices: Record<number, number>;
+  };
+};
+
+/** Where an account is (ADM-12): its DS office, district and province, as far as it has them. */
+type Whereabouts = { provinceId: number | null; districtId: number | null; dsOfficeId: number | null };
+
+function whereabouts(u: {
+  dsOfficeId: number | null;
+  districtId: number | null;
+  provinceId: number | null;
+  dsOffice: { districtId: number; district: { provinceId: number } } | null;
+  district: { provinceId: number } | null;
+}): Whereabouts {
+  if (u.dsOffice)
+    return { provinceId: u.dsOffice.district.provinceId, districtId: u.dsOffice.districtId, dsOfficeId: u.dsOfficeId };
+  if (u.district) return { provinceId: u.district.provinceId, districtId: u.districtId, dsOfficeId: null };
+  return { provinceId: u.provinceId, districtId: null, dsOfficeId: null };
 }
 
+function statusWhere(status: AccountStatus | undefined): Prisma.UserWhereInput {
+  if (status === "active") return { banned: false };
+  if (status === "disabled") return { banned: true };
+  if (status === "neverSignedIn") return { banned: false, lastSignInAt: null };
+  return {};
+}
+
+function countIn(counts: Record<number, number>, id: number | null) {
+  if (id !== null) counts[id] = (counts[id] ?? 0) + 1;
+}
+
+/** The accounts with no place first, then by province, district and DS office, each in the lists' order. */
+const byPlace = (a: Whereabouts, b: Whereabouts) =>
+  (a.provinceId ?? 0) - (b.provinceId ?? 0) ||
+  (a.districtId ?? 0) - (b.districtId ?? 0) ||
+  (a.dsOfficeId ?? 0) - (b.dsOfficeId ?? 0);
+
+type Listed = { row: AccountRow; at: Whereabouts };
+
 /**
- * ADM-1: every account, searchable by name, designation (in the screen's language), office, district or
- * province (in any of their three names) or username, and filterable by office type. Places come in the
- * screen's language (UI-9).
+ * ADM-1, ADM-12: one page of the accounts, searchable by name or username and filtered by office type, place
+ * and status, with the total and each choice's count. Places come in the screen's language (UI-9).
+ *
+ * The admin has some 1,500 accounts at most, so the database is asked for the search and the status, and the
+ * rest is done here: the places, which follow a DS officer's office up to its district and province, the
+ * counts of every choice at once, and the sort by the label the screen shows (ADM-10).
  */
-export async function listAccounts(
-  db: PrismaClient,
-  filter: { q?: string; officeType?: OfficeType },
-  locale: Locale,
-): Promise<AccountRow[]> {
+export async function listAccounts(db: PrismaClient, filter: AccountFilter, locale: Locale): Promise<AccountList> {
   const q = filter.q?.trim();
-  const where: Prisma.UserWhereInput = {
-    AND: [
-      filter.officeType ? officeTypeWhere(filter.officeType) : {},
-      q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { username: { contains: q.toLowerCase() } },
-              { designation: { in: designationsNamed(q, locale) } },
-              ...nameMatches(q).flatMap((match) => [
-                { dsOffice: match },
-                { dsOffice: { district: match } },
-                { district: match },
-                { province: match },
-              ]),
-            ],
-          }
-        : {},
-    ],
-  };
   const users = await db.user.findMany({
-    where,
-    orderBy: [{ role: "asc" }, { name: "asc" }, { username: "asc" }],
+    where: {
+      AND: [
+        statusWhere(filter.status),
+        q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { username: { contains: q.toLowerCase() } }] } : {},
+      ],
+    },
     select: {
       id: true,
       username: true,
       role: true,
       banned: true,
       lastSignInAt: true,
+      dsOfficeId: true,
+      districtId: true,
+      provinceId: true,
       ...LABEL_SELECT,
-      ...PLACE_SELECT,
+      dsOffice: { select: { ...NAMES, districtId: true, district: { select: { ...NAMES, provinceId: true } } } },
+      district: { select: { ...NAMES, provinceId: true } },
     },
   });
-  return users.flatMap((u) => {
-    if (!isRole(u.role) || !u.username) return [];
+
+  const counts: AccountList["counts"] = {
+    officeTypes: { all: 0, DS: 0, DISTRICT: 0, PROVINCE: 0, DEPARTMENT: 0, MINISTRY: 0, ADMINISTRATOR: 0 },
+    provinces: {},
+    districts: {},
+    dsOffices: {},
+  };
+  const inPlace = (at: Whereabouts) =>
+    (!filter.provinceId || at.provinceId === filter.provinceId) &&
+    (!filter.districtId || at.districtId === filter.districtId) &&
+    (!filter.dsOfficeId || at.dsOfficeId === filter.dsOfficeId);
+
+  const chosen: Listed[] = [];
+  for (const u of users) {
+    if (!isRole(u.role) || !u.username) continue;
     const designation = isDesignation(u.designation) ? u.designation : null;
-    return [
-      {
+    const officeType = officeTypeOf(designation);
+    const at = whereabouts(u);
+    const placed = inPlace(at);
+    if (placed) {
+      counts.officeTypes.all += 1;
+      counts.officeTypes[officeType] += 1;
+    }
+    if (filter.officeType && officeType !== filter.officeType) continue;
+    countIn(counts.provinces, at.provinceId);
+    countIn(counts.districts, at.districtId);
+    countIn(counts.dsOffices, at.dsOfficeId);
+    if (!placed) continue;
+    chosen.push({
+      at,
+      row: {
         id: u.id,
         name: u.name,
         label: accountLabel(u, locale),
         username: u.username,
-        officeType: officeTypeOf(designation),
+        officeType,
         designation,
         role: u.role,
         place: placeOfRow(u, locale),
         lastSignInAt: u.lastSignInAt,
         active: !u.banned,
       },
-    ];
-  });
+    });
+  }
+
+  const collator = new Intl.Collator(locale);
+  const byName = (a: Listed, b: Listed) =>
+    collator.compare(a.row.label, b.row.label) || a.row.username.localeCompare(b.row.username);
+  const orders: Record<AccountSort | "place", (a: Listed, b: Listed) => number> = {
+    place: (a, b) => byPlace(a.at, b.at) || byName(a, b),
+    name: byName,
+    office: (a, b) =>
+      OFFICE_TYPES.indexOf(a.row.officeType) - OFFICE_TYPES.indexOf(b.row.officeType) ||
+      byPlace(a.at, b.at) ||
+      byName(a, b),
+    // The latest first; an account that has never signed in counts as the earliest.
+    lastSignIn: (a, b) => (b.row.lastSignInAt?.getTime() ?? 0) - (a.row.lastSignInAt?.getTime() ?? 0) || byName(a, b),
+  };
+  const order = orders[filter.sort ?? "place"];
+  chosen.sort(filter.reversed ? (a, b) => order(b, a) : order);
+
+  const total = chosen.length;
+  const page = Math.min(Math.max(1, filter.page ?? 1), Math.max(1, Math.ceil(total / ACCOUNTS_PER_PAGE)));
+  const rows = chosen.slice((page - 1) * ACCOUNTS_PER_PAGE, page * ACCOUNTS_PER_PAGE).map((a) => a.row);
+  return { rows, total, page, counts };
 }
 
 export async function accountCounts(db: PrismaClient): Promise<{ total: number; active: number; disabled: number }> {
@@ -270,6 +359,37 @@ export async function officeChoices(
 }
 
 export type PlaceChoice = { id: number; name: string };
+
+export type PlaceFilterChoices = {
+  provinces: PlaceChoice[];
+  districts: (PlaceChoice & { provinceId: number })[];
+  /** The chosen district's DS offices, active or not, since an inactive office may still have accounts. */
+  dsOffices: (PlaceChoice & { active: boolean })[];
+};
+
+/** ADM-12: the users screen's place filters, in the screen's language and the lists' order. */
+export async function placeFilterChoices(
+  db: PrismaClient,
+  locale: Locale,
+  districtId: number | undefined,
+): Promise<PlaceFilterChoices> {
+  const [provinces, districts, dsOffices] = await Promise.all([
+    db.province.findMany({ orderBy: { id: "asc" }, select: { id: true, ...NAMES } }),
+    db.district.findMany({ orderBy: { id: "asc" }, select: { id: true, provinceId: true, ...NAMES } }),
+    districtId
+      ? db.dsOffice.findMany({
+          where: { districtId },
+          orderBy: { id: "asc" },
+          select: { id: true, active: true, ...NAMES },
+        })
+      : [],
+  ]);
+  return {
+    provinces: provinces.map((p) => ({ id: p.id, name: localName(p, locale) })),
+    districts: districts.map((d) => ({ id: d.id, provinceId: d.provinceId, name: localName(d, locale) })),
+    dsOffices: dsOffices.map((o) => ({ id: o.id, active: o.active, name: localName(o, locale) })),
+  };
+}
 
 /** The provinces for the account form, in the screen's language. */
 export async function provinceChoices(db: PrismaClient, locale: Locale): Promise<PlaceChoice[]> {

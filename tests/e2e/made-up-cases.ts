@@ -4,6 +4,8 @@
  *
  *   npx tsx tests/e2e/made-up-cases.ts period <marker>    adds `PERIOD_CASES` and prints them as JSON
  *   npx tsx tests/e2e/made-up-cases.ts exports <marker>   prints the downloads that searched for the marker
+ *   npx tsx tests/e2e/made-up-cases.ts places <marker>    adds accounts in and around Kandy (AC-72)
+ *   npx tsx tests/e2e/made-up-cases.ts pages <marker>     adds 55 accounts in Homagama (AC-73)
  *
  * `period` adds cases entered over a year (EXP-4, AC-70) through the made-up data's planner
  * (`scripts/seed-load.ts`), each awaiting its allocation, entered by the office's sample officer, and named
@@ -17,7 +19,7 @@ import { addDays, colomboDay } from "../../src/lib/dates";
 import { createPrismaClient } from "../../src/server/db";
 import { generator, madeUpNic, madeUpPhone } from "../../scripts/made-up";
 import { type Cast, planCase, readOffices, readProvinceIds, readStages, writePlanned } from "../../scripts/seed-load";
-import { TEST_CASE_NAME } from "./helpers";
+import { TEST_ACCOUNT_NAME, TEST_CASE_NAME } from "./helpers";
 
 /** Each case `period` adds: its DS office (by code), how many days ago it was entered, and its category. */
 export const PERIOD_CASES: { office: "HMG" | "BYG"; age: number; category: Category }[] = [
@@ -50,6 +52,8 @@ async function main() {
   try {
     if (command === "period") console.log(JSON.stringify(await addPeriodCases(db, marker)));
     else if (command === "exports") console.log(JSON.stringify(await exportsOf(db, marker)));
+    else if (command === "places") console.log(JSON.stringify(await addPlacedAccounts(db, marker)));
+    else if (command === "pages") console.log(JSON.stringify(await addManyAccounts(db, marker)));
     else throw new Error(`Unknown command: ${command}`);
   } finally {
     await db.$disconnect();
@@ -109,6 +113,91 @@ async function exportsOf(db: ReturnType<typeof createPrismaClient>, marker: stri
     select: { actorId: true, entityId: true, after: true },
   });
   return records;
+}
+
+type Db = ReturnType<typeof createPrismaClient>;
+type MadeUpAccount = {
+  name: string;
+  designation: string;
+  role: "DS_OFFICER" | "DISTRICT_OFFICER" | "VIEWER" | "MINISTRY_OFFICER";
+  dsOfficeId?: number;
+  districtId?: number;
+  provinceId?: number;
+  banned?: boolean;
+  lastSignInAt?: Date;
+};
+
+/**
+ * Writes made-up accounts straight into the table, named with `TEST_ACCOUNT_NAME` and the marker, so the
+ * search finds only them and `cleanup.ts` deletes them. Their usernames aren't a prefix and four digits, so
+ * the usernames the account form gives next (ADM-2) stay as they were; nobody signs in with them.
+ */
+async function writeAccounts(db: Db, marker: string, accounts: MadeUpAccount[]) {
+  await db.user.createMany({
+    data: accounts.map(({ name, ...account }, i) => ({
+      ...account,
+      id: `e2e-account-${marker}-${i}`,
+      name: `${TEST_ACCOUNT_NAME} ${marker} ${name}`,
+      email: `e2e-account-${marker}-${i}@no-email.invalid`,
+      username: `e2e-${marker}-${i}`,
+    })),
+  });
+}
+
+/**
+ * AC-72: eight accounts in and around Kandy: two in its first DS office, one in its second, a District
+ * account, one in another Central district's office, a Provincial account for Central, one in Colombo's
+ * Homagama, and a Ministry account with no place. Prints the places' ids and Sinhala names.
+ * The DS accounts are view-only, so they get no notices of the offices' cases in other tests.
+ */
+async function addPlacedAccounts(db: Db, marker: string) {
+  const kandy = await db.district.findFirstOrThrow({
+    where: { nameEn: "Kandy" },
+    select: { id: true, nameSi: true, provinceId: true, dsOffices: { orderBy: { id: "asc" }, take: 2 } },
+  });
+  const [office, otherOffice] = kandy.dsOffices;
+  const central = await db.province.findUniqueOrThrow({ where: { id: kandy.provinceId } });
+  const other = await db.district.findFirstOrThrow({
+    where: { provinceId: kandy.provinceId, id: { not: kandy.id } },
+    select: { id: true, dsOffices: { orderBy: { id: "asc" }, take: 1, select: { id: true } } },
+  });
+  const homagama = await db.dsOffice.findUniqueOrThrow({ where: { code: "HMG" } });
+  await writeAccounts(db, marker, [
+    { name: "1", designation: "DS_SECRETARY", role: "VIEWER", dsOfficeId: office.id },
+    { name: "2", designation: "DS_ACCOUNTANT", role: "VIEWER", dsOfficeId: office.id },
+    { name: "3", designation: "DS_SECRETARY", role: "VIEWER", dsOfficeId: otherOffice.id },
+    { name: "4", designation: "DISTRICT_SECRETARY", role: "VIEWER", districtId: kandy.id },
+    { name: "5", designation: "DS_ACCOUNTANT", role: "VIEWER", dsOfficeId: other.dsOffices[0].id },
+    { name: "6", designation: "PROVINCE_COMMISSIONER", role: "VIEWER", provinceId: central.id },
+    { name: "7", designation: "DS_ACCOUNTANT", role: "VIEWER", dsOfficeId: homagama.id },
+    { name: "8", designation: "MINISTRY_SECRETARY", role: "VIEWER" },
+  ]);
+  return {
+    province: { id: central.id, name: central.nameSi },
+    district: { id: kandy.id, name: kandy.nameSi },
+    office: { id: office.id, name: office.nameSi },
+  };
+}
+
+/**
+ * AC-73: 55 accounts in Homagama. Every fifth is disabled, and every third has signed in, each on a day of
+ * its own in October 2026; the rest never signed in. Prints how many there are of each.
+ */
+async function addManyAccounts(db: Db, marker: string) {
+  const homagama = await db.dsOffice.findUniqueOrThrow({ where: { code: "HMG" } });
+  const accounts = Array.from({ length: 55 }, (_, i): MadeUpAccount => ({
+    name: String(i + 10),
+    designation: "DS_ACCOUNTANT",
+    role: "VIEWER",
+    dsOfficeId: homagama.id,
+    banned: i % 5 === 0,
+    ...(i % 3 === 0 && { lastSignInAt: new Date(Date.UTC(2026, 9, 1 + (i % 28), 4)) }),
+  }));
+  await writeAccounts(db, marker, accounts);
+  return {
+    total: accounts.length,
+    neverSignedIn: accounts.filter((a) => !a.banned && !a.lastSignInAt).length,
+  };
 }
 
 if (process.argv[1]?.endsWith("made-up-cases.ts")) {
