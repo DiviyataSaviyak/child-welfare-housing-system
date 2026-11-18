@@ -910,8 +910,8 @@ export async function writePlanned(
   planned: Planned[],
   { idPrefix, history, districtOfficers, amendments = [], prepare }: WriteOptions,
 ): Promise<void> {
-  // REL-2: one allocation letter for the cases of a district allocated on the same day. REL-6: one District
-  // release for the cases released to a DS office on the same day.
+  // REL-2: one allocation letter for the cases of a district allocated on the same day. REL-6, REL-12: one
+  // District release for the cases of one letter released to a DS office on the same day.
   const letters = new Map<string, Prisma.ReleaseLetterCreateManyInput>();
   const onLetter = new Map<string, Planned[]>();
   const dsReleases = new Map<string, Prisma.DsReleaseCreateManyInput>();
@@ -938,13 +938,14 @@ export async function writePlanned(
     onLetter.get(key)!.push(p);
     let dsRelease: Prisma.DsReleaseCreateManyInput | undefined;
     if (ds) {
-      const dsKey = `${p.build.id}:${ds.day}`;
+      const dsKey = `${p.build.id}:${letter.id}:${ds.day}`;
       dsRelease = dsReleases.get(dsKey);
       if (!dsRelease) {
         dsRelease = {
           id: `${idPrefix}${randomUUID()}`,
           districtId: p.build.districtId,
           dsOfficeId: p.build.id,
+          letterId: letter.id,
           referenceNumber: `DS/${p.build.code}/${ds.day.slice(0, 4)}/${r.int(100, 999)}`,
           releasedOn: dayToDate(ds.day),
           byId: ds.byId,
@@ -1123,8 +1124,11 @@ export async function removeMadeUp(
         ...(await tx.storedFile.findMany({ where: emptyLetter, select: { storedName: true, thumbName: true } })),
       );
       await tx.storedFile.deleteMany({ where: emptyLetter });
-      await tx.releaseLetter.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
+      // A District release names its letter (REL-12), so it goes first.
       await tx.dsRelease.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
+      await tx.releaseLetter.deleteMany({
+        where: { releases: { none: {} }, returns: { none: {} }, dsReleases: { none: {} } },
+      });
       await tx.stageUpdate.deleteMany({ where: theirs });
       await tx.decision.deleteMany({ where: theirs });
       const cases = await tx.case.deleteMany({ where: { id: { startsWith: idPrefix } } });

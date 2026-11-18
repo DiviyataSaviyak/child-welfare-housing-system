@@ -8,8 +8,8 @@ import { db } from "@/server/db";
 import { dsReleaseWithCases } from "@/server/releases/queries";
 
 /**
- * REL-11: one of the district's releases to a DS office, opened from "releases recorded last": the
- * beneficiaries it sent money for, their number and the amount. A release of another district is
+ * REL-11: one of the district's releases to a DS office, opened from "releases recorded last": its Ministry
+ * letter (REL-12), the beneficiaries it sent money for, their number and the amount. A release of another district is
  * "not found" (PRM-1).
  */
 export default async function DistrictReleaseRecordedPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +26,11 @@ export default async function DistrictReleaseRecordedPage({ params }: { params: 
         backHref="/oversight/release"
         backLabel={t("sent.backToReleases")}
         title={t("sent.releaseTitle", { office: release.officeName, reference: release.referenceNumber })}
-        subtitle={t("sent.releaseSubtitle", { date: formatDate(release.releasedOn) })}
+        subtitle={t("sent.releaseSubtitle", {
+          date: formatDate(release.releasedOn),
+          letter: release.letterNumber,
+          letterDate: formatDate(release.letterDate),
+        })}
       />
       <SentCases cases={release.cases} href={(caseId) => `/oversight/cases/${caseId}`} />
     </div>

@@ -7,6 +7,7 @@ import {
   openAs,
   randomNic,
   RECEIVED,
+  openDsReleaseFor,
   recordDsReleaseFor,
   recordLetterFor,
   releasedCase,
@@ -249,8 +250,7 @@ test("AC-56: a case Kaduwela enters, built in Biyagama, goes through Gampaha's D
   await recordLetterFor(ho, [name], `MWCA/E2E/AC-56-${Date.now()}`);
 
   // REL-5 to REL-7: Gampaha's District CRPO releases it to Biyagama.
-  await gampaha.goto("/oversight/release");
-  await gampaha.getByRole("link", { name: /^බියගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await openDsReleaseFor(gampaha, "බියගම", name);
   await recordDsReleaseFor(gampaha, [name], "DS/E2E/AC-56");
 
   // INS-5: Biyagama, where it is built, pays installment 1, which moves it on to in progress.

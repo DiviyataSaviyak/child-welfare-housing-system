@@ -8,6 +8,7 @@ import {
   RECEIVED,
   randomApplicationNumber,
   randomNic,
+  openDsReleaseFor,
   recordDsReleaseFor,
   recordLetterFor,
   releasedCase,
@@ -487,8 +488,7 @@ test("AC-76: a replacement built in another DS office of the district sends the 
   // AMD-10: Colombo's District CRPO is told, sees it waiting for Kaduwela and releases it there.
   await district.goto("/oversight/notifications");
   await expect(district.getByText(newcomer).first()).toBeVisible();
-  await district.goto("/oversight/release");
-  await district.getByRole("link", { name: /^කඩුවෙල ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await openDsReleaseFor(district, "කඩුවෙල", newcomer);
   await recordDsReleaseFor(district, [newcomer], `DS/E2E/${label}/2`);
   await district.context().close();
 
@@ -613,8 +613,7 @@ test("AC-78: Homagama asks Colombo's District, which nominates a beneficiary of 
   const kaduwela = await openAs(browser, "ds0103");
   await kaduwela.goto("/ds/notifications");
   await expect(kaduwela.getByText(newcomer).first()).toBeVisible();
-  await district.goto("/oversight/release");
-  await district.getByRole("link", { name: /^කඩුවෙල ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await openDsReleaseFor(district, "කඩුවෙල", newcomer);
   await recordDsReleaseFor(district, [newcomer], `DS/E2E/${label}/2`);
   await district.context().close();
 

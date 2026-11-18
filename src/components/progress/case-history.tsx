@@ -16,6 +16,8 @@ const ACTIONS = [
   "release_corrected",
   "case_ds_released",
   "ds_release_corrected",
+  // Change 0009: a District release of several Ministry letters was split into one for each (REL-12).
+  "ds_release_split",
   "installment_started",
   "installment_paid",
   "installment_payment_undone",
@@ -172,6 +174,14 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           sentence: t("actions.case_ds_released", {
             district: text(after.district) ?? tc("none"),
             office: text(after.office) ?? tc("none"),
+            reference: text(after.referenceNumber) ?? tc("none"),
+          }),
+          lines,
+        };
+      case "ds_release_split":
+        return {
+          sentence: t("actions.ds_release_split", {
+            letter: text(after.letterNumber) ?? tc("none"),
             reference: text(after.referenceNumber) ?? tc("none"),
           }),
           lines,

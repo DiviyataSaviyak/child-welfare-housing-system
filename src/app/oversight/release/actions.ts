@@ -28,18 +28,20 @@ const releaseForm = (form: FormData) =>
   Object.fromEntries(DS_RELEASE_FIELDS.map((field) => [field, read(form, field)])) as Record<DsReleaseField, string>;
 
 /**
- * REL-6, REL-7: records the District's release to one DS office of the cases ticked on it. The page then
+ * REL-6, REL-7, REL-12: records the District's release to one DS office of the cases of one letter ticked on it. The page then
  * shows the release's notice by its id, never by names (SEC-8).
  */
 export async function recordDsReleaseAction(_previous: DsReleaseState, form: FormData): Promise<DsReleaseState> {
   const actor = await requireRole("DISTRICT_OFFICER");
   const dsOfficeId = positive(read(form, "dsOfficeId"));
+  const letterId = read(form, "letterId");
   const cases = tickedCases(form.getAll("case"), MAX_LETTER_CASES);
-  if (!dsOfficeId || !cases) return { error: "notFound", errors: {} };
+  if (!dsOfficeId || !cases || letterId.length === 0 || letterId.length > 64) return { error: "notFound", errors: {} };
 
   const scanId = read(form, "scanId");
   const result = await recordDsRelease(db, actor, {
     dsOfficeId,
+    letterId,
     cases,
     form: releaseForm(form),
     scanId: scanId.length > 0 && scanId.length <= 64 ? scanId : null,

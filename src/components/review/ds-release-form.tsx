@@ -38,6 +38,7 @@ export type DsReleaseFormCase = {
  */
 export function DsReleaseForm({
   dsOfficeId,
+  letterId,
   officeName,
   cases,
   today,
@@ -45,6 +46,8 @@ export function DsReleaseForm({
   upload,
 }: {
   dsOfficeId: number;
+  /** The Ministry letter the release is for (REL-12). */
+  letterId: string;
   officeName: string;
   cases: DsReleaseFormCase[];
   /** "YYYY-MM-DD", in Colombo. */
@@ -90,6 +93,7 @@ export function DsReleaseForm({
     setCheckErrors(null);
     const form = new FormData();
     form.set("dsOfficeId", String(dsOfficeId));
+    form.set("letterId", letterId);
     for (const c of ticked) form.append("case", `${c.id}:${c.version}`);
     for (const field of DS_RELEASE_FIELDS) form.set(field, values[field]);
     if (scan?.state === "done") form.set("scanId", scan.id);

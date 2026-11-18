@@ -1,4 +1,5 @@
 import { FileText } from "lucide-react";
+import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { InstallmentStatus, Kind } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
@@ -121,7 +122,17 @@ export async function MoneySection({
       <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
         <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
         <p className="flex-1">
-          <strong className="text-foreground">{t("money.letterName", { number: letter.letterNumber })}</strong>{" "}
+          {audience === "ministry" ? (
+            // REL-10: the Ministry opens the letter's page, with every beneficiary on it.
+            <Link
+              href={`/ministry/allocate/letters/${letter.id}`}
+              className="font-bold text-primary underline-offset-2 hover:underline"
+            >
+              {t("money.letterName", { number: letter.letterNumber })}
+            </Link>
+          ) : (
+            <strong className="text-foreground">{t("money.letterName", { number: letter.letterNumber })}</strong>
+          )}{" "}
           {audience !== "ds"
             ? t("money.letterHo", {
                 date: formatDate(letter.letterDate),

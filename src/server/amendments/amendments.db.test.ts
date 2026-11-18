@@ -383,7 +383,8 @@ describe("while an amendment waits (AMD-3, AC-47)", () => {
     // Allocated and on its letter: the District's release form flags it, and it can still be released.
     const onLetter = await allocate((await newCase("ලිපියේ සංශෝධිත")).id);
     expect(await amend(onLetter)).toMatchObject({ ok: true });
-    const releaseForm = await casesForDsRelease(db, await districtOfficer(), dsA.dsOfficeId!, "si");
+    const { letterId } = await db.release.findUniqueOrThrow({ where: { caseId: onLetter.id } });
+    const releaseForm = await casesForDsRelease(db, await districtOfficer(), dsA.dsOfficeId!, letterId, "si");
     expect(releaseForm?.cases.find((c) => c.id === onLetter.id)?.amendmentWaiting).toBe(true);
     await releaseToDsForTests(db, [onLetter.id], { on: dayToDate(daysAgo(2)) });
 
@@ -735,7 +736,8 @@ describe("a replacement built outside the place the money has reached (AMD-11, A
 
     // AMD-10: the District officer hears of the new case, which waits for its release to the new DS office.
     expect(await noticesOf(officer, made.id)).toEqual(["AMENDMENT_APPROVED"]);
-    const waiting = await casesForDsRelease(db, officer, dsBuilt.dsOfficeId!, "si");
+    const { letterId } = await db.release.findUniqueOrThrow({ where: { caseId: made.id } });
+    const waiting = await casesForDsRelease(db, officer, dsBuilt.dsOfficeId!, letterId, "si");
     expect(waiting?.cases.map((c) => c.id)).toContain(made.id);
     await releaseToDsForTests(db, [made.id], { on: dayToDate(daysAgo(2)) });
     const now = await load(made.id);

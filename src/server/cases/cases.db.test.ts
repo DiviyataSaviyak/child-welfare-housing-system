@@ -124,6 +124,7 @@ async function received(id: string, day: string) {
       id: randomUUID(),
       districtId: found.buildDsOffice.districtId,
       dsOfficeId: found.buildDsOfficeId,
+      letterId: letter.id,
       referenceNumber: "CT/DS",
       releasedOn: dayToDate(day),
       byId: ho.userId,

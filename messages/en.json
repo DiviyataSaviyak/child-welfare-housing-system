@@ -1213,11 +1213,11 @@
       "intro": "The Ministry has released these beneficiaries' allocations to your district. Once the District Secretariat has released the money to a DS office, record the release here with its beneficiaries. The DS office then pays the installments.",
       "waitingTitle": "DS offices waiting for a release",
       "office": "{name} DS office",
-      "oldestLetter": "Oldest Ministry letter: {date}",
       "none": "No beneficiaries are waiting for the District's release.",
       "recordedTitle": "Releases recorded",
       "recordedNone": "No releases recorded yet.",
       "recordedName": "{office} · {reference}",
+      "recordedLetter": "Ministry letter {number}",
       "formTitle": "Release to the {office} DS office",
       "formIntro": "Tick only the beneficiaries whose money the District Secretariat has released to the {office} DS office.",
       "back": "Back to the DS offices",
@@ -1238,7 +1238,7 @@
       "letterSubtitle": "Allocation letter · {date}",
       "backToReleases": "Back to releases to DS offices",
       "releaseTitle": "{office} · {reference}",
-      "releaseSubtitle": "District release · {date}"
+      "releaseSubtitle": "District release · {date} · Ministry letter {letter} ({letterDate})"
     },
     "dsCorrect": {
       "button": "Correct the release's details",
@@ -1446,6 +1446,7 @@
       "case_reopened": "The project was reopened",
       "other": "A change was recorded",
       "case_ds_released": "The {district} District Secretariat released Rs. 2,000,000 to the {office} DS office (reference number {reference})",
+      "ds_release_split": "The District release was split by Ministry letter. This beneficiary is now on the release of letter {letter} (reference number {reference})",
       "ds_release_corrected": "The District release's details were corrected",
       "amendment_submitted": "Submitted an amendment",
       "amendment_submittedFor": "Submitted an amendment proposing {name} ({number}) in this beneficiary's place",

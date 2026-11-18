@@ -7,21 +7,28 @@ import { colomboDay, formatDate } from "@/lib/dates";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { casesForDsRelease } from "@/server/releases/queries";
-import { recordDsReleaseAction, uploadDsReleaseScanAction } from "../actions";
+import { recordDsReleaseAction, uploadDsReleaseScanAction } from "../../actions";
 
 /**
- * REL-6: the District's release to one DS office of the district, with the office's cases the Ministry
- * allocated, none ticked to start with. An office of another district answers "not found" (PRM-1); an
- * office with no case waiting says so.
+ * REL-6, REL-12: the District's release to one DS office of the district of one Ministry letter's cases built
+ * there, none ticked to start with. An office or a letter of another district answers "not found" (PRM-1);
+ * a letter with no case of the office waiting says so.
  */
-export default async function DistrictReleaseFormPage({ params }: { params: Promise<{ dsOfficeId: string }> }) {
+export default async function DistrictReleaseFormPage({
+  params,
+}: {
+  params: Promise<{ dsOfficeId: string; letterId: string }>;
+}) {
   const viewer = await requireRole("DISTRICT_OFFICER");
-  const dsOfficeId = positive((await params).dsOfficeId);
+  const { dsOfficeId: officeParam, letterId } = await params;
+  const dsOfficeId = positive(officeParam);
   const locale = await getLocale();
-  const found = dsOfficeId ? await casesForDsRelease(db, viewer, dsOfficeId, locale) : null;
+  const found =
+    dsOfficeId && letterId.length <= 64 ? await casesForDsRelease(db, viewer, dsOfficeId, letterId, locale) : null;
   if (!found) notFound();
   const [t, tc] = await Promise.all([getTranslations("review"), getTranslations("cases")]);
-  const { office, cases } = found;
+  const { office, letter, cases } = found;
+  const letterLine = t("district.letter", { number: letter.letterNumber, date: formatDate(letter.letterDate) });
 
   const rows: DsReleaseFormCase[] = cases.map((c) => ({
     id: c.id,
@@ -46,6 +53,9 @@ export default async function DistrictReleaseFormPage({ params }: { params: Prom
         title={t("district.formTitle", { office: office.name })}
         subtitle={t("district.formIntro", { office: office.name })}
       />
+      <p className="text-[17px] font-semibold text-[#3F4843]" data-testid="release-letter">
+        {letterLine}
+      </p>
       <section
         aria-label={t("district.formTitle", { office: office.name })}
         className="flex max-w-5xl flex-col gap-4.5 rounded-xl border bg-card px-6.5 py-6"
@@ -57,6 +67,7 @@ export default async function DistrictReleaseFormPage({ params }: { params: Prom
             // A case that changed or left the list starts the form again.
             key={rows.map((c) => `${c.id}.${c.version}`).join(",")}
             dsOfficeId={office.id}
+            letterId={letter.id}
             officeName={office.name}
             cases={rows}
             today={colomboDay(new Date())}

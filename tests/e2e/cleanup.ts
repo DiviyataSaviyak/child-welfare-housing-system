@@ -61,9 +61,11 @@ async function main() {
       ...(await prisma.storedFile.findMany({ where: emptyLetter, select: { storedName: true, thumbName: true } })),
     );
     await prisma.storedFile.deleteMany({ where: emptyLetter });
-    await prisma.releaseLetter.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
-    // The District's releases the test cases left with no case (REL-7).
+    // The District's releases the test cases left with no case (REL-7), before their letters (REL-12).
     await prisma.dsRelease.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
+    await prisma.releaseLetter.deleteMany({
+      where: { releases: { none: {} }, returns: { none: {} }, dsReleases: { none: {} } },
+    });
     await prisma.stageUpdate.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.decision.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.case.deleteMany({ where: { id: { in: caseIds } } });

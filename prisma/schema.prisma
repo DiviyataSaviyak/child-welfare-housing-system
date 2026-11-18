@@ -629,6 +629,8 @@ model ReleaseLetter {
   by           User               @relation(fields: [byId], references: [id])
   at           DateTime           @default(now())
   releases     Release[]
+  /// The District's releases of its cases, one for each DS office it reaches or more (REL-12).
+  dsReleases   DsRelease[]
   /// AMD-11: the allocations of the letter that went back, to the District or to the Ministry.
   returns      AllocationReturn[]
   /// The scanned letter, if one was added.
@@ -666,14 +668,17 @@ model Release {
 }
 
 /// The District's release (දිස්ත්‍රික් මුදා හැරීම) to one of its DS offices of cases the Ministry allocated to
-/// the district (REL-6). The command checks that the office is in the district and that the day is never
-/// before the Ministry's letter of any of its cases.
+/// the district on one letter (REL-6, REL-12). The command checks that the office is in the district, that
+/// every case is on the letter, and that the day is never before the letter.
 model DsRelease {
   id              String             @id
   districtId      Int                @map("district_id")
   district        District           @relation(fields: [districtId], references: [id])
   dsOfficeId      Int                @map("ds_office_id")
   dsOffice        DsOffice           @relation(fields: [dsOfficeId], references: [id])
+  /// The Ministry's letter of every case on it (REL-12, 18 Nov 2026).
+  letterId        String             @map("letter_id")
+  letter          ReleaseLetter      @relation(fields: [letterId], references: [id], onDelete: Restrict)
   /// As on the District's letter or voucher.
   referenceNumber String             @map("reference_number")
   /// A calendar day, never in the future.
@@ -690,6 +695,7 @@ model DsRelease {
 
   @@index([districtId, at])
   @@index([dsOfficeId])
+  @@index([letterId])
   @@map("ds_release")
 }
 

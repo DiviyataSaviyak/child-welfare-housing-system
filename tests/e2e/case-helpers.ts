@@ -130,6 +130,23 @@ export async function recordLetterFor(ho: Page, names: string[], letterNumber: s
 }
 
 /**
+ * As the District CRPO, opens the release form of the DS office's card (named as the release screen names
+ * it, such as "හෝමාගම") whose Ministry letter holds the named case (REL-5, REL-12): an office has a card for
+ * each letter, and other tests' letters may wait for the same office.
+ */
+export async function openDsReleaseFor(district: Page, office: string, name: string) {
+  await district.goto("/oversight/release");
+  const cards = district.getByRole("link", { name: new RegExp(`^${office} ප්‍රා\\.ලේ\\. කාර්යාලය`) });
+  await expect(cards.first()).toBeVisible();
+  const hrefs = await Promise.all((await cards.all()).map((card) => card.getAttribute("href")));
+  for (const href of hrefs) {
+    await district.goto(href ?? "");
+    if ((await district.getByRole("checkbox", { name: new RegExp(name) }).count()) > 0) return;
+  }
+  throw new Error(`No release form of ${office} holds ${name}.`);
+}
+
+/**
  * On a DS office's release form (REL-6), as the District CRPO: ticks only the named cases, then records the
  * release under this reference, dated today. Nothing is ticked to start with, and other tests' cases may
  * wait for the same office, so only the named boxes are ticked.
@@ -161,8 +178,7 @@ export async function allocateAndRelease(
   await ho.goto(`/ministry/cases/${saved.caseId}`);
   await ho.getByRole("link", { name: "ලිපිය සටහන් කිරීමට යන්න →" }).click();
   await recordLetterFor(ho, [saved.name], `MWCA/E2E/${label}`);
-  await district.goto("/oversight/release");
-  await district.getByRole("link", { name: new RegExp(`^${office} ප්‍රා\\.ලේ\\. කාර්යාලය`) }).click();
+  await openDsReleaseFor(district, office, saved.name);
   await recordDsReleaseFor(district, [saved.name], `DS/E2E/${label}`);
 }
 

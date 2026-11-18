@@ -3,6 +3,7 @@ import {
   fillCase,
   newSavedCase,
   openAs,
+  openDsReleaseFor,
   randomNic,
   recordDsReleaseFor,
   recordLetterFor,
@@ -167,9 +168,12 @@ test("AC-53, AC-54, AC-57: the District CRPO releases a case to its DS office, w
     .click();
   await expect(district).toHaveURL(/\/oversight\/release$/);
 
-  // REL-5, REL-6: Homagama waits; its form starts with nothing ticked, and refuses no case and a date
-  // before the Ministry's letter.
-  await district.getByRole("link", { name: /^හෝමාගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  // REL-5, REL-6: Homagama waits, on a card of its own for the letter; its form names the letter, starts with
+  // nothing ticked, and refuses no case and a date before the Ministry's letter.
+  await district
+    .getByRole("link", { name: new RegExp(`^හෝමාගම ප්‍රා\\.ලේ\\. කාර්යාලය.*අමාත්‍යංශ ලිපිය ${letterNumber} `) })
+    .click();
+  await expect(district.getByTestId("release-letter")).toHaveText(new RegExp(`^අමාත්‍යංශ ලිපිය ${letterNumber} `));
   const box = district.getByRole("group", { name: "මුදා හරින ප්‍රතිලාභීන්" }).getByRole("checkbox", {
     name: new RegExp(name),
   });
@@ -269,8 +273,7 @@ test("AC-80: a recorded letter and a recorded District release open with the ben
   await expect(ho).toHaveURL(new RegExp(`/ministry/cases/${ids[0]}$`));
 
   // REL-11: the District's release, in "releases recorded last", opens with both beneficiaries.
-  await district.goto("/oversight/release");
-  await district.getByRole("link", { name: /^හෝමාගම ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await openDsReleaseFor(district, "හෝමාගම", names[0]);
   await recordDsReleaseFor(district, names, reference);
   await district
     .getByRole("region", { name: "සටහන් කළ මුදා හැරීම්" })
@@ -288,4 +291,73 @@ test("AC-80: a recorded letter and a recorded District release open with the ben
   const gampaha = await openAs(browser, "dt0104");
   expect((await gampaha.goto(releaseUrl))?.status()).toBe(404);
   expect((await district.goto(letterUrl))?.status()).toBe(404);
+});
+
+test("AC-81: each Ministry letter stays its own record, down to the District's release to the DS office", async ({
+  page: ds,
+  browser,
+}) => {
+  test.slow();
+  const ho = await openAs(browser, "ho0001");
+  const district = await openAs(browser, "dt0103");
+  const stamp = Date.now();
+  const third = [`${TEST_CASE_NAME} ලිපි 3 අ ${stamp}`, `${TEST_CASE_NAME} ලිපි 3 ආ ${stamp}`];
+  const fourth = `${TEST_CASE_NAME} ලිපි 4 ${stamp}`;
+  const letters = [`MWCA/E2E-L3-${stamp}`, `MWCA/E2E-L4-${stamp}`];
+  await signInAs(ds, "ds0101", /\/ds$/);
+  const ids: string[] = [];
+  for (const name of [...third, fourth]) {
+    ids.push((await newSavedCase(ds, { name, nic: randomNic() })).url.split("/").at(-1) ?? "");
+  }
+
+  // Two letters to Colombo for Homagama's cases: two on the first, one on the second (REL-3).
+  for (const [names, number] of [
+    [third, letters[0]],
+    [[fourth], letters[1]],
+  ] as const) {
+    await ho.goto("/ministry/allocate");
+    await ho.getByRole("link", { name: /^කොළඹ දිස්ත්‍රික්කය/ }).click();
+    await recordLetterFor(ho, [...names], number);
+  }
+
+  // REL-5: Homagama has a card for each letter, with its own count; each form lists only its letter's cases.
+  await district.goto("/oversight/release");
+  const card = (number: string) =>
+    district.getByRole("link", { name: new RegExp(`^හෝමාගම ප්‍රා\\.ලේ\\. කාර්යාලය.*අමාත්‍යංශ ලිපිය ${number} `) });
+  await expect(card(letters[0])).toContainText("බලා සිටින ප්‍රතිලාභීන් 2 ");
+  await expect(card(letters[1])).toContainText("බලා සිටින ප්‍රතිලාභීන් 1 ");
+  await card(letters[1]).click();
+  const form = district.getByRole("group", { name: "මුදා හරින ප්‍රතිලාභීන්" });
+  await expect(form.getByRole("checkbox", { name: new RegExp(fourth) })).toBeVisible();
+  for (const name of third) await expect(form.getByRole("checkbox", { name: new RegExp(name) })).toHaveCount(0);
+
+  // REL-6, REL-12: the first letter's release holds only its two, and its page names the letter.
+  await district.goto("/oversight/release");
+  await card(letters[0]).click();
+  await expect(district.getByTestId("release-letter")).toContainText(letters[0]);
+  await expect(form.getByRole("checkbox", { name: new RegExp(fourth) })).toHaveCount(0);
+  const reference = `DS/E2E-L3-${stamp}`;
+  await recordDsReleaseFor(district, third, reference);
+  const recorded = district.getByRole("region", { name: "සටහන් කළ මුදා හැරීම්" });
+  await expect(recorded).toContainText(`අමාත්‍යංශ ලිපිය ${letters[0]}`);
+  await recorded.getByRole("link", { name: `හෝමාගම · ${reference}` }).click();
+  await expect(district.getByText(`අමාත්‍යංශ ලිපිය ${letters[0]}`)).toBeVisible();
+  const onRelease = district.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
+  await expect(onRelease.getByRole("listitem")).toHaveCount(2);
+  await expect(onRelease.getByRole("link", { name: new RegExp(fourth) })).toHaveCount(0);
+
+  // The second letter still waits on its own card.
+  await district.goto("/oversight/release");
+  await expect(card(letters[0])).toHaveCount(0);
+  await expect(card(letters[1])).toBeVisible();
+
+  // REL-10: on the Ministry's case page, the letter opens its page, with only that letter's cases.
+  await ho.goto(`/ministry/cases/${ids[2]}`);
+  await ho.getByRole("link", { name: new RegExp(letters[1]) }).click();
+  await expect(ho).toHaveURL(/\/ministry\/allocate\/letters\/[\w-]+$/);
+  const onLetter = ho.getByRole("region", { name: "ප්‍රතිලාභීන් 1 · රු. 2,000,000" });
+  await expect(onLetter.getByRole("link", { name: new RegExp(fourth) })).toBeVisible();
+
+  await ho.context().close();
+  await district.context().close();
 });
