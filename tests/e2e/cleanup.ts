@@ -44,6 +44,8 @@ async function main() {
     await prisma.storedFile.deleteMany({ where: theirFiles });
     // AMD-11: the returns their approvals recorded, which hold the amendments, cases and letters.
     await prisma.allocationReturn.deleteMany({ where: { amendment: amendments } });
+    // AMD-12: the requests for a nomination, which hold the cases and the amendments they made.
+    await prisma.nomination.deleteMany({ where: { OR: [{ caseId: { in: caseIds } }, { amendment: amendments }] } });
     await prisma.amendment.deleteMany({ where: amendments });
     await prisma.notification.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.installment.deleteMany({ where: { caseId: { in: caseIds } } });

@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentNotes } from "@/components/amendments/amendment-notes";
+import { NominationNotes } from "@/components/amendments/nomination-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection, ReturnNote } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
+import { FormNotice } from "@/components/forms/form-field";
 import { CompletedBanner } from "@/components/progress/case-banners";
 import { CaseHistory } from "@/components/progress/case-history";
 import { StageSection } from "@/components/progress/stage-section";
@@ -56,8 +58,17 @@ export default async function OversightCasePage({
         aside={<StatusChip status={details.status} />}
       />
       <ReviewNotice notice={notice} />
+      {notice === "nominated" && <FormNotice message={t("nominate.done")} />}
+      {notice === "nominationSentBack" && <FormNotice message={t("nominate.sendBack.done")} />}
       <ReplacementNotes details={details} audience="oversight" />
       <AmendmentNotes details={details} ownOffice={false} audience="oversight" />
+      <NominationNotes
+        details={details}
+        ownOffice={false}
+        nominateHref={
+          details.actsOn.nominate && details.nomination ? `/oversight/nominations/${details.nomination.id}` : null
+        }
+      />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

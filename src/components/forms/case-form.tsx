@@ -92,8 +92,16 @@ export type MoneyReached = {
   residenceDistrictId: number;
 };
 
-/** AMD-1: the case whose beneficiary an amendment would replace, for the form's summary. */
-export type AmendSetting = { caseId: string; existingName: string; existingNumber: string };
+/**
+ * AMD-1: the case whose beneficiary an amendment would replace, for the form's summary. `nomination` is the
+ * DS's request the District nominates for, with its version (AMD-13).
+ */
+export type AmendSetting = {
+  caseId: string;
+  existingName: string;
+  existingNumber: string;
+  nomination?: { id: string; version: number };
+};
 
 export type CaseFormActions = DocumentActions & {
   save: (state: CaseFormState, form: FormData) => Promise<CaseFormState>;
@@ -303,6 +311,10 @@ export function CaseForm({
     if (amend) {
       form.set("caseId", amend.caseId);
       form.set("reason", reason);
+      if (amend.nomination) {
+        form.set("nominationId", amend.nomination.id);
+        form.set("nominationVersion", String(amend.nomination.version));
+      }
     }
     startTransition(() => dispatch(form));
   }
@@ -432,18 +444,16 @@ export function CaseForm({
   const birthDay = parseDay(values.dateOfBirth.trim());
   const age = birthDay && birthDay <= today ? ageOn(birthDay, today) : null;
   const placeText = (place: Place) => t("form.land.place", place);
-  // AMD-11: once the land's DS office is known, whether choosing it sends the money back, and where to.
+  // AMD-11: once the land's DS office is known, whether choosing it sends the money back to the District.
   function moneyBackText(money: MoneyReached): string | null {
     const landOffice = built === "same" ? residence : chosenBuildOffice;
-    const landDistrict = built === "same" ? money.residenceDistrictId : buildDistrict?.id;
+    const landDistrict = built === "same" ? (district?.id ?? money.residenceDistrictId) : buildDistrict?.id;
     if (landOffice === null || landDistrict === undefined) return null;
-    const { returnedTo } = replacementStep(money, { id: landOffice, districtId: landDistrict });
-    if (returnedTo === "DISTRICT") return t("amend.moneyBackDistrict", { office: money.officeName });
-    if (returnedTo !== "MINISTRY") return null;
-    return money.status === "ALLOCATION_RECEIVED"
-      ? t("amend.moneyBackMinistryFromOffice", { office: money.officeName })
-      : t("amend.moneyBackMinistryFromDistrict", { district: money.districtName });
+    const step = replacementStep(money, { id: landOffice, districtId: landDistrict });
+    if (step === null) return t("amend.landInLetterDistrict", { district: money.districtName });
+    return step.returnedTo === "DISTRICT" ? t("amend.moneyBackDistrict", { office: money.officeName }) : null;
   }
+
   const choice = (key: "yes" | "no") => t(key);
 
   const centreLines = centres

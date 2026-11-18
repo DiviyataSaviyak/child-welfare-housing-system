@@ -1,3 +1,4 @@
+import { isHeld, WAITING_ONE } from "../amendments/held";
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
@@ -79,8 +80,9 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
       version: true,
       kind: true,
       release: { select: { dsReleasedOn: true } },
-      // AMD-3: a waiting amendment holds every installment step.
-      amendments: { where: { status: "WAITING" }, take: 1, select: { id: true } },
+      // AMD-3, AMD-12: a waiting amendment or request for a nomination holds every installment step.
+      amendments: WAITING_ONE,
+      nominations: WAITING_ONE,
       installments: {
         orderBy: { number: "asc" },
         select: {
@@ -97,10 +99,10 @@ async function load(db: PrismaClient, actor: Actor, caseId: string) {
     },
   });
   if (!found || !canSeeCase(actor, found)) return null;
-  const { amendments, ...rest } = found;
+  const { amendments, nominations, ...rest } = found;
   return {
     ...rest,
-    amendmentWaiting: amendments.length > 0,
+    amendmentWaiting: isHeld({ amendments, nominations }),
     dsReleasedOn: found.release?.dsReleasedOn ? dateToDay(found.release.dsReleasedOn) : null,
     installments: found.installments.map((i) => ({
       ...i,

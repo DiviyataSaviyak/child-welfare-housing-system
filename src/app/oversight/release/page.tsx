@@ -83,9 +83,12 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
             <ul className="flex flex-col">
               {releases.map((release) => (
                 <li key={release.id} className="flex flex-col border-t py-2">
-                  <span className="text-[15px] font-bold">
+                  <Link
+                    href={`/oversight/release/recorded/${release.id}`}
+                    className="self-start text-[15px] font-bold text-primary underline-offset-2 hover:underline"
+                  >
                     {t("district.recordedName", { office: release.officeName, reference: release.referenceNumber })}
-                  </span>
+                  </Link>
                   <span className="text-sm text-muted-foreground">
                     {t("letters.recordedSub", {
                       date: formatDate(release.releasedOn),
@@ -93,11 +96,6 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
                       amount: formatRupees(release.count * RELEASE_AMOUNT, locale),
                     })}
                   </span>
-                  {release.returned > 0 && (
-                    <span className="text-sm text-[#5C4300]">
-                      {t("letters.recordedReturned", { count: release.returned })}
-                    </span>
-                  )}
                 </li>
               ))}
             </ul>

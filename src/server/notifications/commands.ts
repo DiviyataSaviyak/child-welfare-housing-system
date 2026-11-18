@@ -55,7 +55,33 @@ export async function notifyDistrict(
 }
 
 /**
- * Marks one of the user's own notifications read and gives its case and type, so the screen can open it
+ * NTF-1: tells the named accounts, when still active, about a case: such as the District officer who
+ * nominated an amendment's new beneficiary, when the Ministry decides it (AMD-10). Call it in the change's
+ * transaction.
+ */
+export async function notifyUsers(
+  tx: Prisma.TransactionClient,
+  notice: { userIds: string[]; caseId: string; type: NotificationType; at: Date },
+): Promise<void> {
+  const users = await tx.user.findMany({
+    where: { id: { in: [...new Set(notice.userIds)] }, banned: false },
+    select: { id: true },
+  });
+  if (users.length === 0) return;
+  await tx.notification.createMany({
+    data: users.map((user) => ({
+      id: randomUUID(),
+      userId: user.id,
+      caseId: notice.caseId,
+      type: notice.type,
+      createdAt: notice.at,
+    })),
+  });
+}
+
+/**
+ * Marks one of the user's own notifications read
+ and gives its case and type, so the screen can open it
  * (NTF-1): a District officer's notice of a Ministry letter opens the release screen, any other its case.
  * Anyone else's notification, or one about a case the user may no longer see (PRM-3), reads as not found.
  */

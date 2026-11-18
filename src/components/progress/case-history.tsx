@@ -32,6 +32,11 @@ const ACTIONS = [
   "amendment_submitted",
   "amendment_approved",
   "amendment_rejected",
+  // Change 0009: a DS asked the District to nominate a new beneficiary (AMD-12); the District nominated one,
+  // submitting the amendment, or sent the request back (AMD-13).
+  "nomination_asked",
+  "nomination_sent_back",
+  "amendment_nominated",
   "case_stopped",
   "case_reopened",
 ] as const;
@@ -104,8 +109,8 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
     if (!value || typeof value !== "object") return;
     const returned = value as Record<string, unknown>;
     const reference = text(returned.referenceNumber);
-    if (!reference || (returned.to !== "DISTRICT" && returned.to !== "MINISTRY")) return;
-    lines.push(t(`returned${returned.to}`, { date: day(returned.returnedOn), reference }));
+    if (!reference || returned.to !== "DISTRICT") return;
+    lines.push(t("returnedDISTRICT", { date: day(returned.returnedOn), reference }));
     const note = text(returned.note);
     if (note) lines.push(tc("money.note", { note }));
   };
@@ -244,6 +249,24 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           lines,
         };
       }
+      case "amendment_nominated": {
+        // AMD-13: the new beneficiary the District entered; the DS's reason is on its own line.
+        const added = count(after.documentsAdded);
+        if (added > 0) lines.push(t("documentsAdded", { count: added }));
+        const name = text(after.name);
+        const number = text(after.applicationNumber);
+        return {
+          sentence:
+            name && number
+              ? t("actions.amendment_nominatedFor", { name: person(name, text(after.childName)), number })
+              : t("actions.amendment_nominated"),
+          lines,
+        };
+      }
+      case "nomination_asked":
+      case "nomination_sent_back":
+        // AMD-12, AMD-13: the reason is on its own line.
+        return { sentence: t(`actions.${entry.action}`), lines };
       case "case_replaced": {
         // AMD-5: named since task 3 of change 0008; the move's earlier records name nobody.
         if (after.allocationMoved === true) lines.push(t("allocationMovedTo"));

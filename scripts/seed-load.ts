@@ -1106,6 +1106,8 @@ export async function removeMadeUp(
       await tx.storedFile.deleteMany({ where: theirFiles });
       // AMD-11: the returns their approvals recorded, which hold the amendments, cases and letters.
       await tx.allocationReturn.deleteMany({ where: { amendment: amendments } });
+      // AMD-12: the requests for a nomination, which hold the cases and the amendments they made.
+      await tx.nomination.deleteMany({ where: { OR: [theirs, { amendment: amendments }] } });
       await tx.amendment.deleteMany({ where: amendments });
       await tx.notification.deleteMany({ where: theirs });
       await tx.installment.deleteMany({ where: theirs });

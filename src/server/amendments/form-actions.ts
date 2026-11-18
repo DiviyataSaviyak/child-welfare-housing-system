@@ -6,6 +6,7 @@ import type { Actor } from "../cases/commands";
 import { readCaseForm } from "../cases/form-data";
 import { db } from "../db";
 import { approveAmendment, rejectAmendment, submitAmendment } from "./commands";
+import { askNomination, sendBackNomination } from "./nominations";
 
 const text = (form: FormData, field: string) => {
   const value = form.get(field);
@@ -31,7 +32,18 @@ export async function submitAmendmentForm(
     return { ok: false, state: { errors: read.errors, error: read.error, reasonError } };
   }
 
-  const { id, version, buildDsOfficeId, values, documentIds } = read.input;
+  const { id, version, dsOfficeId, buildDsOfficeId, values, documentIds } = read.input;
+  // AMD-13: the District's nomination names the DS's request, its version and the DS of residence chosen.
+  const nominationId = text(form, "nominationId");
+  const nominationVersion = Number(text(form, "nominationVersion"));
+  let nomination: { id: string; version: number; dsOfficeId: number } | null = null;
+  if (nominationId !== "") {
+    if (nominationId.length > 64 || !Number.isInteger(nominationVersion)) {
+      return { ok: false, state: { errors: {}, error: "notFound", reasonError: null } };
+    }
+    if (dsOfficeId === null) return { ok: false, state: { errors: {}, error: "officeRequired", reasonError: null } };
+    nomination = { id: nominationId, version: nominationVersion, dsOfficeId };
+  }
   const result = await submitAmendment(db, actor, {
     id,
     caseId,
@@ -40,6 +52,7 @@ export async function submitAmendmentForm(
     values,
     reason,
     documentIds,
+    nomination,
   });
   if (!result.ok) {
     return { ok: false, state: { errors: {}, error: result.error, reasonError: result.reasonError ?? null } };
@@ -78,4 +91,27 @@ export async function decideAmendmentForm(
   return result.ok
     ? result
     : { ok: false, state: { error: result.error, errors: "errors" in result ? (result.errors ?? {}) : {} } };
+}
+
+/**
+ * AMD-12, AMD-13: the "ask the District" pop-up on the DS's case page (the request's id made when the page
+ * rendered, the case and its version, the reason) and the District's "send back" pop-up (the request, its
+ * version, the reason). A refusal comes back to the pop-up; on success the caller moves on.
+ */
+export async function nominationForm(
+  actor: Actor,
+  form: FormData,
+  step: "ask" | "sendBack",
+): Promise<{ ok: true; caseId: string } | { ok: false; state: ProgressState }> {
+  const id = text(form, "nominationId");
+  const version = Number(text(form, "version"));
+  const caseId = text(form, "caseId");
+  if (id === "" || id.length > 64 || !Number.isInteger(version) || caseId === "" || caseId.length > 64) {
+    return { ok: false, state: { error: "notFound", errors: {} } };
+  }
+  const result =
+    step === "ask"
+      ? await askNomination(db, actor, { id, caseId, caseVersion: version, reason: text(form, "reason") })
+      : await sendBackNomination(db, actor, { nominationId: id, version, reason: text(form, "reason") });
+  return result.ok ? { ok: true, caseId } : { ok: false, state: { error: result.error, errors: {} } };
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentNotes } from "@/components/amendments/amendment-notes";
+import { NominationNotes } from "@/components/amendments/nomination-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection, ReturnNote } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
@@ -156,6 +157,7 @@ export default async function HoCasePage({
       <ReviewNotice notice={notice} />
       <ReplacementNotes details={details} audience="ministry" />
       <AmendmentNotes details={details} ownOffice={false} audience="ministry" />
+      <NominationNotes details={details} ownOffice={false} nominateHref={null} />
       <CompletedBanner details={details} />
       <CaseColumns
         main={

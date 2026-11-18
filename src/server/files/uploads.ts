@@ -37,8 +37,10 @@ export async function uploadDocument(
   actor: Actor,
   file: { name: string; bytes: Uint8Array },
 ): Promise<{ ok: true; value: UploadedFile } | { ok: false; error: UploadError }> {
-  // Documents go with a case form, which only an office's officers and Head Office save (PRM-5).
-  if (!canEnterCases(actor.role) || caseScope(actor).kind === "none") return { ok: false, error: "notAllowed" };
+  // Documents go with a case form, which only an office's officers and the Ministry save (PRM-5), or with
+  // the District's nomination of a new beneficiary (AMD-13).
+  const entersForms = canEnterCases(actor.role) || actor.role === "DISTRICT_OFFICER";
+  if (!entersForms || caseScope(actor).kind === "none") return { ok: false, error: "notAllowed" };
   const problem = documentProblem(file.bytes.length, file.bytes.subarray(0, SNIFF_BYTES));
   if (problem) return { ok: false, error: problem };
 

@@ -2,6 +2,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import type { NavEntry } from "@/components/shell/types";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
+import { nominationsWaiting } from "@/server/amendments/queries";
 import { unreadNow } from "@/server/notifications/queries";
 import { awaitingDsRelease } from "@/server/releases/queries";
 import { oversightArea } from "./area";
@@ -11,20 +12,30 @@ import { oversightArea } from "./area";
  * them (PRM-4, PRM-5): the dashboard, the case list and the amendments (AMD-9) of the account's own area. A District officer also
  * releases the Ministry's allocations to the district's DS offices (REL-5), with the menu's count of cases
  * waiting and the bell (NTF-1), each read again after every move from /oversight/waiting and
- * /oversight/notifications/unread. Every other account here only views and has no notifications.
+ * /oversight/notifications/unread, and nominates new beneficiaries when a DS asks (AMD-12), with the count of
+ * requests waiting on the amendments entry. Every other account here only views and has no notifications.
  */
 export default async function OversightLayout({ children }: { children: React.ReactNode }) {
   const context = await requireRole("VIEWER", "DISTRICT_OFFICER");
   const releases = context.role === "DISTRICT_OFFICER";
-  const [area, waiting, unread] = await Promise.all([
+  const [area, waiting, unread, toNominate] = await Promise.all([
     oversightArea(context),
     releases ? awaitingDsRelease(db, context) : null,
     releases ? unreadNow(db, context) : null,
+    releases ? nominationsWaiting(db, context) : null,
   ]);
   const nav: NavEntry[] = [
     { href: "/oversight", labelKey: "oversightDashboard", exact: true },
     { href: "/oversight/cases", labelKey: "oversightCases" },
-    { href: "/oversight/amendments", labelKey: "oversightAmendments" },
+    {
+      href: "/oversight/amendments",
+      labelKey: "oversightAmendments",
+      alsoActive: ["/oversight/nominations"],
+      ...(toNominate && {
+        count: { ...toNominate, source: "/oversight/amendments/to-nominate" },
+        countWords: "nominationsWaiting" as const,
+      }),
+    },
   ];
   if (waiting) {
     nav.push({

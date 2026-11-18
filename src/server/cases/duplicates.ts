@@ -32,20 +32,32 @@ export async function findNicMatches(
 ): Promise<NicMatch[]> {
   const scope = caseScope(viewer);
   const key = nicKey(input.nic);
-  // The warning is for the case form, which only an office's officers and the Ministry open.
-  if ((scope.kind !== "office" && scope.kind !== "all") || !key) return [];
+  // The warning is for the case form, which only an office's officers and the Ministry open, and the
+  // District's officers when they nominate a new beneficiary (AMD-13).
+  const district = scope.kind === "district" && viewer.role === "DISTRICT_OFFICER";
+  if ((scope.kind !== "office" && scope.kind !== "all" && !district) || !key) return [];
 
   const rows = await db.case.findMany({
     where: matchWhere(key, input.exceptCaseId),
     orderBy: { createdAt: "asc" },
     take: 20,
-    select: { applicationNumber: true, name: true, dsOfficeId: true, dsOffice: { select: NAMES } },
+    select: {
+      applicationNumber: true,
+      name: true,
+      dsOfficeId: true,
+      dsOffice: { select: { ...NAMES, districtId: true } },
+    },
   });
 
   return rows.map((row) => {
     const officeName = localName(row.dsOffice, locale);
     if (scope.kind === "all") return { applicationNumber: row.applicationNumber, name: row.name, officeName };
-    return row.dsOfficeId === scope.dsOfficeId
+    // A District officer sees its own district's beneficiaries by name, as a DS its own (PRM-4).
+    if (scope.kind === "district") {
+      const own = row.dsOffice.districtId === scope.districtId;
+      return { applicationNumber: row.applicationNumber, name: own ? row.name : null, officeName };
+    }
+    return scope.kind === "office" && row.dsOfficeId === scope.dsOfficeId
       ? { applicationNumber: row.applicationNumber, name: row.name, officeName: null }
       : { applicationNumber: row.applicationNumber, name: null, officeName };
   });

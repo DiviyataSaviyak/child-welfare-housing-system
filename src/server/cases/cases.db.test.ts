@@ -482,6 +482,35 @@ describe("duplicate NIC (CASE-6, AC-7)", () => {
     ]);
   });
 
+  it("shows a District officer, nominating a beneficiary, the names in its own district only (AMD-13)", async () => {
+    const own = await saved(dsA, newCase("198806001234"));
+    const elsewhere = await saved(dsB, newCase("880601234V"));
+    const districtOf = async (id: number | null) =>
+      (await db.dsOffice.findUniqueOrThrow({ where: { id: id ?? 0 } })).districtId;
+    const district = await districtOf(dsA.dsOfficeId);
+    const sameDistrict = (await districtOf(dsB.dsOfficeId)) === district;
+    const officer: Actor = {
+      userId: "cases-test-district",
+      role: "DISTRICT_OFFICER",
+      designation: "DISTRICT_CRPO",
+      dsOfficeId: null,
+      districtId: district,
+      provinceId: null,
+    };
+    const input = { nic: "880601234V", dsOfficeId: null, exceptCaseId: null };
+    expect(await findNicMatches(db, officer, input, "si")).toEqual([
+      { applicationNumber: own.applicationNumber, name: own.name, officeName: expect.any(String) },
+      {
+        applicationNumber: elsewhere.applicationNumber,
+        name: sameDistrict ? elsewhere.name : null,
+        officeName: expect.any(String),
+      },
+    ]);
+    // A district's view-only account opens no case form, so it gets no warning.
+    const secretary: Actor = { ...officer, role: "VIEWER", designation: "DISTRICT_SECRETARY" };
+    expect(await findNicMatches(db, secretary, input, "si")).toEqual([]);
+  });
+
   it("finds nothing for an invalid NIC, or for an admin", async () => {
     await saved(dsA, newCase("198803001234"));
     expect(await findNicMatches(db, dsA, { nic: "12345", dsOfficeId: null, exceptCaseId: null }, "si")).toEqual([]);

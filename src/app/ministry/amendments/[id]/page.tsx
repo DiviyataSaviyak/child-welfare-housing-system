@@ -117,31 +117,26 @@ export default async function MinistryAmendmentPage({
 }
 
 /**
- * AMD-11: what the approval asks about the money going back, when the new beneficiary is built outside the
- * place the existing case's money has reached; null when nothing goes back.
+ * AMD-11: what the approval asks about the money going back to the District, when the new beneficiary is
+ * built in another DS office than the one the existing case's money has reached; null when nothing goes back.
+
  */
 function returnAsk(view: View, t: Awaited<ReturnType<typeof getTranslations<"cases">>>): ReturnAsk | null {
   const { existing, proposed } = view;
   const release = existing.release;
   if (!proposed || !release) return null;
-  const { returnedTo } = replacementStep(
+  const step = replacementStep(
     { status: existing.status, buildDsOffice: { id: existing.buildDsOfficeId, districtId: existing.buildDistrictId } },
     { id: proposed.buildDsOfficeId, districtId: proposed.buildDistrictId },
   );
-  if (!returnedTo) return null;
-  const fromOffice = existing.status === "ALLOCATION_RECEIVED";
-  const text =
-    returnedTo === "DISTRICT"
-      ? t("amend.view.approveReturnDistrict", {
-          office: existing.buildOfficeName,
-          district: existing.buildDistrictName,
-        })
-      : fromOffice
-        ? t("amend.view.approveReturnMinistryOffice", { office: existing.buildOfficeName })
-        : t("amend.view.approveReturnMinistryDistrict", { district: existing.buildDistrictName });
+  // Null is refused by the approval (buildOfficeNotAllowed), which then says so.
+  if (step?.returnedTo !== "DISTRICT") return null;
   return {
     title: t("amend.view.returnTitle"),
-    text,
+    text: t("amend.view.approveReturnDistrict", {
+      office: existing.buildOfficeName,
+      district: existing.buildDistrictName,
+    }),
     limits: returnLimits(colomboDay(new Date()), release.letter.letterDate, release.dsRelease?.releasedOn ?? null),
     labels: {
       returnedOn: t("amend.view.returnedOn"),

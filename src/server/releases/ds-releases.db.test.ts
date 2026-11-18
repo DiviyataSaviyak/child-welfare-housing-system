@@ -14,7 +14,15 @@ import { openNotification } from "../notifications/commands";
 import { listNotifications } from "../notifications/queries";
 import { recordStageUpdate } from "../stages/commands";
 import { correctDsRelease, correctRelease, type DsReleaseInput, recordDsRelease, recordLetter } from "./commands";
-import { awaitingDsRelease, casesForDsRelease, dsOfficesWaiting, getDsRelease, recentDsReleases } from "./queries";
+import {
+  awaitingDsRelease,
+  casesForDsRelease,
+  dsOfficesWaiting,
+  dsReleaseWithCases,
+  getDsRelease,
+  letterWithCases,
+  recentDsReleases,
+} from "./queries";
 
 const db = createTestClient();
 
@@ -485,5 +493,28 @@ describe("the District officer's notifications (NTF-1)", () => {
     expect(await openNotification(db, secretary, notices[0]!.id)).toBeNull();
     // The DS officer's own notices name no letter.
     expect((await listNotifications(db, dsA)).find((n) => n.caseId === first.id)?.letter).toBeNull();
+  });
+});
+
+describe("a letter's and a release's beneficiaries (REL-10, REL-11, AC-80)", () => {
+  it("lists every beneficiary of a letter for the Ministry, and of a release for its district's CRPO only", async () => {
+    const first = await allocated();
+    const second = await allocated();
+    const done = await release(crpo, [first, second], { form: { referenceNumber: "DS/2026/SENT" } });
+    if (!done.ok) throw new Error(String(done.error));
+    const { letterId, dsReleaseId } = await db.release.findUniqueOrThrow({ where: { caseId: first.id } });
+
+    const letter = await letterWithCases(db, ministry, letterId, "si");
+    expect(letter).toMatchObject({ letterNumber: "MWCA/DS/7" });
+    expect(letter?.cases).toEqual([{ id: first.id, name: first.name, childName: null }]);
+    for (const other of [crpo, dsA, secretary]) expect(await letterWithCases(db, other, letterId, "si")).toBeNull();
+
+    const sent = await dsReleaseWithCases(db, crpo, dsReleaseId!, "si");
+    expect(sent).toMatchObject({ referenceNumber: "DS/2026/SENT" });
+    expect(sent?.cases.map((c) => c.id).sort()).toEqual([first.id, second.id].sort());
+    for (const other of [otherCrpo, secretary, ministry, dsA]) {
+      expect(await dsReleaseWithCases(db, other, dsReleaseId!, "si")).toBeNull();
+    }
+    expect(await letterWithCases(db, ministry, "no-such-letter", "si")).toBeNull();
   });
 });

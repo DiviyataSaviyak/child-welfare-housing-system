@@ -1,3 +1,4 @@
+import { NOT_HELD } from "../amendments/held";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type {
   Aid,
@@ -102,7 +103,7 @@ export type CaseDetails = {
    * it is built (REL-9).
    * The role and the status still decide the rest (rules.ts, transitions.ts).
    */
-  actsOn: { edit: boolean; progress: boolean; release: boolean; amend: boolean };
+  actsOn: { edit: boolean; progress: boolean; release: boolean; amend: boolean; nominate: boolean };
   /**
    * AMD-3, AMD-6: the case's amendment that waits for the Ministry, or else its last one if the Ministry
    * rejected it; null when it has neither.
@@ -110,6 +111,25 @@ export type CaseDetails = {
   amendment: CaseAmendment | null;
   /** Whether any amendment was ever submitted for it: such a case can't be deleted (CASE-8). */
   hasAmendments: boolean;
+  /**
+   * AMD-12, AMD-13: the DS's request that the District nominate a new beneficiary, while it waits, or once
+   * sent back until another request or amendment; null otherwise.
+   */
+  nomination: CaseNomination | null;
+};
+
+/** A request for a nomination as a case page shows it (AMD-12, AMD-13). */
+export type CaseNomination = {
+  id: string;
+  status: "WAITING" | "SENT_BACK";
+  version: number;
+  reason: string;
+  askedAt: Date;
+  askedByName: string;
+  /** The district asked. */
+  districtName: string;
+  sentBackReason: string | null;
+  sentBackAt: Date | null;
 };
 
 /** An amendment as a case page shows it, with the new beneficiary it proposed. */
@@ -120,6 +140,8 @@ export type CaseAmendment = AmendmentPerson & {
   reason: string;
   decidedAt: Date | null;
   rejectionReason: string | null;
+  /** AMD-13: the District nominated the new beneficiary. */
+  nominated: boolean;
 };
 
 /** One child development centre, with its province's name in the screen's language (CASE-14). */
@@ -183,6 +205,7 @@ function toReturn(
 
 export type AllocationReturnDetails = {
   side: "replaced" | "new";
+  /** Always the District since 18 Nov 2026 (AMD-11). */
   returnedTo: "DISTRICT" | "MINISTRY";
   /** "YYYY-MM-DD" */
   returnedOn: string;
@@ -396,6 +419,23 @@ export async function getCase(
           decidedAt: true,
           rejectionReason: true,
           newCase: { select: { ...LINK_SELECT, ...CASE_PLACES } },
+          nomination: { select: { id: true } },
+        },
+      },
+      // The last request for a nomination; at most one waits (AMD-12).
+      nominations: {
+        orderBy: [{ askedAt: "desc" }, { id: "asc" }],
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          version: true,
+          reason: true,
+          askedAt: true,
+          askedBy: { select: LABEL_SELECT },
+          district: { select: NAMES },
+          sentBackReason: true,
+          sentBackAt: true,
         },
       },
       _count: { select: { amendments: true } },
@@ -416,16 +456,19 @@ export async function getCase(
     centres,
     dateOfBirth,
     amendments,
+    nominations,
     _count,
     ...fields
   } = found;
   const last = amendments[0];
+  const asked = nominations[0];
   const places = { dsOffice, buildDsOffice };
   const actsOn = {
     edit: canActOn(viewer, places, "edit"),
     progress: canActOn(viewer, places, "installment"),
     release: viewer.role === "DISTRICT_OFFICER" && canActOn(viewer, places, "release"),
     amend: canActOn(viewer, places, "amend"),
+    nominate: viewer.role === "DISTRICT_OFFICER" && canActOn(viewer, places, "nominate"),
   };
   const dsRelease = release?.dsRelease;
   return {
@@ -512,9 +555,27 @@ export async function getCase(
             reason: last.reason,
             decidedAt: last.decidedAt,
             rejectionReason: last.rejectionReason,
+            nominated: last.nomination !== null,
           }
         : null,
     hasAmendments: _count.amendments > 0,
+    // A request sent back shows until the DS asks again or submits an amendment.
+    nomination:
+      asked &&
+      (asked.status === "WAITING" ||
+        (asked.status === "SENT_BACK" && !(last && last.submittedAt > (asked.sentBackAt ?? asked.askedAt))))
+        ? {
+            id: asked.id,
+            status: asked.status,
+            version: asked.version,
+            reason: asked.reason,
+            askedAt: asked.askedAt,
+            askedByName: accountLabel(asked.askedBy, locale),
+            districtName: localName(asked.district, locale),
+            sentBackReason: asked.sentBackReason,
+            sentBackAt: asked.sentBackAt,
+          }
+        : null,
   };
 }
 
@@ -721,13 +782,14 @@ const TODO_TAKE = 20;
  * that submitted them (AMD-6); cases whose allocation was received and whose first installment hasn't
  * started; installments being paid whose expected day has passed or is within 7 days; cases in progress
  * with no update for 30 days. The last three are the work of the DS where the case is built (CASE-13), and
- * leave out a case whose amendment waits for the Ministry, which holds its installments (AMD-3).
+ * leave out a case held by an amendment waiting for the Ministry or a request waiting for the District
+ * (AMD-3, AMD-12).
  */
 export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date()): Promise<TodoItem[]> {
   const built = officeFilter(viewer, actingOffice("installment"));
   const residence = officeFilter(viewer, actingOffice("amend"));
   if (!built || !residence) return [];
-  const progress = { ...built, amendments: { none: { status: "WAITING" } } } satisfies Prisma.CaseWhereInput;
+  const progress = { ...built, ...NOT_HELD } satisfies Prisma.CaseWhereInput;
   const today = colomboDay(now);
   const caseFields = { id: true, name: true, childName: true } as const;
 
@@ -740,7 +802,7 @@ export async function todoItems(db: PrismaClient, viewer: Viewer, now = new Date
         case: {
           ...residence,
           status: { in: ["AWAITING_ALLOCATION", "ALLOCATED_TO_DISTRICT", "ALLOCATION_RECEIVED"] },
-          amendments: { none: { status: "WAITING" } },
+          ...NOT_HELD,
         },
       },
       orderBy: [{ decidedAt: "desc" }, { id: "asc" }],

@@ -143,9 +143,12 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
               <ul className="flex flex-col">
                 {letters.map((letter) => (
                   <li key={letter.id} className="flex flex-col border-t py-2">
-                    <span className="text-[15px] font-bold">
+                    <Link
+                      href={`/ministry/allocate/letters/${letter.id}`}
+                      className="self-start text-[15px] font-bold text-primary underline-offset-2 hover:underline"
+                    >
                       {t("letters.recordedName", { district: letter.districtName, number: letter.letterNumber })}
-                    </span>
+                    </Link>
                     <span className="text-sm text-muted-foreground">
                       {t("letters.recordedSub", {
                         date: formatDate(letter.letterDate),
@@ -156,11 +159,6 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
                     <span className="text-sm text-[#3F4843]">
                       {t("letters.recordedUntil", { date: formatDate(letter.validUntil) })}
                     </span>
-                    {letter.returned > 0 && (
-                      <span className="text-sm text-[#5C4300]">
-                        {t("letters.recordedReturned", { count: letter.returned })}
-                      </span>
-                    )}
                   </li>
                 ))}
               </ul>

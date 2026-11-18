@@ -81,8 +81,17 @@ enum AmendmentStatus {
   REJECTED
 }
 
-/// AMD-11: how far a replaced beneficiary's allocation went back: from the DS office to its District, or to
-/// the Ministry (from the District, and from the DS office first when the District had released it).
+/// AMD-12, AMD-13: a DS's request that the District nominate a new beneficiary: waiting for the District,
+/// nominated (it became an amendment), or sent back with a reason.
+enum NominationStatus {
+  WAITING
+  NOMINATED
+  SENT_BACK
+}
+
+/// AMD-11: how far a replaced beneficiary's allocation went back: from the DS office to its District. Task 4
+/// of change 0009 also sent it back to the Ministry; task 5 took that out (a database check since then), and
+/// the value stays because PostgreSQL can't drop it.
 enum ReturnedTo {
   DISTRICT
   MINISTRY
@@ -131,6 +140,10 @@ enum NotificationType {
   AMENDMENT_APPROVED
   /// The Ministry rejected an amendment; the notice hangs on the existing case (AMD-10).
   AMENDMENT_REJECTED
+  /// For a District officer: a DS asks the District to nominate a new beneficiary (AMD-12).
+  NOMINATION_ASKED
+  /// The District sent a DS's request for a nomination back (AMD-13).
+  NOMINATION_SENT_BACK
 }
 
 /// Places and stages carry a name in each screen language (UI-9).
@@ -148,17 +161,19 @@ model Province {
 }
 
 model District {
-  id         Int                @id @default(autoincrement())
-  nameEn     String             @unique @map("name_en")
-  nameSi     String             @unique @map("name_si")
-  nameTa     String             @unique @map("name_ta")
-  provinceId Int                @map("province_id")
-  province   Province           @relation(fields: [provinceId], references: [id])
-  dsOffices  DsOffice[]
-  letters    ReleaseLetter[]
-  dsReleases DsRelease[]
-  users      User[]
-  returns    AllocationReturn[]
+  id          Int                @id @default(autoincrement())
+  nameEn      String             @unique @map("name_en")
+  nameSi      String             @unique @map("name_si")
+  nameTa      String             @unique @map("name_ta")
+  provinceId  Int                @map("province_id")
+  province    Province           @relation(fields: [provinceId], references: [id])
+  dsOffices   DsOffice[]
+  letters     ReleaseLetter[]
+  dsReleases  DsRelease[]
+  users       User[]
+  returns     AllocationReturn[]
+  /// AMD-12: the requests that the District nominate a new beneficiary.
+  nominations Nomination[]
 
   @@index([provinceId])
   @@map("district")
@@ -166,27 +181,29 @@ model District {
 
 /// A Divisional Secretariat. Never deleted: inactive offices keep their accounts and cases (LST-3).
 model DsOffice {
-  id         Int                @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   /// Three capital letters, unique nationally, used in case numbers (CASE-5).
-  code       String             @unique @db.Char(3)
-  nameEn     String             @map("name_en")
-  nameSi     String             @map("name_si")
-  nameTa     String             @map("name_ta")
-  districtId Int                @map("district_id")
-  district   District           @relation(fields: [districtId], references: [id])
-  active     Boolean            @default(true)
-  createdAt  DateTime           @default(now()) @map("created_at")
-  updatedAt  DateTime           @updatedAt @map("updated_at")
-  users      User[]
+  code        String             @unique @db.Char(3)
+  nameEn      String             @map("name_en")
+  nameSi      String             @map("name_si")
+  nameTa      String             @map("name_ta")
+  districtId  Int                @map("district_id")
+  district    District           @relation(fields: [districtId], references: [id])
+  active      Boolean            @default(true)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  users       User[]
   /// The cases of the people who live in this DS division.
-  cases      Case[]             @relation("CaseResidence")
+  cases       Case[]             @relation("CaseResidence")
   /// The cases whose house is built, or land bought, in this DS division (CASE-13).
-  casesBuilt Case[]             @relation("CaseBuilt")
-  dsReleases DsRelease[]
-  /// The amendments of this DS's beneficiaries (AMD-8: the new beneficiary lives here too).
-  amendments Amendment[]
+  casesBuilt  Case[]             @relation("CaseBuilt")
+  dsReleases  DsRelease[]
+  /// The amendments whose new beneficiary lives here: the case's DS, or the one the District nominated (AMD-13).
+  amendments  Amendment[]
+  /// AMD-12: the requests for a nomination this DS made.
+  nominations Nomination[]
   /// AMD-11: the allocations that went back from this office.
-  returns    AllocationReturn[]
+  returns     AllocationReturn[]
 
   @@unique([districtId, nameSi])
   @@index([districtId])
@@ -291,6 +308,8 @@ model User {
   amendmentsSubmitted    Amendment[]        @relation("AmendmentSubmittedBy")
   amendmentsDecided      Amendment[]        @relation("AmendmentDecidedBy")
   allocationReturns      AllocationReturn[]
+  nominationsAsked       Nomination[]       @relation("NominationAskedBy")
+  nominationsSentBack    Nomination[]       @relation("NominationSentBackBy")
 
   @@index([dsOfficeId])
   @@index([districtId])
@@ -487,6 +506,8 @@ model Case {
   allocationReturn  AllocationReturn? @relation("ReturnOf")
   /// AMD-11: the allocation that went back when this case replaced another.
   returnedFor       AllocationReturn? @relation("ReturnFor")
+  /// AMD-12: the DS's requests that the District nominate a new beneficiary; at most one waits.
+  nominations       Nomination[]
 
   @@unique([dsOfficeId, applicationKey])
   @@index([dsOfficeId, status])
@@ -755,7 +776,8 @@ model Amendment {
   /// The case whose beneficiary is to be replaced. Restricted, so a case with an amendment can't be deleted.
   caseId           String            @map("case_id")
   case             Case              @relation("AmendmentOf", fields: [caseId], references: [id], onDelete: Restrict)
-  /// The case's DS of residence, copied when submitted: the new beneficiary's too (AMD-8).
+  /// The new beneficiary's DS of residence: the case's, copied when submitted (AMD-8), or the one the District
+  /// chose when it nominated them (AMD-13).
   dsOfficeId       Int               @map("ds_office_id")
   dsOffice         DsOffice          @relation(fields: [dsOfficeId], references: [id])
   /// The new beneficiary's Application Number as CASE-12 compares it (`applicationKey`).
@@ -783,11 +805,53 @@ model Amendment {
   files            StoredFile[]
   /// AMD-11: the allocation its approval sent back, if the new beneficiary is built elsewhere.
   allocationReturn AllocationReturn?
+  /// AMD-13: the DS's request that made it, when the District nominated the new beneficiary; the District
+  /// officer who did is `submittedBy`.
+  nomination       Nomination?
 
   @@index([caseId])
   @@index([dsOfficeId])
   @@index([status, submittedAt])
   @@map("amendment")
+}
+
+/// AMD-12, AMD-13: a CRPO's request that the District nominate a new beneficiary from another DS division of
+/// the district. While it waits, the case is held as by a waiting amendment (AMD-3). The District nominates
+/// (the request then names the amendment it made) or sends it back with a reason. Never deleted. Database
+/// rules the schema can't hold (hand-written in the migration `20261118090100_nominations`): at most one
+/// WAITING request per case; the amendment only when nominated; the reason for sending back, who and when,
+/// only when sent back.
+model Nomination {
+  id             String           @id
+  caseId         String           @map("case_id")
+  case           Case             @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  /// The DS that asked: the case's DS of residence.
+  dsOfficeId     Int              @map("ds_office_id")
+  dsOffice       DsOffice         @relation(fields: [dsOfficeId], references: [id])
+  /// The district asked: where the case is built, when it was asked.
+  districtId     Int              @map("district_id")
+  district       District         @relation(fields: [districtId], references: [id])
+  /// 5 to 1,000 characters (a database check).
+  reason         String
+  status         NominationStatus @default(WAITING)
+  askedById      String           @map("asked_by_id")
+  askedBy        User             @relation("NominationAskedBy", fields: [askedById], references: [id])
+  askedAt        DateTime         @default(now()) @map("asked_at")
+  /// The amendment the District's nomination made; set only when nominated.
+  amendmentId    String?          @unique @map("amendment_id")
+  amendment      Amendment?       @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+  /// 5 to 1,000 characters, set only when sent back.
+  sentBackReason String?          @map("sent_back_reason")
+  sentBackById   String?          @map("sent_back_by_id")
+  sentBackBy     User?            @relation("NominationSentBackBy", fields: [sentBackById], references: [id])
+  sentBackAt     DateTime?        @map("sent_back_at")
+  /// Goes up by one on every change (CASE-10).
+  version        Int              @default(1)
+
+  @@index([caseId])
+  @@index([dsOfficeId])
+  @@index([districtId, status])
+  @@map("nomination")
 }
 
 /// AMD-11: a replaced beneficiary's Rs. 2,000,000 that went back, because the approved amendment's new

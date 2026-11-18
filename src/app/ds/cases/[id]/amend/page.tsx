@@ -1,14 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import { amendBuild } from "@/components/amendments/amend-build";
 import { caseName, formValues, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
-import { type BuildSetting, CaseForm } from "@/components/forms/case-form";
+import { CaseForm } from "@/components/forms/case-form";
 import { canAmend } from "@/server/amendments/rules";
-import { type CaseDetails, getCase } from "@/server/cases/queries";
+import { getCase } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { type DistrictOptions, districtsWithOffices, provinceOptions } from "@/server/lists/queries";
+import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, uploadDocumentAction } from "../../actions";
 import { submitAmendmentAction } from "./actions";
 
@@ -28,7 +29,7 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
     {
       status: details.status,
       paid: details.installments.some((i) => i.status === "RELEASED"),
-      waiting: details.amendment?.status === "WAITING",
+      waiting: details.amendment?.status === "WAITING" || details.nomination?.status === "WAITING",
     },
   );
   if (!allowed) redirect(`/ds/cases/${id}`);
@@ -83,24 +84,4 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
       />
     </div>
   );
-}
-
-/**
- * AMD-8: the form's "where is the land?", any active DS office, with where the existing case's money has
- * reached, so the form says when the chosen place sends it back (AMD-11).
- */
-function amendBuild(details: CaseDetails, districts: DistrictOptions[]): BuildSetting {
-  return {
-    kind: "choose",
-    districts,
-    districtId: null,
-    dsOfficeId: null,
-    money: {
-      status: details.status,
-      buildDsOffice: { id: details.buildDsOfficeId, districtId: details.buildDistrictId },
-      districtName: details.buildDistrictName,
-      officeName: details.buildOfficeName,
-      residenceDistrictId: details.districtId,
-    },
-  };
 }

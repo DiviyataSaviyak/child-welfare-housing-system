@@ -51,7 +51,12 @@ export async function AmendmentView({
         <h2 id="amendment-summary" className="sr-only">
           {t("amend.view.title")}
         </h2>
-        <p>{t("amend.view.submittedBy", { date: formatDate(view.submittedAt), name: view.submittedByName })}</p>
+        <p>
+          {view.nominatedByName
+            ? t("amend.view.nominatedBy", { date: formatDate(view.submittedAt), name: view.nominatedByName })
+            : t("amend.view.submittedBy", { date: formatDate(view.submittedAt), name: view.submittedByName })}
+        </p>
+
         <p className="whitespace-pre-line" data-testid="amendment-reason">
           {t("amend.reasonLine", { reason: view.reason })}
         </p>

@@ -185,6 +185,8 @@ const RULES: Record<string, Record<string, Rule>> = {
     payInstallmentAction: DS,
     stageUpdateAction: DS,
     uploadPhotoAction: DS,
+    // AMD-12: a CRPO of the case's DS of residence; the command checks the office (AC-79).
+    askNominationAction: DS,
   },
   // AMD-1: a CRPO of the case's DS of residence; the command checks the office (AMD-1, AC-48).
   "src/app/ds/cases/[id]/amend/actions.ts": { submitAmendmentAction: DS },
@@ -223,6 +225,15 @@ const RULES: Record<string, Record<string, Rule>> = {
   "src/app/oversight/notifications/actions.ts": { openNotificationAction: DISTRICT, markAllReadAction: DISTRICT },
   "src/app/oversight/notifications/unread/route.ts": { GET: DISTRICT },
   "src/app/oversight/waiting/route.ts": { GET: DISTRICT },
+  // AMD-13: a District officer; the command checks the district where the case is built (AC-79).
+  "src/app/oversight/nominations/[id]/actions.ts": {
+    nominateAction: DISTRICT,
+    sendBackNominationAction: DISTRICT,
+    uploadNominationDocumentAction: DISTRICT,
+    checkNominationNicAction: DISTRICT,
+    removeNominationDocumentAction: DISTRICT,
+  },
+  "src/app/oversight/amendments/to-nominate/route.ts": { GET: DISTRICT },
   "src/app/files/[id]/route.ts": { GET: { signedIn: "file" } },
   "src/app/files/[id]/thumb/route.ts": { GET: { signedIn: "file" } },
 };

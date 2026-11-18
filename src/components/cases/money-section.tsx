@@ -261,19 +261,15 @@ export async function ReturnNote({ returned }: { returned: AllocationReturnDetai
         {t("returned.title")}
       </h2>
       <p>
-        {returned.returnedTo === "DISTRICT"
-          ? t("returned.DISTRICT", {
-              date,
-              office: returned.officeName ?? "",
-              district: returned.districtName,
-              reference: returned.referenceNumber,
-            })
-          : t("returned.MINISTRY", { date, district: returned.districtName, reference: returned.referenceNumber })}
+        {t("returned.DISTRICT", {
+          date,
+          office: returned.officeName ?? "",
+          district: returned.districtName,
+          reference: returned.referenceNumber,
+        })}
       </p>
-      {returned.returnedTo === "MINISTRY" && returned.officeName && (
-        <p>{t("returned.fromOffice", { office: returned.officeName })}</p>
-      )}
-      <p>{returned.side === "replaced" ? t("returned.replaced") : t(`returned.new${returned.returnedTo}`)}</p>
+      <p>{returned.side === "replaced" ? t("returned.replaced") : t("returned.newDISTRICT")}</p>
+
       {returned.note && <p className="whitespace-pre-line">{t("money.note", { note: returned.note })}</p>}
       <p>{t("money.recordedBy", { name: returned.byName, date: formatDate(returned.at) })}</p>
     </section>

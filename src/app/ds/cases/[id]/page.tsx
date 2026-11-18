@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentNotes } from "@/components/amendments/amendment-notes";
+import { NominationNotes } from "@/components/amendments/nomination-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
 import { MoneySection, ReturnNote } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
@@ -33,6 +35,7 @@ import {
 import { getStageProgress } from "@/server/stages/queries";
 import { deleteCaseAction } from "../actions";
 import {
+  askNominationAction,
   correctInstallmentAction,
   payInstallmentAction,
   stageUpdateAction,
@@ -75,8 +78,9 @@ export default async function DsCasePage({
   // CASE-13: only the DS where it is built pays the installments and records the stages, from the District's
   // release to it until the case is completed (INS-5, STG-5). The date rules start from that release.
   const receivedOn = details.release?.dsRelease?.releasedOn ?? null;
-  // AMD-3: an amendment waiting for the Ministry holds the installments and stages.
-  const waiting = details.amendment?.status === "WAITING";
+  // AMD-3, AMD-12: an amendment waiting for the Ministry, or a request waiting for the District, holds the
+  // installments and stages.
+  const waiting = details.amendment?.status === "WAITING" || details.nomination?.status === "WAITING";
   const running = takesProgress(details.status) && receivedOn !== null && details.actsOn.progress && !waiting;
   const today = colomboDay(new Date());
   // A land case's next installment has no row until it is started (INS-7).
@@ -88,6 +92,26 @@ export default async function DsCasePage({
   const amendable = canAmend(
     { role: viewer.role, residence: details.actsOn.amend },
     { status: details.status, paid: details.installments.some((i) => i.status === "RELEASED"), waiting },
+  );
+  // AMD-12: or asks the District to nominate a new beneficiary from another DS division, on the same terms.
+  const askDistrict = amendable && (
+    <ReasonAction
+      key={`nominate-${details.version}`}
+      id="ask-district"
+      look="small"
+      hidden={{ caseId: details.id, version: String(details.version), nominationId: randomUUID() }}
+      action={askNominationAction}
+      texts={{
+        button: t("nominate.ask.button"),
+        title: t("nominate.ask.title"),
+        text: t("nominate.ask.text", { district: details.buildDistrictName }),
+        reason: t("nominate.ask.reason"),
+        reasonHelp: t("nominate.ask.reasonHelp"),
+        confirm: t("nominate.ask.confirm"),
+        cancel: t("nominate.ask.cancel"),
+        working: t("nominate.ask.working"),
+      }}
+    />
   );
   // CASE-8: a case with an amendment, waiting or decided, is kept with it.
   const remove = details.actsOn.edit && canDeleteCase(viewer.role, details.status) && !details.hasAmendments && (
@@ -191,6 +215,7 @@ export default async function DsCasePage({
                 {t("amend.button")}
               </Link>
             )}
+            {askDistrict}
             {remove}
           </div>
         }
@@ -214,9 +239,12 @@ export default async function DsCasePage({
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}
       {notice === "amendmentSubmitted" && <FormNotice message={t("amend.submitted")} />}
+      {notice === "nominationAsked" && <FormNotice message={t("nominate.ask.done")} />}
       {isNotice(notice) && <FormNotice message={tp(`notices.${notice}`)} />}
       <ReplacementNotes details={details} audience="ds" />
       <AmendmentNotes details={details} ownOffice={amendable} audience="ds" />
+      <NominationNotes details={details} ownOffice={amendable} nominateHref={null} />
+
       <CompletedBanner details={details} />
       <CaseColumns
         main={

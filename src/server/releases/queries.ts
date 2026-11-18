@@ -1,3 +1,4 @@
+import { isHeld, WAITING_ONE } from "../amendments/held";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Locale } from "@/i18n/locales";
 import { dateToDay } from "@/lib/dates";
@@ -112,7 +113,8 @@ export async function casesForLetter(
       buildDsOfficeId: true,
       dsOffice: { select: NAMES },
       buildDsOffice: { select: NAMES },
-      amendments: WAITING_AMENDMENT,
+      amendments: WAITING_ONE,
+      nominations: WAITING_ONE,
     },
   });
   const duplicates = await duplicatesOf(db, viewer, found, locale);
@@ -128,12 +130,9 @@ export async function casesForLetter(
     residenceName: c.dsOfficeId === c.buildDsOfficeId ? null : localName(c.dsOffice, locale),
     createdAt: c.createdAt,
     duplicates: duplicates.get(c.id) ?? [],
-    amendmentWaiting: c.amendments.length > 0,
+    amendmentWaiting: isHeld(c),
   }));
 }
-
-/** Selects a case's waiting amendment, if it has one (AMD-3). */
-const WAITING_AMENDMENT = { where: { status: "WAITING" }, take: 1, select: { id: true } } as const;
 
 /** An allocation letter as the allocation screen and its notice show it. */
 export type LetterSummary = {
@@ -144,10 +143,8 @@ export type LetterSummary = {
   letterDate: string;
   /** "YYYY-MM-DD" */
   validUntil: string;
-  /** The cases it allocated, those whose allocation went back to the Ministry too (AMD-11). */
+  /** The cases it allocated. A return to the District keeps the case's allocation on it (AMD-11). */
   count: number;
-  /** Of them, those whose allocation went back to the Ministry (AMD-11). */
-  returned: number;
   /** The DS offices where they are built, by name. */
   offices: string[];
 };
@@ -159,8 +156,6 @@ const LETTER_SELECT = {
   validUntil: true,
   district: { select: NAMES },
   releases: { select: { case: { select: { buildDsOffice: { select: NAMES } } } } },
-  // AMD-11: a return to the District leaves the case's release row on the letter; one to the Ministry doesn't.
-  _count: { select: { returns: { where: { returnedTo: "MINISTRY" } } } },
 } as const;
 
 type FoundLetter = {
@@ -170,7 +165,6 @@ type FoundLetter = {
   validUntil: Date;
   district: Names;
   releases: { case: { buildDsOffice: Names } }[];
-  _count: { returns: number };
 };
 
 const summary =
@@ -181,8 +175,7 @@ const summary =
     letterNumber: letter.letterNumber,
     letterDate: dateToDay(letter.letterDate),
     validUntil: dateToDay(letter.validUntil),
-    count: letter.releases.length + letter._count.returns,
-    returned: letter._count.returns,
+    count: letter.releases.length,
     offices: [...new Set(letter.releases.map((r) => localName(r.case.buildDsOffice, locale)))].sort(),
   });
 
@@ -323,7 +316,8 @@ export async function casesForDsRelease(
       dsOfficeId: true,
       dsOffice: { select: NAMES },
       release: { select: { letter: { select: { letterNumber: true, letterDate: true } } } },
-      amendments: WAITING_AMENDMENT,
+      amendments: WAITING_ONE,
+      nominations: WAITING_ONE,
     },
   });
   return {
@@ -342,7 +336,7 @@ export async function casesForDsRelease(
               residenceName: c.dsOfficeId === dsOfficeId ? null : localName(c.dsOffice, locale),
               letterNumber: c.release.letter.letterNumber,
               letterDate: dateToDay(c.release.letter.letterDate),
-              amendmentWaiting: c.amendments.length > 0,
+              amendmentWaiting: isHeld(c),
             },
           ]
         : [],
@@ -357,10 +351,8 @@ export type DsReleaseSummary = {
   referenceNumber: string;
   /** "YYYY-MM-DD" */
   releasedOn: string;
-  /** The cases it released, those whose allocation went back too (AMD-11). */
+  /** The cases it holds now. One whose allocation went back with an amendment (AMD-11) is not counted (REL-11). */
   count: number;
-  /** Of them, those whose allocation went back, to the District or the Ministry (AMD-11). */
-  returned: number;
 };
 
 const DS_RELEASE_SELECT = {
@@ -368,7 +360,7 @@ const DS_RELEASE_SELECT = {
   referenceNumber: true,
   releasedOn: true,
   dsOffice: { select: NAMES },
-  _count: { select: { releases: true, returns: true } },
+  _count: { select: { releases: true } },
 } as const;
 
 const dsSummary =
@@ -378,14 +370,13 @@ const dsSummary =
     referenceNumber: string;
     releasedOn: Date;
     dsOffice: Names;
-    _count: { releases: number; returns: number };
+    _count: { releases: number };
   }): DsReleaseSummary => ({
     id: found.id,
     officeName: localName(found.dsOffice, locale),
     referenceNumber: found.referenceNumber,
     releasedOn: dateToDay(found.releasedOn),
-    count: found._count.releases + found._count.returns,
-    returned: found._count.returns,
+    count: found._count.releases,
   });
 
 /** REL-5: the releases the District officer's district recorded last, newest first. */
@@ -440,4 +431,85 @@ export async function awaitingAllocation(db: PrismaClient, viewer: Viewer): Prom
   const scope = officeFilter(viewer);
   if (viewer.role !== "MINISTRY_OFFICER" || !scope) return { count: 0, at };
   return { count: await db.case.count({ where: { AND: [scope], status: "AWAITING_ALLOCATION" } }), at };
+}
+
+/**
+ * A beneficiary on a letter or a District release, as its page lists them (REL-10, REL-11). One whose
+ * allocation went back with an amendment (AMD-11) never received it, so it is not listed.
+ */
+export type SentCase = { id: string; name: string | null; childName: string | null };
+
+const SENT_CASES = {
+  select: { case: { select: { id: true, name: true, childName: true, applicationNumber: true } } },
+} as const;
+
+/** By Application Number, as the officers file them. */
+const sentCases = (locale: Locale, found: { case: SentCase & { applicationNumber: string } }[]): SentCase[] =>
+  found
+    .map((r) => r.case)
+    .sort((a, b) => a.applicationNumber.localeCompare(b.applicationNumber, locale, { numeric: true }))
+    .map(({ id, name, childName }) => ({ id, name, childName }));
+
+/** One letter with its beneficiaries, as its page shows it (REL-10). */
+export type LetterDetails = {
+  districtName: string;
+  letterNumber: string;
+  /** "YYYY-MM-DD" */
+  letterDate: string;
+  cases: SentCase[];
+};
+
+/** REL-10: one allocation letter and its beneficiaries. The Ministry only; anything else is null. */
+export async function letterWithCases(
+  db: PrismaClient,
+  viewer: Viewer,
+  id: string,
+  locale: Locale,
+): Promise<LetterDetails | null> {
+  if (viewer.role !== "MINISTRY_OFFICER" || !officeFilter(viewer)) return null;
+  const found = await db.releaseLetter.findUnique({
+    where: { id },
+    select: { letterNumber: true, letterDate: true, district: { select: NAMES }, releases: SENT_CASES },
+  });
+  if (!found) return null;
+  return {
+    districtName: localName(found.district, locale),
+    letterNumber: found.letterNumber,
+    letterDate: dateToDay(found.letterDate),
+    cases: sentCases(locale, found.releases),
+  };
+}
+
+/** One District release with its beneficiaries, as its page shows it (REL-11). */
+export type DsReleaseDetails = {
+  officeName: string;
+  referenceNumber: string;
+  /** "YYYY-MM-DD" */
+  releasedOn: string;
+  cases: SentCase[];
+};
+
+/**
+ * REL-11: one of the District officer's district's releases and its beneficiaries; null for a release of
+ * another district or anyone else (PRM-1).
+ */
+export async function dsReleaseWithCases(
+  db: PrismaClient,
+  viewer: Viewer,
+  id: string,
+  locale: Locale,
+): Promise<DsReleaseDetails | null> {
+  const districtId = releasingDistrict(viewer);
+  if (districtId === null) return null;
+  const found = await db.dsRelease.findFirst({
+    where: { id, districtId },
+    select: { referenceNumber: true, releasedOn: true, dsOffice: { select: NAMES }, releases: SENT_CASES },
+  });
+  if (!found) return null;
+  return {
+    officeName: localName(found.dsOffice, locale),
+    referenceNumber: found.referenceNumber,
+    releasedOn: dateToDay(found.releasedOn),
+    cases: sentCases(locale, found.releases),
+  };
 }

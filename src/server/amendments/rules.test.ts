@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import type { Role } from "../auth/roles";
-import { amendRefusal, canAmend, replacementStep } from "./rules";
+import { amendRefusal, canAmend, nominateRefusal, replacementStep } from "./rules";
 
 const crpo = { role: "DS_OFFICER" as Role, residence: true };
 const facts = (status: CaseStatus, more: { paid?: boolean; waiting?: boolean } = {}) => ({
@@ -50,16 +50,37 @@ describe("where the new case starts, and how far the money goes back (AMD-8, AMD
     }
   });
 
-  it("allocated to its district: the same district stays on the letter; another goes back to the Ministry", () => {
+  it("allocated to its district: the same district stays on the letter; another district is refused", () => {
     for (const built of [kaduwela, homagama]) {
       expect(step("ALLOCATED_TO_DISTRICT", built)).toEqual({ status: "ALLOCATED_TO_DISTRICT", returnedTo: null });
     }
-    expect(step("ALLOCATED_TO_DISTRICT", biyagama)).toEqual({ status: "AWAITING_ALLOCATION", returnedTo: "MINISTRY" });
+    expect(step("ALLOCATED_TO_DISTRICT", biyagama)).toBeNull();
   });
 
-  it("allocation received: the same DS office keeps it; the district's other offices back to the District; another district to the Ministry", () => {
+  it("allocation received: the same DS office keeps it; the district's other offices back to the District; another district is refused", () => {
     expect(step("ALLOCATION_RECEIVED", kaduwela)).toEqual({ status: "ALLOCATION_RECEIVED", returnedTo: null });
     expect(step("ALLOCATION_RECEIVED", homagama)).toEqual({ status: "ALLOCATED_TO_DISTRICT", returnedTo: "DISTRICT" });
-    expect(step("ALLOCATION_RECEIVED", biyagama)).toEqual({ status: "AWAITING_ALLOCATION", returnedTo: "MINISTRY" });
+    expect(step("ALLOCATION_RECEIVED", biyagama)).toBeNull();
+  });
+});
+
+describe("who may nominate for a request, and when (AMD-13)", () => {
+  it("lets a District officer of the district where it is built act on a waiting request", () => {
+    expect(nominateRefusal({ role: "DISTRICT_OFFICER", district: true }, { status: "WAITING" })).toBeNull();
+  });
+
+  it("refuses a request already nominated or sent back", () => {
+    for (const status of ["NOMINATED", "SENT_BACK"] as const) {
+      expect(nominateRefusal({ role: "DISTRICT_OFFICER", district: true }, { status })).toBe("nominationDecided");
+    }
+  });
+
+  it("refuses another district's officer and every other account (AC-79)", () => {
+    expect(nominateRefusal({ role: "DISTRICT_OFFICER", district: false }, { status: "WAITING" })).toBe(
+      "roleNotAllowed",
+    );
+    for (const role of ["DS_OFFICER", "VIEWER", "MINISTRY_OFFICER", "ADMIN"] as const) {
+      expect(nominateRefusal({ role, district: true }, { status: "WAITING" })).toBe("roleNotAllowed");
+    }
   });
 });
