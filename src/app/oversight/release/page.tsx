@@ -93,6 +93,11 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
                       amount: formatRupees(release.count * RELEASE_AMOUNT, locale),
                     })}
                   </span>
+                  {release.returned > 0 && (
+                    <span className="text-sm text-[#5C4300]">
+                      {t("letters.recordedReturned", { count: release.returned })}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

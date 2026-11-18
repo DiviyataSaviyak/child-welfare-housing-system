@@ -3,9 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { caseName, formValues, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
-import type { BuildSetting } from "@/components/forms/case-form";
-import { CaseForm } from "@/components/forms/case-form";
-import { type BuildOffices, buildOfficesFor, canAmend } from "@/server/amendments/rules";
+import { type BuildSetting, CaseForm } from "@/components/forms/case-form";
+import { canAmend } from "@/server/amendments/rules";
 import { type CaseDetails, getCase } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -34,13 +33,9 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
   );
   if (!allowed) redirect(`/ds/cases/${id}`);
 
-  const limit = buildOfficesFor({
-    status: details.status,
-    buildDsOffice: { id: details.buildDsOfficeId, districtId: details.buildDistrictId },
-  });
   const [t, districts, provinces] = await Promise.all([
     getTranslations("cases"),
-    districtsWithOffices(db, locale, limit.kind === "district" ? { districts: { id: limit.districtId } } : {}),
+    districtsWithOffices(db, locale),
     provinceOptions(db, locale),
   ]);
   const name = caseName(t, details.name, details.childName);
@@ -74,7 +69,7 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
           districtName: details.districtName,
           officeName: details.officeName,
         }}
-        build={amendBuild(limit, details, districts)}
+        build={amendBuild(details, districts)}
         provinces={provinces}
         documents={[]}
         mode="amend"
@@ -90,25 +85,22 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
   );
 }
 
-/** AMD-8: the form's "where is the land?", limited to where the existing case's money has gone. */
-function amendBuild(limit: BuildOffices, details: CaseDetails, districts: DistrictOptions[]): BuildSetting {
-  switch (limit.kind) {
-    case "any":
-      return { kind: "choose", districts, districtId: null, dsOfficeId: null };
-    case "district":
-      return {
-        kind: "choose",
-        districts,
-        districtId: limit.districtId,
-        dsOfficeId: null,
-        sameAllowed: details.districtId === limit.districtId,
-      };
-    case "office":
-      return {
-        kind: "fixed",
-        dsOfficeId: limit.dsOfficeId === details.dsOfficeId ? null : limit.dsOfficeId,
-        districtName: details.buildDistrictName,
-        officeName: details.buildOfficeName,
-      };
-  }
+/**
+ * AMD-8: the form's "where is the land?", any active DS office, with where the existing case's money has
+ * reached, so the form says when the chosen place sends it back (AMD-11).
+ */
+function amendBuild(details: CaseDetails, districts: DistrictOptions[]): BuildSetting {
+  return {
+    kind: "choose",
+    districts,
+    districtId: null,
+    dsOfficeId: null,
+    money: {
+      status: details.status,
+      buildDsOffice: { id: details.buildDsOfficeId, districtId: details.buildDistrictId },
+      districtName: details.buildDistrictName,
+      officeName: details.buildOfficeName,
+      residenceDistrictId: details.districtId,
+    },
+  };
 }

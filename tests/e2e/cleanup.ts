@@ -42,21 +42,26 @@ async function main() {
       select: { storedName: true, thumbName: true },
     });
     await prisma.storedFile.deleteMany({ where: theirFiles });
+    // AMD-11: the returns their approvals recorded, which hold the amendments, cases and letters.
+    await prisma.allocationReturn.deleteMany({ where: { amendment: amendments } });
     await prisma.amendment.deleteMany({ where: amendments });
     await prisma.notification.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.installment.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.release.deleteMany({ where: { caseId: { in: caseIds } } });
     // The scans of letters and District releases left with no case.
     const emptyLetter = {
-      OR: [{ letter: { releases: { none: {} } } }, { dsRelease: { releases: { none: {} } } }],
+      OR: [
+        { letter: { releases: { none: {} }, returns: { none: {} } } },
+        { dsRelease: { releases: { none: {} }, returns: { none: {} } } },
+      ],
     };
     files.push(
       ...(await prisma.storedFile.findMany({ where: emptyLetter, select: { storedName: true, thumbName: true } })),
     );
     await prisma.storedFile.deleteMany({ where: emptyLetter });
-    await prisma.releaseLetter.deleteMany({ where: { releases: { none: {} } } });
+    await prisma.releaseLetter.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
     // The District's releases the test cases left with no case (REL-7).
-    await prisma.dsRelease.deleteMany({ where: { releases: { none: {} } } });
+    await prisma.dsRelease.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
     await prisma.stageUpdate.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.decision.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.case.deleteMany({ where: { id: { in: caseIds } } });

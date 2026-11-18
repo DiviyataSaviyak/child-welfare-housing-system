@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import type { AmendmentStatus } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
 import type { AmendmentView as View } from "@/server/amendments/queries";
+import { ReturnNote } from "@/components/cases/money-section";
 import { type Audience, type BeneficiaryFields, caseFieldRows, DocumentLinks } from "../cases/case-view";
 import { caseName } from "../cases/page-header";
 
@@ -75,6 +76,7 @@ export async function AmendmentView({
         {actions && <div className="mt-2 flex flex-wrap items-center gap-3">{actions}</div>}
       </section>
       {above}
+      {view.existing.allocationReturn && <ReturnNote returned={view.existing.allocationReturn} />}
       <div className="grid max-w-[1360px] items-start gap-6 lg:grid-cols-2">
         <Beneficiary
           id="existing"

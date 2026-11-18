@@ -22,6 +22,7 @@ export type ProposedBeneficiary = Omit<CaseValues, "category" | "kind" | "applic
   districtName: string;
   officeName: string;
   buildDsOfficeId: number;
+  buildDistrictId: number;
   buildOfficeName: string;
   buildDistrictName: string;
   buildProvinceName: string;
@@ -136,7 +137,7 @@ async function proposedBeneficiary(
   const [office, provinces] = await Promise.all([
     db.dsOffice.findUnique({
       where: { id: stored.buildDsOfficeId },
-      select: { ...NAMES, district: { select: { ...NAMES, province: { select: NAMES } } } },
+      select: { ...NAMES, districtId: true, district: { select: { ...NAMES, province: { select: NAMES } } } },
     }),
     provinceIds.length > 0
       ? db.province.findMany({ where: { id: { in: provinceIds } }, select: { id: true, ...NAMES } })
@@ -151,6 +152,7 @@ async function proposedBeneficiary(
     districtName: existing.districtName,
     officeName: existing.officeName,
     buildDsOfficeId: stored.buildDsOfficeId,
+    buildDistrictId: office.districtId,
     buildOfficeName: localName(office, locale),
     buildDistrictName: localName(office.district, locale),
     buildProvinceName: localName(office.district.province, locale),

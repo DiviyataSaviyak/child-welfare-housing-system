@@ -87,6 +87,15 @@ export async function DashboardScreen({
     return text ? `${path}?${text}` : path;
   };
 
+  // DSH-1 (17 Nov 2026): a DS office's row opens the case list (FND-1) at that office, with the
+  // dashboard's category and kind, so the list holds the cases the row counts.
+  const casesHref = (districtId: number, dsOfficeId: number) => {
+    const query = new URLSearchParams({ districtId: String(districtId), dsOfficeId: String(dsOfficeId) });
+    if (category) query.set("category", category);
+    if (kind) query.set("kind", kind);
+    return `${path}/cases?${query.toString()}`;
+  };
+
   const scope = [
     district && !oneDistrict ? t("district", { district: district.name }) : areaName,
     category && tc(`category.${category}`),
@@ -260,11 +269,12 @@ export async function DashboardScreen({
                     <tr key={row.id} className="border-t hover:bg-accent/60">
                       <th scope="row" className="px-5 py-2.5 font-semibold">
                         {district ? (
-                          row.active ? (
-                            row.name
-                          ) : (
-                            tc("list.inactive", { office: row.name })
-                          )
+                          <Link
+                            href={casesHref(district.id, row.id)}
+                            className="text-primary underline underline-offset-3"
+                          >
+                            {row.active ? row.name : tc("list.inactive", { office: row.name })}
+                          </Link>
                         ) : (
                           <Link href={href(row.id)} className="text-primary underline underline-offset-3">
                             {row.name}

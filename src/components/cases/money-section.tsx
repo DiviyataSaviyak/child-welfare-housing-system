@@ -4,7 +4,7 @@ import type { InstallmentStatus, Kind } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
 import { formatRupees, paidOut } from "@/lib/money";
 import { isHouseKind } from "@/lib/validation/case";
-import type { InstallmentDetails, ReleaseDetails } from "@/server/cases/queries";
+import type { AllocationReturnDetails, InstallmentDetails, ReleaseDetails } from "@/server/cases/queries";
 import { isUpcoming, landBalance, schedule, type Upcoming } from "@/server/installments/rules";
 import type { Audience } from "./case-view";
 
@@ -239,6 +239,43 @@ export async function MoneySection({
         </div>
         {correction}
       </div>
+    </section>
+  );
+}
+
+/**
+ * AMD-11: the Rs. 2,000,000 that went back when a beneficiary was replaced by one built outside the place
+ * the money had reached: on the replaced case, and on the case that replaced it, which waits for the money
+ * again. In the money column, above the money section when there is one.
+ */
+export async function ReturnNote({ returned }: { returned: AllocationReturnDetails }) {
+  const t = await getTranslations("cases");
+  const date = formatDate(returned.returnedOn);
+  return (
+    <section
+      aria-labelledby="returned-title"
+      data-testid="allocation-returned"
+      className="flex flex-col gap-1.5 rounded-xl border border-[#E5C27A] bg-[#FFF8E8] px-6 py-4.5 text-[15px] text-[#5C4300]"
+    >
+      <h2 id="returned-title" className="text-lg font-bold">
+        {t("returned.title")}
+      </h2>
+      <p>
+        {returned.returnedTo === "DISTRICT"
+          ? t("returned.DISTRICT", {
+              date,
+              office: returned.officeName ?? "",
+              district: returned.districtName,
+              reference: returned.referenceNumber,
+            })
+          : t("returned.MINISTRY", { date, district: returned.districtName, reference: returned.referenceNumber })}
+      </p>
+      {returned.returnedTo === "MINISTRY" && returned.officeName && (
+        <p>{t("returned.fromOffice", { office: returned.officeName })}</p>
+      )}
+      <p>{returned.side === "replaced" ? t("returned.replaced") : t(`returned.new${returned.returnedTo}`)}</p>
+      {returned.note && <p className="whitespace-pre-line">{t("money.note", { note: returned.note })}</p>}
+      <p>{t("money.recordedBy", { name: returned.byName, date: formatDate(returned.at) })}</p>
     </section>
   );
 }

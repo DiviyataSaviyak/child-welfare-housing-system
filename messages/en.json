@@ -993,7 +993,6 @@
       "intro": "Enter the new beneficiary's details and the reason for the amendment on the form below. Until the Ministry approves or rejects it, the existing beneficiary stays, and no installment can be started or paid.",
       "reason": "Reason for the amendment",
       "reasonHelp": "Why the existing beneficiary can't go ahead, for example a problem with the land.",
-      "landInDistrict": "The allocation has already gone to this district, so the new beneficiary's land must be in one of its DS divisions.",
       "submit": "Submit an amendment",
       "confirmTitle": "Send the amendment to the Ministry?",
       "confirmText": "Check both beneficiaries' details and the reason.",
@@ -1026,7 +1025,14 @@
         "rejectReason": "Reason for rejecting *",
         "rejectConfirm": "Reject",
         "approved": "The amendment was approved. The DS office has been told.",
-        "rejected": "The amendment was rejected. The DS office has been told."
+        "rejected": "The amendment was rejected. The DS office has been told.",
+        "returnTitle": "Return of the allocation",
+        "approveReturnDistrict": "The new beneficiary's land is in another DS division of {district} District. The {office} DS office returns the Rs. 2,000,000 to the District Secretariat, and the new beneficiary waits for the District's release. Enter the return's date and reference number.",
+        "approveReturnMinistryDistrict": "The new beneficiary's land is in another district. The Rs. 2,000,000 goes back from the {district} District Secretariat to the Ministry, and the new beneficiary waits for the Ministry's allocation. Enter the return's date and reference number.",
+        "approveReturnMinistryOffice": "The new beneficiary's land is in another district. The Rs. 2,000,000 goes back from the {office} DS office, through the District Secretariat, to the Ministry, and the new beneficiary waits for the Ministry's allocation. Enter the return's date and reference number.",
+        "returnedOn": "Date returned *",
+        "returnReference": "Reference number *",
+        "returnNote": "Note (optional)"
       },
       "status": {
         "WAITING": "Submitted for approval",
@@ -1052,7 +1058,19 @@
           "APPROVED": "No amendment has been approved.",
           "REJECTED": "No amendment has been rejected."
         }
-      }
+      },
+      "moneyBackDistrict": "The Rs. 2,000,000 has already been released to the {office} DS office. If the land is in this DS division, the {office} DS office returns it to the District Secretariat once the Ministry approves, and the District releases it again to this DS office.",
+      "moneyBackMinistryFromDistrict": "The Rs. 2,000,000 has already been allocated to {district} District. If the land is in this district, it goes back to the Ministry once the Ministry approves, and the Ministry allocates it again to this district.",
+      "moneyBackMinistryFromOffice": "The Rs. 2,000,000 has already been released to the {office} DS office. If the land is in this district, it goes back to the Ministry through the District Secretariat once the Ministry approves, and the Ministry allocates it again to this district."
+    },
+    "returned": {
+      "title": "Allocation returned",
+      "DISTRICT": "On {date}, the {office} DS office returned the Rs. 2,000,000 to the {district} District Secretariat (reference {reference}).",
+      "MINISTRY": "On {date}, the Rs. 2,000,000 went back from {district} District to the Ministry (reference {reference}).",
+      "fromOffice": "It had been released to the {office} DS office.",
+      "replaced": "The beneficiary who replaced this one has land in another place.",
+      "newDISTRICT": "This beneficiary's land is in another DS division, so the District releases the Rs. 2,000,000 again.",
+      "newMINISTRY": "This beneficiary's land is in another district, so the Ministry allocates the Rs. 2,000,000 again."
     }
   },
   "review": {
@@ -1105,7 +1123,8 @@
       "caseTitle": "Releasing the Rs. 2,000,000 allocation",
       "caseText": "The allocation for this beneficiary is released with an allocation letter to the {district} District Secretary. Once the letter has gone, record it on the “To release allocations” screen.",
       "caseGo": "Go and record the letter →",
-      "amendmentFlag": "An amendment awaits approval"
+      "amendmentFlag": "An amendment awaits approval",
+      "recordedReturned": "beneficiaries returned: {count}"
     },
     "correct": {
       "button": "Correct the letter's details",
@@ -1330,8 +1349,10 @@
       "amendmentNotAllowed": "This beneficiary can no longer be replaced: an installment has been paid, or the beneficiary is completed or replaced.",
       "incomplete": "A required detail of the new beneficiary is missing, so the amendment can't be approved. Reject it, giving the reason.",
       "officeInactive": "The DS office no longer takes new beneficiaries, so the amendment can't be approved. Reject it, giving the reason.",
-      "buildOfficeNotAllowed": "The allocation has already gone to a district or DS office, and the new beneficiary's land isn't there, so the amendment can't be approved. Reject it, giving the reason.",
-      "applicationNumberTaken": "Another beneficiary of the DS office now has the new beneficiary's Application Number, so the amendment can't be approved. Reject it, giving the reason."
+      "applicationNumberTaken": "Another beneficiary of the DS office now has the new beneficiary's Application Number, so the amendment can't be approved. Reject it, giving the reason.",
+      "dateBeforeAllocation": "The date can't be before the Ministry's letter or the District's release of this allocation.",
+      "referenceRequired": "Enter the reference number.",
+      "referenceTooLong": "The reference number can't be longer than 50 characters."
     }
   },
   "history": {
@@ -1431,7 +1452,9 @@
     "replacesSet": "Entered in place of another case",
     "replacesCleared": "No longer in place of another case",
     "allocationMovedTo": "The allocation moved to the new beneficiary",
-    "allocationMovedFrom": "The allocation moved from the replaced beneficiary"
+    "allocationMovedFrom": "The allocation moved from the replaced beneficiary",
+    "returnedDISTRICT": "The Rs. 2,000,000 went back to the District Secretariat on {date} (reference {reference})",
+    "returnedMINISTRY": "The Rs. 2,000,000 went back to the Ministry on {date} (reference {reference})"
   },
   "dashboard": {
     "title": "Summary",

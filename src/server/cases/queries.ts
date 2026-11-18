@@ -88,6 +88,11 @@ export type CaseDetails = {
   documents: { id: string; name: string }[];
   /** The Rs. 2,000,000 release, once recorded (REL-2). */
   release: ReleaseDetails | null;
+  /**
+   * AMD-11: the allocation that went back when this case's beneficiary was replaced (`side` "replaced"), or
+   * when this case replaced another (`side` "new").
+   */
+  allocationReturn: AllocationReturnDetails | null;
   /** The four installments, made with the release (INS-1), in order. */
   installments: InstallmentDetails[];
   /**
@@ -145,6 +150,51 @@ export type ReplacedCase = CaseLink & {
 export type AmendmentLink = { id: string; decidedAt: Date | null };
 
 const LINK_SELECT = { id: true, applicationNumber: true, name: true, childName: true } as const;
+
+/** AMD-11: a return as the case pages show it. */
+const RETURN_SELECT = {
+  returnedTo: true,
+  returnedOn: true,
+  referenceNumber: true,
+  note: true,
+  district: { select: NAMES },
+  dsOffice: { select: NAMES },
+  by: { select: LABEL_SELECT },
+  at: true,
+} as const;
+
+function toReturn(
+  found: Prisma.AllocationReturnGetPayload<{ select: typeof RETURN_SELECT }>,
+  side: AllocationReturnDetails["side"],
+  locale: Locale,
+): AllocationReturnDetails {
+  return {
+    side,
+    returnedTo: found.returnedTo,
+    returnedOn: dateToDay(found.returnedOn),
+    referenceNumber: found.referenceNumber,
+    note: found.note,
+    districtName: localName(found.district, locale),
+    officeName: found.dsOffice && localName(found.dsOffice, locale),
+    byName: accountLabel(found.by, locale),
+    at: found.at,
+  };
+}
+
+export type AllocationReturnDetails = {
+  side: "replaced" | "new";
+  returnedTo: "DISTRICT" | "MINISTRY";
+  /** "YYYY-MM-DD" */
+  returnedOn: string;
+  referenceNumber: string;
+  note: string | null;
+  /** The district it came back from. */
+  districtName: string;
+  /** The DS office it came back from, when the District had released it. */
+  officeName: string | null;
+  byName: string;
+  at: Date;
+};
 
 export type ReleaseDetails = {
   /** "YYYY-MM-DD": the letter's date. */
@@ -264,6 +314,8 @@ export async function getCase(
       replacedBy: { select: { ...LINK_SELECT, ...CASE_PLACES } },
       // AMD-5: the approved amendment that made this case, with the case it replaced.
       madeBy: { select: { id: true, decidedAt: true, case: { select: { ...LINK_SELECT, ...CASE_PLACES } } } },
+      allocationReturn: { select: RETURN_SELECT },
+      returnedFor: { select: RETURN_SELECT },
       updatedAt: true,
       buildDsOffice: {
         select: {
@@ -359,6 +411,8 @@ export async function getCase(
     replaces,
     replacedBy,
     madeBy,
+    allocationReturn,
+    returnedFor,
     centres,
     dateOfBirth,
     amendments,
@@ -405,6 +459,11 @@ export async function getCase(
           ? { ...toLink(replacedBy), amendment: null }
           : null,
     documents: files.map((f) => ({ id: f.id, name: f.originalName })),
+    allocationReturn: allocationReturn
+      ? toReturn(allocationReturn, "replaced", locale)
+      : returnedFor
+        ? toReturn(returnedFor, "new", locale)
+        : null,
     release: release && {
       releasedOn: dateToDay(release.releasedOn),
       amount: release.amount,

@@ -1,6 +1,7 @@
 import type { CaseFormState } from "@/components/forms/case-form";
 import type { ProgressState } from "@/components/progress/types";
 import { parseReason } from "@/lib/validation/decision";
+import { RETURN_FIELDS, type ReturnField } from "@/lib/validation/progress";
 import type { Actor } from "../cases/commands";
 import { readCaseForm } from "../cases/form-data";
 import { db } from "../db";
@@ -48,7 +49,8 @@ export async function submitAmendmentForm(
 
 /**
  * AMD-4: the Ministry's approve and reject forms on the amendment page: the amendment and its version, the
- * existing case's version, and for a rejection the reason. A refusal comes back to the pop-up; on success
+ * existing case's version, for an approval that sends the money back its return (AMD-11), and for a
+ * rejection the reason. A refusal comes back to the pop-up; on success
  * the caller moves on.
  */
 export async function decideAmendmentForm(
@@ -62,11 +64,18 @@ export async function decideAmendmentForm(
   if (amendmentId === "" || amendmentId.length > 64 || !Number.isInteger(version)) {
     return { ok: false, state: { error: "notFound", errors: {} } };
   }
+  // AMD-11: the return's fields, sent only when the page asked for them.
+  const returned =
+    text(form, "returnAsked") === "1"
+      ? (Object.fromEntries(RETURN_FIELDS.map((field) => [field, text(form, field)])) as Record<ReturnField, string>)
+      : null;
   const result =
     decision === "approve"
       ? Number.isInteger(caseVersion)
-        ? await approveAmendment(db, actor, { amendmentId, version, caseVersion })
+        ? await approveAmendment(db, actor, { amendmentId, version, caseVersion, returned })
         : ({ ok: false, error: "notFound" } as const)
       : await rejectAmendment(db, actor, { amendmentId, version, reason: text(form, "reason") });
-  return result.ok ? result : { ok: false, state: { error: result.error, errors: {} } };
+  return result.ok
+    ? result
+    : { ok: false, state: { error: result.error, errors: "errors" in result ? (result.errors ?? {}) : {} } };
 }

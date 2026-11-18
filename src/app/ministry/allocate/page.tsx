@@ -156,6 +156,11 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
                     <span className="text-sm text-[#3F4843]">
                       {t("letters.recordedUntil", { date: formatDate(letter.validUntil) })}
                     </span>
+                    {letter.returned > 0 && (
+                      <span className="text-sm text-[#5C4300]">
+                        {t("letters.recordedReturned", { count: letter.returned })}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

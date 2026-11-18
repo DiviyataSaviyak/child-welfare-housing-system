@@ -2,9 +2,10 @@ import type { CaseStatus } from "@/generated/prisma/enums";
 import type { Role } from "../auth/roles";
 
 /**
- * Who may submit an amendment, and where the new beneficiary may be built (application spec, Amendments:
- * AMD-1, AMD-2, AMD-8). Plain functions: the screens use them to show or hide the action, and the
- * commands to refuse it, again inside the transaction that locks the case.
+ * Who may submit an amendment, and what building the new beneficiary elsewhere means for the money
+ * (application spec, Amendments: AMD-1, AMD-2, AMD-8, AMD-11). Plain functions: the screens use them to show
+ * or hide the action and to say where the money goes, and the commands to refuse it and to step the new case
+ * back, again inside the transaction that locks the case.
  */
 
 /** AMD-1: before and after the allocation, until the first installment is paid. */
@@ -48,42 +49,48 @@ export function canAmend(who: { role: Role; residence: boolean }, facts: AmendFa
   return amendRefusal(who, facts) === null;
 }
 
-/** AMD-8: the DS offices the new beneficiary may be built in. */
-export type BuildOffices =
-  /** Before the Ministry's letter: any active DS office. */
-  | { kind: "any" }
-  /** On a letter to a district: a DS office of that district. */
-  | { kind: "district"; districtId: number }
-  /** Released by the District to a DS office: that office. */
-  | { kind: "office"; dsOfficeId: number };
+/** AMD-11: how far the existing case's allocation goes back, if it does. */
+export type ReturnedTo = "DISTRICT" | "MINISTRY";
+
+/** AMD-5, AMD-11: the step the new case starts at, and how far the money goes back to get there. */
+export type ReplacementStep = {
+  status: Extract<CaseStatus, "AWAITING_ALLOCATION" | "ALLOCATED_TO_DISTRICT" | "ALLOCATION_RECEIVED">;
+  /** Null when the money is already where the new beneficiary is built. */
+  returnedTo: ReturnedTo | null;
+};
 
 /**
- * AMD-8: where the new beneficiary may be built, by how far the existing case has come, because the money
- * has already gone there: the Ministry's letter to the district where it is built, then the District's
- * release to that DS office.
+ * AMD-8, AMD-11: the new beneficiary may be built in any DS office (whether it is active is checked apart).
+ * When that is outside the place the existing case's money has reached (the letter's district once it is
+ * `ALLOCATED_TO_DISTRICT`, the District's DS office once it is `ALLOCATION_RECEIVED`), the new case goes back
+ * to the step the money must take again, and the money goes back up as far as that:
+ *
+ * | Existing case          | Built in                        | New case                | Money goes back to |
+ * | AWAITING_ALLOCATION    | any DS office                   | AWAITING_ALLOCATION     | (nothing to return) |
+ * | ALLOCATED_TO_DISTRICT  | the same district               | ALLOCATED_TO_DISTRICT   | (nothing to return) |
+ * | ALLOCATED_TO_DISTRICT  | another district                | AWAITING_ALLOCATION     | the Ministry       |
+ * | ALLOCATION_RECEIVED    | the same DS office              | ALLOCATION_RECEIVED     | (nothing to return) |
+ * | ALLOCATION_RECEIVED    | another DS office, same district | ALLOCATED_TO_DISTRICT | the District       |
+ * | ALLOCATION_RECEIVED    | another district                | AWAITING_ALLOCATION     | the Ministry       |
+ *
+ * Any other status can't be amended (AMD-2); it is given as it is, with nothing to return.
  */
-export function buildOfficesFor(existing: {
-  status: CaseStatus;
-  buildDsOffice: { id: number; districtId: number };
-}): BuildOffices {
+export function replacementStep(
+  existing: { status: CaseStatus; buildDsOffice: { id: number; districtId: number } },
+  built: { id: number; districtId: number },
+): ReplacementStep {
+  const sameDistrict = built.districtId === existing.buildDsOffice.districtId;
   switch (existing.status) {
     case "ALLOCATED_TO_DISTRICT":
-      return { kind: "district", districtId: existing.buildDsOffice.districtId };
+      return sameDistrict
+        ? { status: "ALLOCATED_TO_DISTRICT", returnedTo: null }
+        : { status: "AWAITING_ALLOCATION", returnedTo: "MINISTRY" };
     case "ALLOCATION_RECEIVED":
-      return { kind: "office", dsOfficeId: existing.buildDsOffice.id };
+      if (built.id === existing.buildDsOffice.id) return { status: "ALLOCATION_RECEIVED", returnedTo: null };
+      return sameDistrict
+        ? { status: "ALLOCATED_TO_DISTRICT", returnedTo: "DISTRICT" }
+        : { status: "AWAITING_ALLOCATION", returnedTo: "MINISTRY" };
     default:
-      return { kind: "any" };
-  }
-}
-
-/** AMD-8: whether the new beneficiary may be built in this DS office. Whether it is active is checked apart. */
-export function buildOfficeAllowed(limit: BuildOffices, office: { id: number; districtId: number }): boolean {
-  switch (limit.kind) {
-    case "any":
-      return true;
-    case "district":
-      return office.districtId === limit.districtId;
-    case "office":
-      return office.id === limit.dsOfficeId;
+      return { status: "AWAITING_ALLOCATION", returnedTo: null };
   }
 }

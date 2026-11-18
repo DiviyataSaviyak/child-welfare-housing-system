@@ -8,6 +8,7 @@ import {
   RECEIVED,
   randomApplicationNumber,
   randomNic,
+  recordDsReleaseFor,
   releasedCase,
   TODAY,
 } from "./case-helpers";
@@ -388,4 +389,160 @@ test("AMD-9, HOME-2: the amendments lists of the DS, the Ministry and a District
   await expect(page.getByTestId("amendment-table").getByRole("row").filter({ hasText: newcomer })).toContainText(
     "ඉඩම් ඔප්පුව අමුණා නැත.",
   );
+});
+
+/**
+ * AMD-11: an amendment's new beneficiary built in `office` of `district`, proposed by Homagama (ds0101) for
+ * a case whose allocation it has received; the form says where the money goes back (`back`).
+ */
+async function proposeElsewhere(
+  page: Page,
+  url: string,
+  newcomer: string,
+  place: { district: string; office: string },
+  back: string,
+) {
+  await page.goto(url);
+  await page.getByRole("link", { name: "සංශෝධනයක් ඉදිරිපත් කරන්න" }).click();
+  await expect(page).toHaveURL(/\/amend$/, { timeout: 60_000 });
+  const applicationNumber = randomApplicationNumber();
+  await fillCase(page, { name: newcomer, nic: randomNic(), applicationNumber });
+  await expect(page.getByTestId("money-back")).toHaveCount(0);
+  await page.getByRole("radio", { name: /^වෙනත් ප්‍රාදේශීය ලේකම් කොට්ඨාසයක/ }).check();
+  await page.getByLabel("ඉඩම පිහිටි දිස්ත්‍රික්කය *").selectOption({ label: place.district });
+  await page.getByLabel("ඉඩම පිහිටි ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: place.office });
+  await expect(page.getByTestId("money-back")).toContainText(back);
+  await page.getByLabel("සංශෝධනයට හේතුව", { exact: true }).fill("ඉඩම වෙනත් ප්‍රදේශයක ඇත");
+  await page.getByRole("button", { name: "සංශෝධනයක් ඉදිරිපත් කරන්න" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "අමාත්‍යාංශයට යවන්න" }).click();
+  await expect(page).toHaveURL(`${url}?notice=amendmentSubmitted`);
+  return applicationNumber;
+}
+
+/** The Ministry approves the case's waiting amendment, typing the return, and opens the new case. */
+async function approveWithReturn(
+  ho: Page,
+  caseId: string,
+  newcomer: { name: string; number: string },
+  back: string,
+  reference: string,
+) {
+  await ho.goto(`/ministry/cases/${caseId}`);
+  await ho.getByTestId("amendment-waiting").getByRole("link", { name: "සංශෝධනය විවෘත කරන්න" }).click();
+  await expect(ho.getByTestId("new-beneficiary")).toContainText(newcomer.name);
+  await ho.getByRole("button", { name: "අනුමත කරන්න" }).click();
+  const dialog = ho.getByRole("dialog");
+  await expect(dialog.getByTestId("approve-return-text")).toContainText(back);
+  // The date and reference are required (AMD-11).
+  await dialog.getByRole("button", { name: "අනුමත කරන්න" }).click();
+  await expect(dialog.getByText("යොමු අංකය ඇතුළත් කරන්න.", { exact: true })).toBeVisible();
+  await dialog.getByLabel("ආපසු ලබා දුන් දිනය *").fill(TODAY);
+  await dialog.getByLabel("යොමු අංකය *").fill(reference);
+  await dialog.getByRole("button", { name: "අනුමත කරන්න" }).click();
+  await expect(ho).toHaveURL(/\?notice=approved$/);
+  await expect(ho.getByTestId("allocation-returned")).toContainText(reference);
+  await ho.getByRole("link", { name: `${newcomer.number} විවෘත කරන්න` }).click();
+  await expect(ho.getByRole("heading", { level: 1 })).toHaveText(newcomer.name);
+  return ho.url().split("?")[0]?.split("/").at(-1) ?? "";
+}
+
+test("AC-76: a replacement built in another DS office of the district sends the money back to the District, which releases it there", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(300_000);
+  await signInAs(page, "ds0101", /\/ds$/);
+  const ho = await openAs(browser, "ho0001");
+  const district = await openAs(browser, "dt0103");
+  const kaduwela = await openAs(browser, "ds0103");
+  const unique = String(Date.now()).slice(-6);
+  const label = `ආපසු දිස් ${unique}`;
+  const { caseId, url } = await releasedCase(page, ho, district, label);
+
+  const newcomer = `${TEST_CASE_NAME} කඩුවෙල ඉඩම ${unique}`;
+  const number = await proposeElsewhere(
+    page,
+    url,
+    newcomer,
+    { district: "කොළඹ", office: "කඩුවෙල" },
+    "දිස්ත්‍රික් ලේකම් කාර්යාලයට ආපසු ලබා දෙන",
+  );
+  const reference = `RET/E2E/${unique}`;
+  const newId = await approveWithReturn(
+    ho,
+    caseId,
+    { name: newcomer, number },
+    "දිස්ත්‍රික් ලේකම් කාර්යාලයට ආපසු ලබා දෙන",
+    reference,
+  );
+  await expect(ho.getByText("දිස්ත්‍රික්කයට මුදා හැර ඇත", { exact: true }).first()).toBeVisible();
+  await ho.context().close();
+
+  // The replaced case shows the return; it holds no money.
+  await page.goto(url);
+  await expect(page.getByTestId("allocation-returned")).toContainText(reference);
+  await expect(money(page)).toHaveCount(0);
+
+  // AMD-10: Colombo's District CRPO is told, sees it waiting for Kaduwela and releases it there.
+  await district.goto("/oversight/notifications");
+  await expect(district.getByText(newcomer).first()).toBeVisible();
+  await district.goto("/oversight/release");
+  await district.getByRole("link", { name: /^කඩුවෙල ප්‍රා\.ලේ\. කාර්යාලය/ }).click();
+  await recordDsReleaseFor(district, [newcomer], `DS/E2E/${label}/2`);
+  await district.context().close();
+
+  // Kaduwela's CRPO pays installment 1.
+  await kaduwela.goto(`/ds/cases/${newId}`);
+  await expect(kaduwela.getByText(RECEIVED, { exact: true }).first()).toBeVisible();
+  await money(kaduwela).getByRole("button", { name: START }).click();
+  const start = kaduwela.getByRole("dialog", { name: `පළමු වාරිකය: ${START}` });
+  await start.getByLabel("ගෙවීමට බලාපොරොත්තු වන දිනය *").fill(TODAY);
+  await start.getByRole("button", { name: "සුරකින්න" }).click();
+  await expect(kaduwela).toHaveURL(/\?notice=started$/);
+  await money(kaduwela).getByRole("button", { name: PAY }).click();
+  await kaduwela
+    .getByRole("dialog", { name: `පළමු වාරිකය ${PAY}` })
+    .getByRole("button", { name: "සුරකින්න" })
+    .click();
+  await expect(kaduwela).toHaveURL(/\?notice=paid$/);
+  await kaduwela.context().close();
+});
+
+test("AC-77: a replacement built in another district sends the money back to the Ministry, and the case awaits its allocation", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(300_000);
+  await signInAs(page, "ds0101", /\/ds$/);
+  const ho = await openAs(browser, "ho0001");
+  const district = await openAs(browser, "dt0103");
+  const unique = String(Date.now()).slice(-6);
+  const label = `ආපසු අමා ${unique}`;
+  const { caseId, url } = await releasedCase(page, ho, district, label);
+  await district.context().close();
+
+  const newcomer = `${TEST_CASE_NAME} බියගම ඉඩම ${unique}`;
+  const number = await proposeElsewhere(
+    page,
+    url,
+    newcomer,
+    { district: "ගම්පහ", office: "බියගම" },
+    "අමාත්‍යාංශයට ආපසු යන",
+  );
+  const reference = `RET/E2E/${unique}`;
+  await approveWithReturn(ho, caseId, { name: newcomer, number }, "අමාත්‍යාංශයට ආපසු යන", reference);
+  await expect(ho.getByText(AWAITING, { exact: true }).first()).toBeVisible();
+  await expect(ho.getByTestId("allocation-returned")).toContainText(reference);
+
+  // The letter still lists the replaced case, as returned; the new case waits under Gampaha.
+  await ho.goto("/ministry/allocate");
+  await expect(
+    ho
+      .getByRole("listitem")
+      .filter({ hasText: `MWCA/E2E/${label}` })
+      .getByText("ආපසු ගිය ප්‍රතිලාභීන් 1"),
+  ).toBeVisible();
+  await ho.getByRole("link", { name: /^ගම්පහ දිස්ත්‍රික්කය/ }).click();
+  await expect(ho.getByRole("checkbox", { name: new RegExp(newcomer) })).toHaveCount(1);
+  await ho.context().close();
 });

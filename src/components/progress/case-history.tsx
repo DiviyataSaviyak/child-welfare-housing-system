@@ -99,6 +99,17 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
   // Records since change 0007 carry the installment's amount (INS-7); older ones don't.
   const rupees = (value: unknown) => (Number.isSafeInteger(value) ? formatRupees(value as number, locale) : null);
 
+  /** AMD-11: the allocation that went back with an approved amendment, on both cases' records. */
+  const returnedLine = (value: unknown, lines: string[]) => {
+    if (!value || typeof value !== "object") return;
+    const returned = value as Record<string, unknown>;
+    const reference = text(returned.referenceNumber);
+    if (!reference || (returned.to !== "DISTRICT" && returned.to !== "MINISTRY")) return;
+    lines.push(t(`returned${returned.to}`, { date: day(returned.returnedOn), reference }));
+    const note = text(returned.note);
+    if (note) lines.push(tc("money.note", { note }));
+  };
+
   function describe(entry: HistoryEntry): { sentence: string; lines: string[] } {
     const { after, before } = entry;
     const lines: string[] = [];
@@ -236,6 +247,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
       case "case_replaced": {
         // AMD-5: named since task 3 of change 0008; the move's earlier records name nobody.
         if (after.allocationMoved === true) lines.push(t("allocationMovedTo"));
+        returnedLine(after.returned, lines);
         const name = text(after.newName);
         const number = text(after.newApplicationNumber);
         return {
@@ -249,6 +261,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
       case "amendment_approved": {
         // AMD-5: on the new case, which the approval made; the amendment's reason is on its own line.
         if (after.allocationMoved === true) lines.push(t("allocationMovedFrom"));
+        returnedLine(after.returned, lines);
         const added = count(after.documentsAdded);
         if (added > 0) lines.push(t("documentsAdded", { count: added }));
         const name = text(after.replacedName);

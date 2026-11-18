@@ -7,12 +7,25 @@ import { parseDay } from "@/lib/dates";
  */
 
 export type DayError =
-  "dateRequired" | "dateInvalid" | "dateInFuture" | "dateBeforeRelease" | "dateBeforePrevious" | "dateBeforeStage";
+  | "dateRequired"
+  | "dateInvalid"
+  | "dateInFuture"
+  | "dateBeforeRelease"
+  | "dateBeforePrevious"
+  | "dateBeforeStage"
+  | "dateBeforeAllocation";
 
 export type AmountError = "amountRequired" | "amountInvalid" | "amountOverBalance" | "amountNotBalance";
 
 export type ProgressErrorKey =
-  DayError | AmountError | "purposeTooLong" | "noteTooLong" | "stageRequired" | "stageNotLater";
+  | DayError
+  | AmountError
+  | "purposeTooLong"
+  | "noteTooLong"
+  | "stageRequired"
+  | "stageNotLater"
+  | "referenceRequired"
+  | "referenceTooLong";
 
 /** A day must be no later than `latest` (when there is one), and on or after each earliest day, checked in order. */
 export type DayLimits = {
@@ -196,4 +209,38 @@ export function parseStageForm(
   }
   if (!parsed.ok) return parsed;
   return { ok: true, value: { ...parsed.value, stageId } };
+}
+
+// --- A replaced beneficiary's allocation going back (AMD-11) ---------------------------------------
+
+export const RETURN_FIELDS = ["returnedOn", "referenceNumber", "note"] as const;
+export type ReturnField = (typeof RETURN_FIELDS)[number];
+export type ReturnValues = { returnedOn: string; referenceNumber: string; note: string | null };
+
+/**
+ * AMD-11: the day the money went back is no later than today, and not before the Ministry's letter, nor
+ * the District's release when there was one (`dsReleasedOn`).
+ */
+export function returnLimits(today: string, letterDate: string, dsReleasedOn: string | null): DayLimits {
+  return {
+    latest: today,
+    earliest: [
+      { day: letterDate, error: "dateBeforeAllocation" },
+      { day: dsReleasedOn, error: "dateBeforeAllocation" },
+    ],
+  };
+}
+
+const RETURN_NOTE_MAX = 1000;
+
+/** AMD-11: the return's date, reference number (1 to 50 characters) and optional note. */
+export function parseReturnForm(
+  read: (field: ReturnField) => string,
+  limits: DayLimits,
+): Parsed<ReturnField, ReturnValues> {
+  const texts = z.object({
+    referenceNumber: z.string().trim().min(1, { error: "referenceRequired" }).max(50, { error: "referenceTooLong" }),
+    note: optionalText(RETURN_NOTE_MAX, "noteTooLong"),
+  });
+  return parse(RETURN_FIELDS, read, texts, "returnedOn", dayProblem(read("returnedOn"), limits));
 }

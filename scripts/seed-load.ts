@@ -1104,20 +1104,25 @@ export async function removeMadeUp(
   const removed = await db.$transaction(
     async (tx) => {
       await tx.storedFile.deleteMany({ where: theirFiles });
+      // AMD-11: the returns their approvals recorded, which hold the amendments, cases and letters.
+      await tx.allocationReturn.deleteMany({ where: { amendment: amendments } });
       await tx.amendment.deleteMany({ where: amendments });
       await tx.notification.deleteMany({ where: theirs });
       await tx.installment.deleteMany({ where: theirs });
       await tx.release.deleteMany({ where: theirs });
       // Their letters and District releases, and any someone recorded only for these cases, with its scan.
       const emptyLetter: Prisma.StoredFileWhereInput = {
-        OR: [{ letter: { releases: { none: {} } } }, { dsRelease: { releases: { none: {} } } }],
+        OR: [
+          { letter: { releases: { none: {} }, returns: { none: {} } } },
+          { dsRelease: { releases: { none: {} }, returns: { none: {} } } },
+        ],
       };
       letterScans.push(
         ...(await tx.storedFile.findMany({ where: emptyLetter, select: { storedName: true, thumbName: true } })),
       );
       await tx.storedFile.deleteMany({ where: emptyLetter });
-      await tx.releaseLetter.deleteMany({ where: { releases: { none: {} } } });
-      await tx.dsRelease.deleteMany({ where: { releases: { none: {} } } });
+      await tx.releaseLetter.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
+      await tx.dsRelease.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
       await tx.stageUpdate.deleteMany({ where: theirs });
       await tx.decision.deleteMany({ where: theirs });
       const cases = await tx.case.deleteMany({ where: { id: { startsWith: idPrefix } } });

@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import type { CaseStatus } from "@/generated/prisma/enums";
 import { FormError, FormField, FormTextArea } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
 import { colomboDay, formatDate, parseDay } from "@/lib/dates";
@@ -34,6 +35,7 @@ import {
 } from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import type { AmendmentError } from "@/server/amendments/commands";
+import { replacementStep } from "@/server/amendments/rules";
 import type { CaseCommandError } from "@/server/cases/commands";
 import type { NicMatch } from "@/server/cases/duplicates";
 import type { DistrictOptions } from "@/server/lists/queries";
@@ -63,19 +65,32 @@ export type OfficeSetting =
 /** CASE-13, CASE-17: where the land is (the house, for a renovation). */
 export type BuildSetting =
   /**
-   * Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. An amendment's
-   * new beneficiary may be limited to the district the money went to (AMD-8): `districts` holds only it,
-   * and `sameAllowed` is false when the DS of residence is in another district.
+   * Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. For an
+   * amendment's new beneficiary, `money` says where the existing case's money has reached, so the form can
+   * say when the chosen place sends it back (AMD-8, AMD-11).
    */
   | {
       kind: "choose";
       districts: DistrictOptions[];
       districtId: number | null;
       dsOfficeId: number | null;
-      sameAllowed?: boolean;
+      money?: MoneyReached;
     }
   /** Once the case is allocated, it stays; `dsOfficeId` is null for the DS of residence. */
   | { kind: "fixed"; dsOfficeId: number | null; districtName: string; officeName: string };
+
+/**
+ * AMD-11: where an amended case's money has reached: its status, and its DS office where built with that
+ * office's district. `residenceDistrictId` is the district of the DS of residence, which "the same DS
+ * division" means.
+ */
+export type MoneyReached = {
+  status: CaseStatus;
+  buildDsOffice: { id: number; districtId: number };
+  districtName: string;
+  officeName: string;
+  residenceDistrictId: number;
+};
 
 /** AMD-1: the case whose beneficiary an amendment would replace, for the form's summary. */
 export type AmendSetting = { caseId: string; existingName: string; existingNumber: string };
@@ -191,9 +206,7 @@ export function CaseForm({
   const [centres, setCentres] = useState(initial.centres.length > 0 ? initial.centres : [EMPTY_CENTRE]);
   const [districtId, setDistrictId] = useState(office.kind === "choose" ? String(office.districtId ?? "") : "");
   const [dsOfficeId, setDsOfficeId] = useState(office.kind === "choose" ? String(office.dsOfficeId ?? "") : "");
-  // AMD-8: the DS of residence may be outside the district the money went to.
-  const sameAllowed = build.kind !== "choose" || build.sameAllowed !== false;
-  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null && sameAllowed ? "same" : "other");
+  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null ? "same" : "other");
   const [buildDistrictId, setBuildDistrictId] = useState(build.kind === "choose" ? String(build.districtId ?? "") : "");
   const [buildOfficeId, setBuildOfficeId] = useState(build.kind === "choose" ? String(build.dsOfficeId ?? "") : "");
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -413,11 +426,24 @@ export function CaseForm({
       : buildDistrict && buildOfficeName
         ? { province: buildDistrict.provinceName, district: buildDistrict.name, office: buildOfficeName }
         : null;
+  const moneyBack = build.kind === "choose" && build.money ? moneyBackText(build.money) : null;
   const house = kind === "RENOVATION";
   const busy = pending || uploading;
   const birthDay = parseDay(values.dateOfBirth.trim());
   const age = birthDay && birthDay <= today ? ageOn(birthDay, today) : null;
   const placeText = (place: Place) => t("form.land.place", place);
+  // AMD-11: once the land's DS office is known, whether choosing it sends the money back, and where to.
+  function moneyBackText(money: MoneyReached): string | null {
+    const landOffice = built === "same" ? residence : chosenBuildOffice;
+    const landDistrict = built === "same" ? money.residenceDistrictId : buildDistrict?.id;
+    if (landOffice === null || landDistrict === undefined) return null;
+    const { returnedTo } = replacementStep(money, { id: landOffice, districtId: landDistrict });
+    if (returnedTo === "DISTRICT") return t("amend.moneyBackDistrict", { office: money.officeName });
+    if (returnedTo !== "MINISTRY") return null;
+    return money.status === "ALLOCATION_RECEIVED"
+      ? t("amend.moneyBackMinistryFromOffice", { office: money.officeName })
+      : t("amend.moneyBackMinistryFromDistrict", { district: money.districtName });
+  }
   const choice = (key: "yes" | "no") => t(key);
 
   const centreLines = centres
@@ -503,23 +529,19 @@ export function CaseForm({
             </h3>
             {build.kind === "choose" ? (
               <>
-                {sameAllowed ? (
-                  <ChoiceCards
-                    name="built"
-                    labelledBy="built-title"
-                    options={[
-                      { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
-                      { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
-                    ]}
-                    value={built}
-                    onChange={(value) => {
-                      setBuilt(value === "other" ? "other" : "same");
-                      setBuildMissing(false);
-                    }}
-                  />
-                ) : (
-                  <p className="text-[15px] text-[#3F4843]">{t("amend.landInDistrict")}</p>
-                )}
+                <ChoiceCards
+                  name="built"
+                  labelledBy="built-title"
+                  options={[
+                    { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
+                    { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
+                  ]}
+                  value={built}
+                  onChange={(value) => {
+                    setBuilt(value === "other" ? "other" : "same");
+                    setBuildMissing(false);
+                  }}
+                />
                 {built === "other" && (
                   <div className="grid grid-cols-2 gap-5 rounded-lg bg-muted p-4">
                     <Select
@@ -553,6 +575,15 @@ export function CaseForm({
                 {landPlace && (
                   <p data-testid="land-place" className="text-[15px] text-[#3F4843]">
                     {placeText(landPlace)}
+                  </p>
+                )}
+                {moneyBack && (
+                  <p
+                    data-testid="money-back"
+                    role="status"
+                    className="rounded-lg border border-[#E5C27A] bg-[#FFF8E8] px-4 py-3 text-[15px] text-[#5C4300]"
+                  >
+                    {moneyBack}
                   </p>
                 )}
               </>

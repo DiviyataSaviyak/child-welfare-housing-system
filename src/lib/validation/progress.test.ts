@@ -5,8 +5,11 @@ import {
   NOTE_ONLY,
   paidLimits,
   parsePaidForm,
+  parseReturnForm,
   parseStageForm,
   parseStartForm,
+  type ReturnField,
+  returnLimits,
   type StageField,
   stageLimits,
   type StartField,
@@ -148,6 +151,39 @@ describe("a stage update (STG-1)", () => {
     expect(parseStageForm(read({ stageId: "7", visitedOn: "2026-09-29", note: "x".repeat(1001) }), limits)).toEqual({
       ok: false,
       errors: { visitedOn: "dateInFuture", note: "noteTooLong" },
+    });
+  });
+});
+
+describe("the return of a replaced beneficiary's allocation (AMD-11)", () => {
+  const limits = returnLimits("2026-11-17", "2026-10-01", "2026-10-10");
+  const form = (values: Partial<Record<ReturnField, string>>) => (field: ReturnField) => values[field] ?? "";
+
+  it("takes a date from the District's release to today, a reference and an optional note", () => {
+    expect(parseReturnForm(form({ returnedOn: "2026-11-01", referenceNumber: " RET/1 " }), limits)).toEqual({
+      ok: true,
+      value: { returnedOn: "2026-11-01", referenceNumber: "RET/1", note: null },
+    });
+  });
+
+  it("refuses a date before the letter or the District's release, or in the future, and a missing or long reference", () => {
+    expect(parseReturnForm(form({ returnedOn: "2026-10-05", referenceNumber: "R" }), limits)).toEqual({
+      ok: false,
+      errors: { returnedOn: "dateBeforeAllocation" },
+    });
+    expect(
+      parseReturnForm(
+        form({ returnedOn: "2026-09-30", referenceNumber: "R" }),
+        returnLimits("2026-11-17", "2026-10-01", null),
+      ),
+    ).toEqual({ ok: false, errors: { returnedOn: "dateBeforeAllocation" } });
+    expect(parseReturnForm(form({ returnedOn: "2026-11-18", referenceNumber: "x".repeat(51) }), limits)).toEqual({
+      ok: false,
+      errors: { returnedOn: "dateInFuture", referenceNumber: "referenceTooLong" },
+    });
+    expect(parseReturnForm(form({}), limits)).toEqual({
+      ok: false,
+      errors: { returnedOn: "dateRequired", referenceNumber: "referenceRequired" },
     });
   });
 });

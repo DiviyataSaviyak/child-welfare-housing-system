@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CaseStatus } from "@/generated/prisma/enums";
 import type { Role } from "../auth/roles";
-import { amendRefusal, buildOfficeAllowed, buildOfficesFor, canAmend } from "./rules";
+import { amendRefusal, canAmend, replacementStep } from "./rules";
 
 const crpo = { role: "DS_OFFICER" as Role, residence: true };
 const facts = (status: CaseStatus, more: { paid?: boolean; waiting?: boolean } = {}) => ({
@@ -36,28 +36,30 @@ describe("who may submit an amendment, and when (AMD-1 to AMD-3)", () => {
   });
 });
 
-describe("where the new beneficiary may be built (AMD-8)", () => {
-  const buildDsOffice = { id: 7, districtId: 2 };
+describe("where the new case starts, and how far the money goes back (AMD-8, AMD-11)", () => {
+  // Kaduwela (7) and Homagama (8) in Colombo (2); Biyagama (20) in Gampaha (3).
+  const kaduwela = { id: 7, districtId: 2 };
+  const homagama = { id: 8, districtId: 2 };
+  const biyagama = { id: 20, districtId: 3 };
+  const step = (status: CaseStatus, built: { id: number; districtId: number }) =>
+    replacementStep({ status, buildDsOffice: kaduwela }, built);
 
-  it("follows the money: any DS office, then the district of the letter, then the DS of the release", () => {
-    expect(buildOfficesFor({ status: "AWAITING_ALLOCATION", buildDsOffice })).toEqual({ kind: "any" });
-    expect(buildOfficesFor({ status: "ALLOCATED_TO_DISTRICT", buildDsOffice })).toEqual({
-      kind: "district",
-      districtId: 2,
-    });
-    expect(buildOfficesFor({ status: "ALLOCATION_RECEIVED", buildDsOffice })).toEqual({
-      kind: "office",
-      dsOfficeId: 7,
-    });
+  it("awaiting its allocation: any DS office, nothing to return", () => {
+    for (const built of [kaduwela, homagama, biyagama]) {
+      expect(step("AWAITING_ALLOCATION", built)).toEqual({ status: "AWAITING_ALLOCATION", returnedTo: null });
+    }
   });
 
-  it("allows only those offices", () => {
-    const sameDistrict = { id: 8, districtId: 2 };
-    const otherDistrict = { id: 9, districtId: 3 };
-    expect(buildOfficeAllowed({ kind: "any" }, otherDistrict)).toBe(true);
-    expect(buildOfficeAllowed({ kind: "district", districtId: 2 }, sameDistrict)).toBe(true);
-    expect(buildOfficeAllowed({ kind: "district", districtId: 2 }, otherDistrict)).toBe(false);
-    expect(buildOfficeAllowed({ kind: "office", dsOfficeId: 7 }, buildDsOffice)).toBe(true);
-    expect(buildOfficeAllowed({ kind: "office", dsOfficeId: 7 }, sameDistrict)).toBe(false);
+  it("allocated to its district: the same district stays on the letter; another goes back to the Ministry", () => {
+    for (const built of [kaduwela, homagama]) {
+      expect(step("ALLOCATED_TO_DISTRICT", built)).toEqual({ status: "ALLOCATED_TO_DISTRICT", returnedTo: null });
+    }
+    expect(step("ALLOCATED_TO_DISTRICT", biyagama)).toEqual({ status: "AWAITING_ALLOCATION", returnedTo: "MINISTRY" });
+  });
+
+  it("allocation received: the same DS office keeps it; the district's other offices back to the District; another district to the Ministry", () => {
+    expect(step("ALLOCATION_RECEIVED", kaduwela)).toEqual({ status: "ALLOCATION_RECEIVED", returnedTo: null });
+    expect(step("ALLOCATION_RECEIVED", homagama)).toEqual({ status: "ALLOCATED_TO_DISTRICT", returnedTo: "DISTRICT" });
+    expect(step("ALLOCATION_RECEIVED", biyagama)).toEqual({ status: "AWAITING_ALLOCATION", returnedTo: "MINISTRY" });
   });
 });

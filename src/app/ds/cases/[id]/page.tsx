@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentNotes } from "@/components/amendments/amendment-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
-import { MoneySection } from "@/components/cases/money-section";
+import { MoneySection, ReturnNote } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
@@ -221,6 +221,7 @@ export default async function DsCasePage({
       <CaseColumns
         main={
           <>
+            {details.allocationReturn && <ReturnNote returned={details.allocationReturn} />}
             {details.release && (
               <MoneySection
                 audience="ds"

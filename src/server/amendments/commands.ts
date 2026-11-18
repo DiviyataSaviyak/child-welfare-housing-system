@@ -1,8 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
 import { MAX_DOCUMENTS } from "@/lib/file-types";
+import { RELEASE_AMOUNT } from "@/lib/money";
 import { type CaseValues, completeValues } from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
+import {
+  parseReturnForm,
+  type ProgressErrorKey,
+  type ReturnField,
+  type ReturnValues,
+  returnLimits,
+} from "@/lib/validation/progress";
 import { writeAudit } from "../audit";
 import { type Actor, applicationNumberTaken, centreProvincesKnown, insertCase } from "../cases/commands";
 import { applicationKey } from "../cases/numbers";
@@ -12,7 +21,7 @@ import { notifyDistrict, notifyOffice } from "../notifications/commands";
 import { CASE_PLACES, canActOn, canSeeCase, caseScope, OFFICE_PLACE } from "../permissions";
 import { makeInstallments } from "../releases/commands";
 import { type AmendmentDetails, amendmentPerson, detailsJson, readDetails } from "./details";
-import { AMENDABLE_STATUSES, type AmendRefusal, amendRefusal, buildOfficeAllowed, buildOfficesFor } from "./rules";
+import { AMENDABLE_STATUSES, type AmendRefusal, amendRefusal, replacementStep } from "./rules";
 
 export type AmendmentError =
   /** The case doesn't exist or isn't the actor's to see (PRM-1); or the amendment id is someone else's. */
@@ -26,8 +35,6 @@ export type AmendmentError =
   | "officeInactive"
   /** The form said another DS division and named none (CASE-13). */
   | "buildOfficeRequired"
-  /** AMD-8: the money has already gone to a district or DS office, and the land isn't there. */
-  | "buildOfficeNotAllowed"
   /** AMD-8, CASE-12: a case or another waiting amendment of the DS holds the Application Number. */
   | "applicationNumberTaken"
   /** More than 10 documents (CASE-2). */
@@ -111,14 +118,12 @@ export async function submitAmendment(
     if (!reason.ok) return { ok: false, error: null, reasonError: reason.error };
     if (existing.version !== input.caseVersion) return refused("conflict");
 
-    // AMD-8: a beneficiary of the same DS, built where the money has already gone.
+    // AMD-8: a beneficiary of the same DS, built in any active DS office. Outside the place the money has
+    // reached, the approval sends it back (AMD-11).
     const residence = existing.dsOfficeId;
     const built = input.buildDsOfficeId ?? residence;
     const office = await db.dsOffice.findUnique({ where: { id: built }, select: { districtId: true, active: true } });
     if (!office) return refused("buildOfficeRequired");
-    if (!buildOfficeAllowed(buildOfficesFor(existing), { id: built, districtId: office.districtId })) {
-      return refused("buildOfficeNotAllowed");
-    }
     // The office already holding the money stays allowed, whatever the admin did to it since.
     if (!office.active && built !== existing.buildDsOfficeId) return refused("officeInactive");
     if (!(await centreProvincesKnown(db, values.centres))) return refused("incomplete");
@@ -221,13 +226,14 @@ export type DecisionError =
   | "incomplete"
   /** AMD-5: the DS office of residence, or the one named for the land, no longer takes new cases (LST-3). */
   | "officeInactive"
-  /** AMD-5, AMD-8: the money has gone to a district or DS office, and the new beneficiary's land isn't there. */
-  | "buildOfficeNotAllowed"
   /** AMD-5, CASE-12: a case of the DS now holds the new beneficiary's Application Number. */
   | "applicationNumberTaken"
   | ReasonErrorKey;
 
-export type DecisionResult = { ok: true; caseId: string } | { ok: false; error: DecisionError };
+export type DecisionResult =
+  | { ok: true; caseId: string }
+  /** `errors` are the return's fields (AMD-11), with `error` null. */
+  | { ok: false; error: DecisionError | null; errors?: Partial<Record<ReturnField, ProgressErrorKey>> };
 
 export type DecisionInput = {
   amendmentId: string;
@@ -235,6 +241,11 @@ export type DecisionInput = {
   version: number;
   /** The existing case's version when the page was shown: approving needs the beneficiary as it was seen. */
   caseVersion: number;
+  /**
+   * AMD-11: the return's fields as typed, when the page asked for them because the new beneficiary is built
+   * outside the place the money has reached; null when it didn't.
+   */
+  returned?: Record<ReturnField, string> | null;
 };
 
 const AMENDMENT_SELECT = {
@@ -257,7 +268,9 @@ const AMENDMENT_SELECT = {
       ...CASE_PLACES,
       dsOffice: { select: { ...OFFICE_PLACE.select, active: true } },
       replacedBy: { select: { id: true } },
-      release: { select: { id: true } },
+      release: {
+        select: { id: true, letterId: true, releasedOn: true, dsReleaseId: true, dsReleasedOn: true },
+      },
       installments: { where: { status: "RELEASED" }, take: 1, select: { id: true } },
     },
   },
@@ -287,8 +300,10 @@ function decisionRefusal(actor: Actor, found: FoundAmendment, version: number): 
  * beneficiary's case is created in the existing case's DS of residence and status, linked to it, with the
  * amendment's documents; the allocation (its `release` row) moves to it, and after the District's release it
  * gets its own installments by its kind; the existing case becomes `REPLACED`, keeping any unpaid
- * installment it had; the amendment is approved with the new case; the officers are told (AMD-10). Nothing
- * changes when anything is refused.
+ * installment it had; the amendment is approved with the new case; the officers are told (AMD-10). When the
+ * new beneficiary is built outside the place the money has reached, the new case steps back and the money
+ * goes back as far as `replacementStep` says, with the return's date and reference typed in the approval
+ * (AMD-11). Nothing changes when anything is refused.
  */
 export async function approveAmendment(db: PrismaClient, actor: Actor, input: DecisionInput): Promise<DecisionResult> {
   for (let attempt = 1; ; attempt += 1) {
@@ -307,13 +322,9 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
     if (!stored || !values || !(await centreProvincesKnown(db, values.centres))) {
       return { ok: false, error: "incomplete" };
     }
-    // AMD-8 with the case as it is now: the letter or the District's release may have moved the money since.
     const built = stored.buildDsOfficeId;
     const office = await db.dsOffice.findUnique({ where: { id: built }, select: { districtId: true, active: true } });
-    if (!office) return { ok: false, error: "buildOfficeNotAllowed" };
-    if (!buildOfficeAllowed(buildOfficesFor(existing), { id: built, districtId: office.districtId })) {
-      return { ok: false, error: "buildOfficeNotAllowed" };
-    }
+    if (!office) return { ok: false, error: "incomplete" };
     const residence = existing.dsOfficeId;
     if (!existing.dsOffice.active || (!office.active && built !== existing.buildDsOfficeId)) {
       return { ok: false, error: "officeInactive" };
@@ -322,9 +333,28 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
       return { ok: false, error: "applicationNumberTaken" };
     }
 
-    const newCaseId = randomUUID();
     const now = new Date();
-    const status = existing.status;
+    // AMD-5, AMD-11: with the case as it is now, where the new case starts and whether the money goes back.
+    const { status, returnedTo } = replacementStep(existing, { id: built, districtId: office.districtId });
+    const release = existing.release;
+    let returned: ReturnValues | null = null;
+    if (returnedTo) {
+      // The page asked for no return: the letter or the District's release came after it was shown.
+      if (!release || !input.returned) return { ok: false, error: "conflict" };
+      const fields = input.returned;
+      const parsed = parseReturnForm(
+        (field) => fields[field] ?? "",
+        returnLimits(
+          colomboDay(now),
+          dateToDay(release.releasedOn),
+          release.dsReleasedOn && dateToDay(release.dsReleasedOn),
+        ),
+      );
+      if (!parsed.ok) return { ok: false, error: null, errors: parsed.errors };
+      returned = parsed.value;
+    }
+
+    const newCaseId = randomUUID();
     try {
       await db.$transaction(async (tx) => {
         // Takes the existing case first, as every payment does (claimCase): a payment at the same moment
@@ -340,7 +370,8 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
             newApplicationNumber: values.applicationNumber,
             newName: values.name,
             newChildName: values.childName,
-            allocationMoved: existing.release !== null,
+            allocationMoved: release !== null && returnedTo !== "MINISTRY",
+            ...(returned && { returned: returnAudit(returnedTo, returned) }),
           },
         });
         const paid = await tx.installment.count({ where: { caseId: existing.id, status: "RELEASED" } });
@@ -362,9 +393,40 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
           where: { amendmentId: found.id },
           data: { amendmentId: null, caseId: newCaseId },
         });
-        // The whole Rs. 2,000,000 moves: no installment was paid (AMD-5).
-        if (existing.release) {
-          await tx.release.update({ where: { id: existing.release.id }, data: { caseId: newCaseId } });
+        // The whole Rs. 2,000,000 moves: no installment was paid (AMD-5). Built outside the place it has
+        // reached, it goes back (AMD-11): to the District, which releases it again to the new DS office, or
+        // to the Ministry, which allocates it again.
+        if (release && returnedTo === "MINISTRY") {
+          await tx.release.delete({ where: { id: release.id } });
+        } else if (release) {
+          await tx.release.update({
+            where: { id: release.id },
+            data: {
+              caseId: newCaseId,
+              ...(returnedTo === "DISTRICT" && { dsReleaseId: null, dsReleasedOn: null }),
+            },
+          });
+        }
+        if (release && returnedTo && returned) {
+          await tx.allocationReturn.create({
+            data: {
+              id: randomUUID(),
+              amendmentId: found.id,
+              caseId: existing.id,
+              newCaseId,
+              letterId: release.letterId,
+              dsReleaseId: release.dsReleaseId,
+              districtId: existing.buildDsOffice.districtId,
+              dsOfficeId: release.dsReleaseId ? existing.buildDsOfficeId : null,
+              returnedTo,
+              amount: RELEASE_AMOUNT,
+              returnedOn: dayToDate(returned.returnedOn),
+              referenceNumber: returned.referenceNumber,
+              note: returned.note,
+              byId: actor.userId,
+              at: now,
+            },
+          });
         }
         if (status === "ALLOCATION_RECEIVED") await makeInstallments(tx, newCaseId, values.kind);
 
@@ -395,7 +457,8 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
             replacedApplicationNumber: existing.applicationNumber,
             replacedName: existing.name,
             replacedChildName: existing.childName,
-            allocationMoved: existing.release !== null,
+            allocationMoved: release !== null && returnedTo !== "MINISTRY",
+            ...(returned && { returned: returnAudit(returnedTo, returned) }),
             documentsAdded: moved.map((file) => file.id),
           } as Prisma.InputJsonValue,
         });
@@ -415,6 +478,28 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
             at: now,
           });
         }
+        // AMD-10: where the money came back from, on the replaced case, which they still see; once only, for
+        // anyone not already told about the new case.
+        if (returnedTo) {
+          const fromDistrict = existing.buildDsOffice.districtId;
+          if (status === "AWAITING_ALLOCATION" || fromDistrict !== office.districtId) {
+            await notifyDistrict(tx, {
+              districtId: fromDistrict,
+              caseId: existing.id,
+              type: "AMENDMENT_APPROVED",
+              at: now,
+            });
+          }
+          const fromOffice = existing.buildDsOfficeId;
+          if (release?.dsReleaseId && fromOffice !== residence && fromOffice !== built) {
+            await notifyOffice(tx, {
+              dsOfficeIds: [fromOffice],
+              caseId: existing.id,
+              type: "AMENDMENT_APPROVED",
+              at: now,
+            });
+          }
+        }
       });
       return { ok: true, caseId: newCaseId };
     } catch (error) {
@@ -427,6 +512,16 @@ export async function approveAmendment(db: PrismaClient, actor: Actor, input: De
       throw error;
     }
   }
+}
+
+/** AMD-11: the return, as both cases' history records hold it. */
+function returnAudit(returnedTo: string | null, returned: ReturnValues) {
+  return {
+    to: returnedTo,
+    returnedOn: returned.returnedOn,
+    referenceNumber: returned.referenceNumber,
+    ...(returned.note && { note: returned.note }),
+  };
 }
 
 /**

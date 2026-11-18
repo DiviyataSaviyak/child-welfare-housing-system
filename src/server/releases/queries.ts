@@ -144,8 +144,10 @@ export type LetterSummary = {
   letterDate: string;
   /** "YYYY-MM-DD" */
   validUntil: string;
-  /** The cases it allocated. */
+  /** The cases it allocated, those whose allocation went back to the Ministry too (AMD-11). */
   count: number;
+  /** Of them, those whose allocation went back to the Ministry (AMD-11). */
+  returned: number;
   /** The DS offices where they are built, by name. */
   offices: string[];
 };
@@ -157,6 +159,8 @@ const LETTER_SELECT = {
   validUntil: true,
   district: { select: NAMES },
   releases: { select: { case: { select: { buildDsOffice: { select: NAMES } } } } },
+  // AMD-11: a return to the District leaves the case's release row on the letter; one to the Ministry doesn't.
+  _count: { select: { returns: { where: { returnedTo: "MINISTRY" } } } },
 } as const;
 
 type FoundLetter = {
@@ -166,6 +170,7 @@ type FoundLetter = {
   validUntil: Date;
   district: Names;
   releases: { case: { buildDsOffice: Names } }[];
+  _count: { returns: number };
 };
 
 const summary =
@@ -176,7 +181,8 @@ const summary =
     letterNumber: letter.letterNumber,
     letterDate: dateToDay(letter.letterDate),
     validUntil: dateToDay(letter.validUntil),
-    count: letter.releases.length,
+    count: letter.releases.length + letter._count.returns,
+    returned: letter._count.returns,
     offices: [...new Set(letter.releases.map((r) => localName(r.case.buildDsOffice, locale)))].sort(),
   });
 
@@ -351,8 +357,10 @@ export type DsReleaseSummary = {
   referenceNumber: string;
   /** "YYYY-MM-DD" */
   releasedOn: string;
-  /** The cases it released. */
+  /** The cases it released, those whose allocation went back too (AMD-11). */
   count: number;
+  /** Of them, those whose allocation went back, to the District or the Ministry (AMD-11). */
+  returned: number;
 };
 
 const DS_RELEASE_SELECT = {
@@ -360,7 +368,7 @@ const DS_RELEASE_SELECT = {
   referenceNumber: true,
   releasedOn: true,
   dsOffice: { select: NAMES },
-  _count: { select: { releases: true } },
+  _count: { select: { releases: true, returns: true } },
 } as const;
 
 const dsSummary =
@@ -370,13 +378,14 @@ const dsSummary =
     referenceNumber: string;
     releasedOn: Date;
     dsOffice: Names;
-    _count: { releases: number };
+    _count: { releases: number; returns: number };
   }): DsReleaseSummary => ({
     id: found.id,
     officeName: localName(found.dsOffice, locale),
     referenceNumber: found.referenceNumber,
     releasedOn: dateToDay(found.releasedOn),
-    count: found._count.releases,
+    count: found._count.releases + found._count.returns,
+    returned: found._count.returns,
   });
 
 /** REL-5: the releases the District officer's district recorded last, newest first. */
