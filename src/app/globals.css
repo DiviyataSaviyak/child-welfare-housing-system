@@ -91,20 +91,23 @@
 }
 
 /*
- * The fields of the sign-in and password pages: warm, with a green focus ring. Not in a layer, so it wins over
- * the input's own utilities; a field marked invalid keeps its red border.
+ * The fields of the sign-in and password pages: light grey and rounded, with a green focus ring. Not in a layer,
+ * so it wins over the input's own utilities; a field marked invalid keeps its red border.
  */
 .auth-card [data-slot="input"] {
-  border-color: #d6d1c5;
-  background-color: #fcfbf8;
-  border-radius: 0.75rem;
+  border-color: #dcdcdc;
+  background-color: #fafafa;
+  border-radius: 0.875rem;
   transition:
     border-color 150ms,
     box-shadow 150ms,
     background-color 150ms;
 }
+.auth-card [data-slot="input"]::placeholder {
+  color: #9a9a9a;
+}
 .auth-card [data-slot="input"]:hover {
-  border-color: #b9b3a5;
+  border-color: #bdbdbd;
 }
 .auth-card [data-slot="input"]:focus-visible {
   border-color: var(--primary);
@@ -116,28 +119,4 @@
 }
 .auth-card [data-slot="input"][aria-invalid="true"]:focus-visible {
   box-shadow: 0 0 0 4px rgb(180 35 24 / 0.14);
-}
-
-/* The house in outline at the foot of the sign-in panel: wide screens only, smaller on a short window. */
-.auth-watermark {
-  position: absolute;
-  right: -6rem;
-  bottom: -5rem;
-  display: none;
-  height: auto;
-}
-@media (min-width: 1024px) {
-  .auth-watermark {
-    display: block;
-  }
-}
-@media (min-width: 1280px) {
-  .auth-watermark {
-    width: 540px;
-  }
-}
-@media (max-height: 760px) {
-  .auth-watermark {
-    width: 360px;
-  }
 }

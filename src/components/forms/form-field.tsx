@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
  * A labelled text input in the prototype's size: 48 px tall, 17 px text (UI-4, UI-6).
  * `error` shows a message under the field (ERR-1); `invalid` + `errorId` point at a shared error box instead.
  * `trailing` is a small button shown inside the field's right edge, such as PasswordField's show/hide;
- * `leading` is an icon inside its left edge.
+ * `leading` is an icon inside its left edge; `labelClassName` restyles the label (the sign-in pages' larger one).
  */
 export function FormField({
   id,
@@ -18,6 +18,7 @@ export function FormField({
   trailing,
   leading,
   className,
+  labelClassName,
   ...inputProps
 }: {
   id: string;
@@ -28,6 +29,7 @@ export function FormField({
   errorId?: string;
   trailing?: React.ReactNode;
   leading?: React.ReactNode;
+  labelClassName?: string;
 } & Omit<React.ComponentProps<"input">, "id">) {
   const helpId = help ? `${id}-help` : undefined;
   const ownErrorId = error ? `${id}-error` : undefined;
@@ -36,7 +38,7 @@ export function FormField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id} className="text-base font-semibold">
+      <Label htmlFor={id} className={cn("text-base font-semibold", labelClassName)}>
         {label}
       </Label>
       <div className="relative">

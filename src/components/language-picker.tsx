@@ -24,7 +24,7 @@ export function LanguagePicker({ tone }: { tone: "header" | "page" }) {
         "flex shrink-0 items-center p-0.5",
         tone === "header"
           ? "rounded-full bg-black/20 ring-1 ring-white/10 ring-inset"
-          : "rounded-full bg-muted p-1 ring-1 ring-border/70 ring-inset",
+          : "rounded-full bg-[#f1f1f0] p-1 ring-1 ring-black/[0.08] ring-inset",
       )}
     >
       {LOCALES.map((locale) => {
@@ -46,8 +46,8 @@ export function LanguagePicker({ tone }: { tone: "header" | "page" }) {
                   ? "rounded-full bg-white px-3.5 font-semibold text-header shadow-sm"
                   : "rounded-full px-3 text-header-muted hover:bg-white/10 hover:text-header-foreground"
                 : on
-                  ? "rounded-full bg-card px-3.5 font-semibold text-primary shadow-[0_1px_3px_rgb(28_36_32/0.14)] ring-1 ring-primary/20"
-                  : "rounded-full px-3 text-muted-foreground hover:bg-card hover:text-foreground",
+                  ? "h-9 rounded-full bg-[#064f38] px-5 text-[16px] font-semibold text-white shadow-[0_1px_3px_rgb(6_79_56/0.35)]"
+                  : "h-9 rounded-full px-4 text-[16px] text-[#2b2f2d] hover:bg-card",
             )}
           >
             {t(`names.${locale}`)}
