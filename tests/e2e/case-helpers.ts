@@ -125,7 +125,9 @@ export async function recordLetterFor(ho: Page, names: string[], letterNumber: s
   for (const name of names) await letter.getByRole("checkbox", { name: new RegExp(name) }).check();
   await letter.getByLabel("මගේ අංකය *").fill(letterNumber);
   await letter.getByRole("button", { name: /^ලිපිය සටහන් කරන්න · / }).click();
-  await expect(ho).toHaveURL(/\/ministry\/allocate\?notice=letterRecorded&letter=[\w-]+&districtId=\d+$/);
+  await expect(ho).toHaveURL(
+    /\/ministry\/allocate\?notice=letterRecorded&letter=[\w-]+&districtId=\d+(&dsOfficeId=\d+)?$/,
+  );
   await expect(ho.getByRole("status")).toContainText(`ලිපිය ${letterNumber} සටහන් කළා`);
 }
 

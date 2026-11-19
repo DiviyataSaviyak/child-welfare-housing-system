@@ -47,6 +47,7 @@ export type LetterFormGroup = { office: string; cases: LetterFormCase[] };
  */
 export function LetterForm({
   districtId,
+  dsOfficeId,
   districtName,
   groups,
   today,
@@ -54,6 +55,8 @@ export function LetterForm({
   upload,
 }: {
   districtId: number;
+  /** The DS office chosen on the screen (REL-1), whose cases alone are listed; null for all. */
+  dsOfficeId: number | null;
   districtName: string;
   groups: LetterFormGroup[];
   /** "YYYY-MM-DD", in Colombo. */
@@ -105,6 +108,7 @@ export function LetterForm({
     setCheckErrors(null);
     const form = new FormData();
     form.set("districtId", String(districtId));
+    if (dsOfficeId !== null) form.set("dsOfficeId", String(dsOfficeId));
     for (const c of ticked) form.append("case", `${c.id}:${c.version}`);
     for (const field of RELEASE_FIELDS) form.set(field, values[field]);
     if (scan?.state === "done") form.set("scanId", scan.id);

@@ -1112,7 +1112,6 @@
   },
   "review": {
     "title": "To release allocations",
-    "intro": "The DS offices enter only the beneficiaries they have approved. Once the allocation letter has gone to the District Secretary, record it here with the beneficiaries named in it. The District Secretariat then releases the money to the DS offices.",
     "duplicates": {
       "title": "Other beneficiaries also have this NIC number. Check whether it is the same family or the same person.",
       "item": "{number}: {name} · {office} DS · {status}"
@@ -1124,6 +1123,11 @@
       "districtOffices": "{offices} DS",
       "oldest": "{days, plural, =0 {entered today} one {the oldest was entered # day ago} other {the oldest was entered # days ago}}",
       "none": "No beneficiaries are waiting for an allocation letter.",
+      "filtersLabel": "Choose the district and DS office",
+      "filterDistrict": "District",
+      "filterOffice": "DS office",
+      "allOffices": "All",
+      "choice": "{name} ({count})",
       "recordedTitle": "Letters recorded",
       "recordedNone": "No letters recorded yet.",
       "recordedName": "{district} · {number}",
@@ -1131,6 +1135,8 @@
       "recordedUntil": "Valid until {date}",
       "title": "{district} District",
       "intro": "The letter goes to the District Secretary, {district}. Tick only the beneficiaries named in the letter.",
+      "onlyOffice": "Showing only the {office} DS division's beneficiaries",
+      "showAll": "Show all",
       "casesLabel": "Beneficiaries on the letter",
       "tickDistrict": "Tick all in the {district} District",
       "tickOffice": "Tick all in {office}",
@@ -1233,12 +1239,13 @@
     },
     "sent": {
       "summary": "{count, plural, one {# beneficiary} other {# beneficiaries}} · {amount}",
-      "backToLetters": "Back to allocations",
-      "letterTitle": "{district} · {number}",
-      "letterSubtitle": "Allocation letter · {date}",
-      "backToReleases": "Back to releases to DS offices",
-      "releaseTitle": "{office} · {reference}",
-      "releaseSubtitle": "District release · {date} · Ministry letter {letter} ({letterDate})"
+      "countLabel": "Beneficiaries",
+      "amountLabel": "Total amount",
+      "letterTitle": "Allocation letter {number}",
+      "letterSubtitle": "{district} District · {date}",
+      "releaseTitle": "District release {reference}",
+      "releaseSubtitle": "{office} DS office · {date} · Ministry letter {letter} ({letterDate})",
+      "close": "Close"
     },
     "dsCorrect": {
       "button": "Correct the release's details",

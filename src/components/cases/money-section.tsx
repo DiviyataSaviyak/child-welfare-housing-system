@@ -125,7 +125,7 @@ export async function MoneySection({
           {audience === "ministry" ? (
             // REL-10: the Ministry opens the letter's page, with every beneficiary on it.
             <Link
-              href={`/ministry/allocate/letters/${letter.id}`}
+              href={`/ministry/allocate?${new URLSearchParams({ open: letter.id })}`}
               className="font-bold text-primary underline-offset-2 hover:underline"
             >
               {t("money.letterName", { number: letter.letterNumber })}

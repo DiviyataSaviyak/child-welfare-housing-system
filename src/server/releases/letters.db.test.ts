@@ -276,6 +276,46 @@ describe("the Ministry's allocation letter (REL-1 to REL-3, AC-52)", () => {
     }
   });
 
+  it("counts each DS office's cases waiting, and with one chosen lists and allocates only its cases (REL-1, REL-2, AC-82)", async () => {
+    const districtId = await districtOf(dsA.dsOfficeId!);
+    const elsewhere = await db.dsOffice.findFirstOrThrow({
+      where: { active: true, id: { not: dsA.dsOfficeId! }, districtId },
+      select: { id: true },
+    });
+    const away = await db.dsOffice.findFirstOrThrow({
+      where: { active: true, districtId: { not: districtId } },
+      select: { id: true },
+    });
+    const here = await awaiting("200200000080");
+    const there = await awaiting("200200000081", dsA, { buildDsOfficeId: elsewhere.id });
+
+    const waiting = (await districtsWaiting(db, ho, "si")).find((d) => d.id === districtId);
+    const count = (buildDsOfficeId: number) =>
+      db.case.count({ where: { status: "AWAITING_ALLOCATION", buildDsOfficeId } });
+    expect(waiting?.offices.find((o) => o.id === dsA.dsOfficeId)?.count).toBe(await count(dsA.dsOfficeId!));
+    expect(waiting?.offices.find((o) => o.id === elsewhere.id)?.count).toBe(await count(elsewhere.id));
+    expect(waiting?.offices.reduce((sum, o) => sum + o.count, 0)).toBe(waiting?.count);
+
+    const ids = (await casesForLetter(db, ho, districtId, "si", dsA.dsOfficeId)).map((c) => c.id);
+    expect(ids).toContain(here.id);
+    expect(ids).not.toContain(there.id);
+    expect(await casesForLetter(db, dsA, districtId, "si", dsA.dsOfficeId)).toEqual([]);
+
+    // A case of another DS office, sent by a direct request, is one that changed (CASE-10).
+    const both = { ...(await letter([here, there])), dsOfficeId: dsA.dsOfficeId };
+    expect(await recordLetter(db, ho, both)).toMatchObject({ ok: false, error: "conflict" });
+    expect(await recordLetter(db, ho, { ...both, dsOfficeId: away.id })).toMatchObject({
+      ok: false,
+      error: "notFound",
+    });
+    expect((await load(there.id)).status).toBe("AWAITING_ALLOCATION");
+
+    const result = await recordLetter(db, ho, { ...(await letter([here])), dsOfficeId: dsA.dsOfficeId });
+    expect(result.ok).toBe(true);
+    expect((await load(here.id)).status).toBe("ALLOCATED_TO_DISTRICT");
+    expect((await load(there.id)).status).toBe("AWAITING_ALLOCATION");
+  });
+
   it("refuses a missing number, a future date, a date before a case was entered and an end before the date", async () => {
     const early = await awaiting("200200000031");
     const late = await awaiting("200200000037");

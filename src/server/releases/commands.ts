@@ -43,6 +43,8 @@ export const MAX_LETTER_CASES = 500;
 
 export type LetterInput = {
   districtId: number;
+  /** The DS office chosen on the screen (REL-1), whose cases alone the form showed; null for all. */
+  dsOfficeId?: number | null;
   /** The cases ticked on the letter, each with its version when the form was shown (CASE-10). */
   cases: { id: string; version: number }[];
   /** The form as typed; it is checked here against the cases' own dates. */
@@ -75,6 +77,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
         id: true,
         status: true,
         dsOfficeId: true,
+        buildDsOfficeId: true,
         version: true,
         createdAt: true,
         ...CASE_PLACES,
@@ -85,6 +88,13 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
   const elsewhere = (c: (typeof found)[number]) =>
     !canSeeCase(actor, c) || c.buildDsOffice.districtId !== input.districtId;
   if (!district || found.length !== ids.length || found.some(elsewhere)) return refused("notFound");
+  // REL-2: with a DS office chosen, the form showed only its cases; another office's case is one that changed.
+  const dsOfficeId = input.dsOfficeId ?? null;
+  if (dsOfficeId !== null) {
+    const office = await db.dsOffice.findUnique({ where: { id: dsOfficeId }, select: { districtId: true } });
+    if (office?.districtId !== district.id) return refused("notFound");
+    if (found.some((c) => c.buildDsOfficeId !== dsOfficeId)) return refused("conflict");
+  }
   for (const c of found) {
     const refusal = moveRefusal(actor.role, "allocate", c.status);
     if (refusal) return refused(refusal);

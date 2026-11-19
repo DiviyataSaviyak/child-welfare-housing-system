@@ -263,12 +263,19 @@ test("AC-80: a recorded letter and a recorded District release open with the ben
     .getByRole("region", { name: "සටහන් කළ ලිපි" })
     .getByRole("link", { name: `කොළඹ · ${letterNumber}` })
     .click();
-  await expect(ho).toHaveURL(/\/ministry\/allocate\/letters\/[\w-]+$/);
-  const letterUrl = new URL(ho.url()).pathname;
-  await expect(ho.getByRole("heading", { level: 1 })).toHaveText(`කොළඹ · ${letterNumber}`);
-  const onLetter = ho.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
+  // It opens as a pop-up kept in the address; Escape closes it, and the address opens it again.
+  await expect(ho).toHaveURL(/\/ministry\/allocate\?(.+&)?open=[\w-]+$/);
+  const letterId = new URL(ho.url()).searchParams.get("open") ?? "";
+  const letterPopup = ho.getByRole("dialog", { name: `ප්‍රතිපාදන ලිපිය ${letterNumber}` });
+  await expect(letterPopup).toContainText("කොළඹ දිස්ත්‍රික්කය");
+  const onLetter = letterPopup.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
   for (const name of names) await expect(onLetter.getByRole("link", { name: new RegExp(name) })).toBeVisible();
   await expect(onLetter.getByRole("listitem")).toHaveCount(2);
+  await ho.keyboard.press("Escape");
+  await expect(letterPopup).toHaveCount(0);
+  await expect(ho).not.toHaveURL(/open=/);
+  await ho.goto(`/ministry/allocate/letters/${letterId}`);
+  await expect(letterPopup).toBeVisible();
   await onLetter.getByRole("link", { name: new RegExp(names[0]) }).click();
   await expect(ho).toHaveURL(new RegExp(`/ministry/cases/${ids[0]}$`));
 
@@ -279,18 +286,21 @@ test("AC-80: a recorded letter and a recorded District release open with the ben
     .getByRole("region", { name: "සටහන් කළ මුදා හැරීම්" })
     .getByRole("link", { name: `හෝමාගම · ${reference}` })
     .click();
-  await expect(district).toHaveURL(/\/oversight\/release\/recorded\/[\w-]+$/);
-  const releaseUrl = new URL(district.url()).pathname;
-  await expect(district.getByRole("heading", { level: 1 })).toHaveText(`හෝමාගම · ${reference}`);
-  const onRelease = district.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
+  await expect(district).toHaveURL(/\/oversight\/release\?open=[\w-]+$/);
+  const releaseId = new URL(district.url()).searchParams.get("open") ?? "";
+  const releasePopup = district.getByRole("dialog", { name: `දිස්ත්‍රික් මුදා හැරීම ${reference}` });
+  await expect(releasePopup).toContainText("හෝමාගම ප්‍රා.ලේ. කාර්යාලය");
+  const onRelease = releasePopup.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
   await expect(onRelease.getByRole("listitem")).toHaveCount(2);
   await onRelease.getByRole("link", { name: new RegExp(names[1]) }).click();
   await expect(district).toHaveURL(new RegExp(`/oversight/cases/${ids[1]}$`));
 
   // PRM-1: another district's CRPO can't open the release, nor a District CRPO the Ministry's letter page.
   const gampaha = await openAs(browser, "dt0104");
-  expect((await gampaha.goto(releaseUrl))?.status()).toBe(404);
-  expect((await district.goto(letterUrl))?.status()).toBe(404);
+  expect((await gampaha.goto(`/oversight/release/recorded/${releaseId}`))?.status()).toBe(404);
+  await gampaha.goto(`/oversight/release?open=${releaseId}`);
+  await expect(gampaha.getByRole("dialog")).toHaveCount(0);
+  expect((await district.goto(`/ministry/allocate/letters/${letterId}`))?.status()).toBe(404);
 });
 
 test("AC-81: each Ministry letter stays its own record, down to the District's release to the DS office", async ({
@@ -341,8 +351,9 @@ test("AC-81: each Ministry letter stays its own record, down to the District's r
   const recorded = district.getByRole("region", { name: "සටහන් කළ මුදා හැරීම්" });
   await expect(recorded).toContainText(`අමාත්‍යංශ ලිපිය ${letters[0]}`);
   await recorded.getByRole("link", { name: `හෝමාගම · ${reference}` }).click();
-  await expect(district.getByText(`අමාත්‍යංශ ලිපිය ${letters[0]}`)).toBeVisible();
-  const onRelease = district.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
+  const popup = district.getByRole("dialog");
+  await expect(popup).toContainText(`අමාත්‍යංශ ලිපිය ${letters[0]}`);
+  const onRelease = popup.getByRole("region", { name: "ප්‍රතිලාභීන් 2 · රු. 4,000,000" });
   await expect(onRelease.getByRole("listitem")).toHaveCount(2);
   await expect(onRelease.getByRole("link", { name: new RegExp(fourth) })).toHaveCount(0);
 
@@ -354,10 +365,83 @@ test("AC-81: each Ministry letter stays its own record, down to the District's r
   // REL-10: on the Ministry's case page, the letter opens its page, with only that letter's cases.
   await ho.goto(`/ministry/cases/${ids[2]}`);
   await ho.getByRole("link", { name: new RegExp(letters[1]) }).click();
-  await expect(ho).toHaveURL(/\/ministry\/allocate\/letters\/[\w-]+$/);
-  const onLetter = ho.getByRole("region", { name: "ප්‍රතිලාභීන් 1 · රු. 2,000,000" });
+  await expect(ho).toHaveURL(/\/ministry\/allocate\?open=[\w-]+$/);
+  const onLetter = ho.getByRole("dialog").getByRole("region", { name: "ප්‍රතිලාභීන් 1 · රු. 2,000,000" });
   await expect(onLetter.getByRole("link", { name: new RegExp(fourth) })).toBeVisible();
 
   await ho.context().close();
   await district.context().close();
+});
+
+test("AC-82: the Ministry chooses Matara and then Weligama, and the letter lists and records only Weligama's cases", async ({
+  page: ds,
+  browser,
+}) => {
+  test.slow();
+  const ho = await openAs(browser, "ho0001");
+  const stamp = Date.now();
+  const weligama = [`${TEST_CASE_NAME} වැලිගම අ ${stamp}`, `${TEST_CASE_NAME} වැලිගම ආ ${stamp}`];
+  const dickwella = `${TEST_CASE_NAME} දික්වැල්ල ${stamp}`;
+  const homagama = `${TEST_CASE_NAME} හෝමාගම ${stamp}`;
+
+  // Homagama's officer enters them, built in Matara's offices and in Homagama (CASE-13).
+  await signInAs(ds, "ds0101", /\/ds$/);
+  for (const [name, office] of [
+    [weligama[0], "වැලිගම"],
+    [weligama[1], "වැලිගම"],
+    [dickwella, "දික්වැල්ල"],
+  ]) {
+    await ds.goto("/ds/cases/new");
+    await fillCase(ds, { name, nic: randomNic() });
+    await ds.getByRole("radio", { name: /^වෙනත් ප්‍රාදේශීය ලේකම් කොට්ඨාසයක/ }).check();
+    await ds.getByLabel("ඉඩම පිහිටි දිස්ත්‍රික්කය *").selectOption({ label: "මාතර" });
+    await ds.getByLabel("ඉඩම පිහිටි ප්‍රාදේශීය ලේකම් කොට්ඨාසය *").selectOption({ label: office });
+    await saveNew(ds, "ds");
+  }
+  await newSavedCase(ds, { name: homagama, nic: randomNic() });
+
+  // REL-1: the district drop-down offers Matara with its count, and choosing it opens Matara's letter.
+  await ho.goto("/ministry/allocate");
+  const districtBox = ho.getByLabel("දිස්ත්‍රික්කය", { exact: true });
+  const officeBox = ho.getByLabel("ප්‍රාදේශීය ලේකම් කාර්යාලය", { exact: true });
+  const matara = districtBox.getByRole("option", { name: /^මාතර \(\d+\)$/ });
+  await districtBox.selectOption((await matara.getAttribute("value")) ?? "");
+  await expect(ho).toHaveURL(/\/ministry\/allocate\?districtId=\d+$/);
+  const letter = ho.getByRole("region", { name: "මාතර දිස්ත්‍රික්කය", exact: true });
+  for (const name of [...weligama, dickwella]) {
+    await expect(letter.getByRole("checkbox", { name: new RegExp(name) })).toBeVisible();
+  }
+
+  // The DS office drop-down: "all", then Matara's offices waiting, each with its count; not Homagama.
+  await expect(officeBox.getByRole("option").first()).toHaveText("සියල්ල");
+  await expect(officeBox.getByRole("option", { name: /^වැලිගම \(\d+\)$/ })).toHaveCount(1);
+  await expect(officeBox.getByRole("option", { name: /^දික්වැල්ල \(\d+\)$/ })).toHaveCount(1);
+  await expect(officeBox.getByRole("option", { name: /^හෝමාගම/ })).toHaveCount(0);
+
+  // REL-2: with Weligama chosen, only its cases are on the letter, and both choices survive a reload.
+  const weligamaOption = officeBox.getByRole("option", { name: /^වැලිගම \(\d+\)$/ });
+  await officeBox.selectOption((await weligamaOption.getAttribute("value")) ?? "");
+  await expect(ho).toHaveURL(/\/ministry\/allocate\?districtId=\d+&dsOfficeId=\d+$/);
+  await ho.reload();
+  await expect(districtBox.locator("option:checked")).toHaveText(/^මාතර \(/);
+  await expect(officeBox.locator("option:checked")).toHaveText(/^වැලිගම \(/);
+  for (const name of weligama) await expect(letter.getByRole("checkbox", { name: new RegExp(name) })).toBeVisible();
+  await expect(letter.getByRole("checkbox", { name: new RegExp(dickwella) })).toHaveCount(0);
+
+  // "Tick all" ticks only Weligama's, and the letter is recorded for them.
+  await letter.getByRole("checkbox", { name: "මාතර දිස්ත්‍රික්කයේ සියල්ල තෝරන්න" }).check();
+  for (const box of await letter.getByRole("group", { name: "ලිපියේ ප්‍රතිලාභීන්" }).getByRole("checkbox").all()) {
+    await expect(box).toBeChecked();
+  }
+  const number = `MWCA/E2E-AC82-${stamp}`;
+  await letter.getByLabel("මගේ අංකය *").fill(number);
+  await letter.getByRole("button", { name: LETTER }).click();
+  await expect(ho.getByRole("status")).toContainText(`ලිපිය ${number} සටහන් කළා`);
+
+  // Dickwella's case still waits for its letter.
+  await officeBox.selectOption({ label: "සියල්ල" });
+  await expect(letter.getByRole("checkbox", { name: new RegExp(dickwella) })).toBeVisible();
+  for (const name of weligama) await expect(letter.getByRole("checkbox", { name: new RegExp(name) })).toHaveCount(0);
+
+  await ho.context().close();
 });

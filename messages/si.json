@@ -1112,7 +1112,6 @@
   },
   "review": {
     "title": "ප්‍රතිපාදන මුදා හැරීමට",
-    "intro": "ප්‍රා.ලේ. කාර්යාල ඇතුළත් කරන්නේ ඔවුන් අනුමත කළ ප්‍රතිලාභීන් පමණි. දිස්ත්‍රික් ලේකම්ට ප්‍රතිපාදන ලිපිය යැවූ පසු, එහි නම් ඇති ප්‍රතිලාභීන් සමඟ එය මෙහි සටහන් කරන්න. ඉන්පසු දිස්ත්‍රික් ලේකම් කාර්යාලය එම මුදල් ප්‍රා.ලේ. කාර්යාලවලට මුදා හරියි.",
     "duplicates": {
       "title": "මෙම හැඳුනුම්පත් අංකය වෙනත් ප්‍රතිලාභීන් සතුවද ඇත. එකම පවුලදැයි හෝ එකම පුද්ගලයාදැයි පරීක්ෂා කරන්න.",
       "item": "{number}: {name} · {office} ප්‍රා.ලේ. · {status}"
@@ -1124,6 +1123,11 @@
       "districtOffices": "{offices} ප්‍රා.ලේ.",
       "oldest": "{days, plural, =0 {අද ඇතුළත් කළා} other {පැරණිතම එක දින #කට පෙර ඇතුළත් කළා}}",
       "none": "ප්‍රතිපාදන ලිපියක් බලාපොරොත්තුවෙන් සිටින ප්‍රතිලාභීන් නැත.",
+      "filtersLabel": "දිස්ත්‍රික්කය සහ ප්‍රාදේශීය ලේකම් කාර්යාලය තෝරන්න",
+      "filterDistrict": "දිස්ත්‍රික්කය",
+      "filterOffice": "ප්‍රාදේශීය ලේකම් කාර්යාලය",
+      "allOffices": "සියල්ල",
+      "choice": "{name} ({count})",
       "recordedTitle": "සටහන් කළ ලිපි",
       "recordedNone": "තවම ලිපි සටහන් කර නැත.",
       "recordedName": "{district} · {number}",
@@ -1131,6 +1135,8 @@
       "recordedUntil": "{date} දක්වා වලංගුයි",
       "title": "{district} දිස්ත්‍රික්කය",
       "intro": "ලිපිය යවන්නේ දිස්ත්‍රික් ලේකම්, {district} වෙත. ලිපියේ නම් ඇති ප්‍රතිලාභීන් පමණක් තෝරන්න.",
+      "onlyOffice": "{office} ප්‍රා.ලේ. කොට්ඨාසයේ ප්‍රතිලාභීන් පමණක් පෙන්වයි",
+      "showAll": "සියල්ල පෙන්වන්න",
       "casesLabel": "ලිපියේ ප්‍රතිලාභීන්",
       "tickDistrict": "{district} දිස්ත්‍රික්කයේ සියල්ල තෝරන්න",
       "tickOffice": "{office} හි සියල්ල තෝරන්න",
@@ -1233,12 +1239,13 @@
     },
     "sent": {
       "summary": "ප්‍රතිලාභීන් {count} · {amount}",
-      "backToLetters": "ප්‍රතිපාදන මුදා හැරීමට ආපසු",
-      "letterTitle": "{district} · {number}",
-      "letterSubtitle": "ප්‍රතිපාදන ලිපිය · {date}",
-      "backToReleases": "ප්‍රා.ලේ. කාර්යාලවලට මුදා හැරීමට ආපසු",
-      "releaseTitle": "{office} · {reference}",
-      "releaseSubtitle": "දිස්ත්‍රික් මුදා හැරීම · {date} · අමාත්‍යංශ ලිපිය {letter} ({letterDate})"
+      "countLabel": "ප්‍රතිලාභීන්",
+      "amountLabel": "මුළු මුදල",
+      "letterTitle": "ප්‍රතිපාදන ලිපිය {number}",
+      "letterSubtitle": "{district} දිස්ත්‍රික්කය · {date}",
+      "releaseTitle": "දිස්ත්‍රික් මුදා හැරීම {reference}",
+      "releaseSubtitle": "{office} ප්‍රා.ලේ. කාර්යාලය · {date} · අමාත්‍යංශ ලිපිය {letter} ({letterDate})",
+      "close": "වසන්න"
     },
     "dsCorrect": {
       "button": "මුදා හැරීමේ විස්තර නිවැරදි කරන්න",

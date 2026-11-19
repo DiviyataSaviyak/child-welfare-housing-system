@@ -7,14 +7,17 @@ import type { Category, Kind } from "@/generated/prisma/enums";
 import { type DuplicateCase, duplicatesOf } from "../cases/duplicates";
 import { caseScope, officeFilter, type Viewer } from "../permissions";
 
+/** A DS office with cases awaiting their allocation letter, within its district (REL-1). */
+export type WaitingDistrictOffice = { id: number; name: string; count: number };
+
 /** A district with cases awaiting their allocation letter (REL-1). */
 export type WaitingDistrict = {
   id: number;
   name: string;
   /** Cases waiting. */
   count: number;
-  /** The DS offices where they are built, by name (CASE-13). */
-  offices: string[];
+  /** The DS offices where they are built, by name, each with its cases waiting (CASE-13, REL-1). */
+  offices: WaitingDistrictOffice[];
   /** When the one waiting longest was entered. */
   oldest: Date | null;
 };
@@ -52,7 +55,7 @@ export async function districtsWaiting(db: PrismaClient, viewer: Viewer, locale:
       oldest: null,
     };
     district.count += group._count._all;
-    district.offices.push(localName(office, locale));
+    district.offices.push({ id: office.id, name: localName(office, locale), count: group._count._all });
     const entered = group._min.createdAt;
     if (entered && (!district.oldest || entered < district.oldest)) district.oldest = entered;
     districts.set(district.id, district);
@@ -87,17 +90,20 @@ export type LetterCase = {
 /**
  * REL-2: a district's cases awaiting their allocation, for its letter, by the DS office where each is
  * built (CASE-13), then the longest waiting first, each with the other cases that share its NIC (CASE-6).
+ * With a DS office chosen on the screen (REL-1), only that office's cases.
  */
 export async function casesForLetter(
   db: PrismaClient,
   viewer: Viewer,
   districtId: number,
   locale: Locale,
+  dsOfficeId: number | null = null,
 ): Promise<LetterCase[]> {
   const scope = officeFilter(viewer);
   if (viewer.role !== "MINISTRY_OFFICER" || !scope) return [];
+  const place = dsOfficeId === null ? {} : { buildDsOfficeId: dsOfficeId };
   const found = await db.case.findMany({
-    where: { AND: [scope, { buildDsOffice: { districtId } }], status: "AWAITING_ALLOCATION" },
+    where: { AND: [scope, { buildDsOffice: { districtId } }, place], status: "AWAITING_ALLOCATION" },
     orderBy: [{ buildDsOffice: { [nameField(locale)]: "asc" } }, { createdAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
