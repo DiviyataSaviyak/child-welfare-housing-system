@@ -91,7 +91,7 @@ test("AC-3: the admin creates a DS officer, who signs in and must set a new pass
     await officer.getByLabel("නව මුරපදය නැවත").fill("Officer-Own-Pass-1");
     await officer.getByRole("button", { name: "සුරකින්න" }).click();
     await expect(officer).toHaveURL(/\/ds$/);
-    await expect(officer.getByRole("banner")).toContainText(`${OFFICES.signIn} ප්‍රාදේශීය ලේකම් කාර්යාලය`);
+    await expect(officer.getByTestId("area-label")).toContainText(`${OFFICES.signIn} ප්‍රාදේශීය ලේකම් කාර්යාලය`);
   });
 });
 

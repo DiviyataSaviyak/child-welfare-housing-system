@@ -5,7 +5,6 @@ import { getContext } from "@/server/context";
 import { db } from "@/server/db";
 import { getProfile } from "@/server/users/queries";
 import { Bell } from "./bell";
-import { HeaderScene } from "./header-scene";
 import { NavLinks } from "./nav-links";
 import { SignOutButton } from "./sign-out-button";
 import type { Area, LiveCount, NavEntry } from "./types";
@@ -45,63 +44,84 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 shrink-0 overflow-hidden bg-white bg-[linear-gradient(90deg,#ffffff_0%,#ffffff_30%,#f5faf6_55%,#f1f7f3_80%,#f8fbf9_100%)] text-foreground shadow-[0_4px_14px_-8px_rgb(10_70_57/0.25)]">
-        <HeaderScene className="pointer-events-none absolute bottom-[3px] left-[31%] hidden h-[100px] w-[600px] xl:block" />
-        <div className="relative flex h-[104px] items-center gap-6 px-8">
-          <div className="flex min-w-0 shrink-0 items-center gap-5">
+      {/* Sizes and colours follow the header mockup (1672 px wide, 122 px tall), whose picture it uses. */}
+      <header className="sticky top-0 z-30 shrink-0 overflow-hidden bg-white bg-[linear-gradient(90deg,#ffffff_0%,#ffffff_28%,#f6faf3_42%,#e9f3e5_62%,#edf6e9_78%,#f3f8ee_100%)] pb-[3px] text-[#1f2e3a]">
+        <div className="relative flex h-[119px] items-center ps-[59px] pe-[11px]">
+          <div className="flex min-w-0 shrink-0 items-center">
             {/* The emblem is decorative here: the names beside it say whose it is. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/emblem-of-sri-lanka.svg" alt="" width={600} height={851} className="h-[76px] w-auto shrink-0" />
-            <span aria-hidden="true" className="h-[68px] w-px shrink-0 bg-black/15" />
-            <span className="flex min-w-0 flex-col">
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="text-[28px] leading-tight font-bold tracking-tight whitespace-nowrap text-header">
-                  {t("app.name")}
-                </span>
-                <span className="truncate rounded-full bg-accent px-3 py-0.5 text-[13px] font-semibold whitespace-nowrap text-header ring-1 ring-header/15 ring-inset">
-                  {areaLabel}
-                </span>
+            <img src="/emblem-of-sri-lanka.svg" alt="" width={600} height={851} className="h-[90px] w-auto shrink-0" />
+            <span aria-hidden="true" className="ms-[29px] h-[80px] w-[1.5px] shrink-0 bg-[#114b3a]" />
+            <span className="ms-[27px] flex min-w-0 flex-col">
+              <span className="text-[30px] leading-[42px] font-bold whitespace-nowrap text-[#0b6138]">
+                {t("app.name")}
               </span>
-              <span className="text-[16px] leading-snug font-semibold whitespace-nowrap text-[#1c2420]">
+              <span className="text-[16px] leading-[25px] font-semibold whitespace-nowrap text-[#123f30]">
                 {t("app.ministry")}
               </span>
               {locale !== "en" && (
-                <span lang="en" className="text-[15px] leading-snug font-medium whitespace-nowrap text-[#1c2420]">
+                <span
+                  lang="en"
+                  className="text-[16px] leading-[23px] font-semibold whitespace-nowrap text-[#1b2733] [font-family:var(--font-latin),sans-serif]"
+                >
                   {englishMinistry}
                 </span>
               )}
             </span>
           </div>
-          <div className="ms-auto flex min-w-0 items-center gap-3">
+          {/* The children and the house, from the mockup, between the names and the buttons. Where the
+              space is short only the children show (centred on them: the picture is 592 px, they stand
+              at 225 px), and where it is shorter still, nothing. */}
+          <div aria-hidden="true" className="@container hidden min-w-0 flex-1 self-stretch lg:block">
+            <div className="mx-auto hidden h-full max-w-[592px] bg-[url(/header-scene.webp)] bg-[length:auto_100%] bg-[position:calc(50%+71px)_bottom] bg-no-repeat [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_88%,transparent)] @min-[170px]:block @min-[540px]:bg-bottom" />
+          </div>
+          <div className="ms-auto flex shrink-0 items-center">
             <LanguagePicker tone="header" />
-            {bell && <Bell href={bell.href} unread={bell.unread} />}
-            {profile ? (
-              <ProfileDialog userName={userName} profile={profile} />
-            ) : (
-              <span
-                className="shrink-0 text-base whitespace-nowrap"
-                aria-label={`${t("shell.signedInAs")} ${userName}`}
-              >
-                {userName}
+            {bell && (
+              <span className="ms-5">
+                <Bell href={bell.href} unread={bell.unread} />
               </span>
             )}
-            <SignOutButton />
+            <span aria-hidden="true" className="ms-[7px] h-[26px] w-px bg-black/10" />
+            <span className="ms-[10px]">
+              {profile ? (
+                <ProfileDialog userName={userName} profile={profile} />
+              ) : (
+                <span
+                  className="shrink-0 text-base whitespace-nowrap"
+                  aria-label={`${t("shell.signedInAs")} ${userName}`}
+                >
+                  {userName}
+                </span>
+              )}
+            </span>
+            <span className="ms-3">
+              <SignOutButton />
+            </span>
           </div>
         </div>
-        {/* A green line along the bottom, with the logo's gold sweeping up at the right. */}
-        <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[3px] bg-header" />
+        {/* The green and gold sweep at the right, over the green line along the bottom. */}
         <svg
           aria-hidden="true"
-          viewBox="0 0 480 28"
+          viewBox="0 0 360 35"
           preserveAspectRatio="none"
-          className="pointer-events-none absolute right-0 bottom-0 hidden h-[26px] w-[460px] lg:block"
+          className="pointer-events-none absolute right-0 bottom-[3px] hidden h-[35px] w-[360px] lg:block"
         >
-          <path d="M0 28 C200 27 360 20 480 2 V11 C370 24 200 28 0 28 Z" fill="var(--gold)" />
-          <path d="M40 28 C240 28 380 22 480 11 V28 Z" fill="var(--header)" />
+          <defs>
+            <linearGradient id="header-gold" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stopColor="#f7c62c" />
+              <stop offset="0.55" stopColor="#fecd34" />
+              <stop offset="1" stopColor="#c99c2c" />
+            </linearGradient>
+          </defs>
+          <path d="M0 33 C150 31 270 20 360 0 V17 C270 28 150 33 0 34 Z" fill="#0a6b44" />
+          <path d="M0 34 C150 33 270 28 360 17 V35 H0 Z" fill="url(#header-gold)" />
         </svg>
+        <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[3px] bg-[#0a6b44]" />
       </header>
       <NavLinks
         label={t("nav.label")}
+        place={areaLabel}
         items={nav.map((entry) => ({
           href: entry.href,
           label: t(`nav.${entry.labelKey}`),

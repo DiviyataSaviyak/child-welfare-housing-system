@@ -39,7 +39,7 @@ test("a DS officer works in Tamil: the menu, the office's name and the money are
   await chooseLanguage(page, "தமிழ்");
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("எனது பயனாளிகள்");
-  await expect(page.getByRole("banner")).toContainText("ஹோமாகம பிரதேச செயலகம்");
+  await expect(page.getByTestId("area-label")).toContainText("ஹோமாகம பிரதேச செயலகம்");
   await expect(page.getByRole("link", { name: "எனது பயனாளிகள்" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("கொழும்பு மாவட்டம்")).toBeVisible();
   // Names and other details the officers typed stay as typed; the screen's own text has no Latin letters.

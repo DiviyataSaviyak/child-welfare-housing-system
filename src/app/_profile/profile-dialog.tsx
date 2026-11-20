@@ -51,13 +51,16 @@ export function ProfileDialog({ userName, profile }: { userName: string; profile
         title={t("shell.profile")}
         aria-label={`${t("shell.signedInAs")} ${userName} · ${t("shell.profile")}`}
         aria-haspopup="dialog"
-        className="flex h-11 shrink-0 items-center gap-2.5 rounded-full bg-white ps-1.5 pe-3.5 text-[15px] font-semibold whitespace-nowrap text-foreground shadow-[0_1px_3px_rgb(28_36_32/0.08)] ring-1 ring-black/[0.1] transition-colors ring-inset hover:bg-accent"
+        className="flex h-[42px] shrink-0 items-center gap-2.5 rounded-full bg-white/90 ps-1 pe-3 text-[15px] font-bold whitespace-nowrap text-[#1f2e3a] shadow-[0_2px_8px_rgb(20_60_40/0.10)] ring-1 ring-black/[0.06] transition-colors ring-inset hover:bg-white"
       >
-        <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-full bg-header text-white">
-          <UserRound className="size-[18px]" />
+        <span
+          aria-hidden="true"
+          className="flex size-[34px] items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_25%,#2e7a5f,#094f37_70%)] text-white"
+        >
+          <UserRound className="size-5" />
         </span>
         {userName}
-        <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground" />
+        <ChevronDown aria-hidden="true" className="size-4 text-[#1f2e3a]" />
       </button>
       <Modal open={open} onClose={() => setOpen(false)} labelledBy="profile-title" size="wide">
         <h2 id="profile-title" className="text-[22px] font-bold">

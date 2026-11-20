@@ -13,7 +13,7 @@ for (const shell of shells) {
 
     await expect(page.locator("html")).toHaveAttribute("lang", "si");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(shell.heading);
-    await expect(page.getByRole("banner")).toContainText(shell.office);
+    await expect(page.getByTestId("area-label")).toContainText(shell.office);
     await expect(page.getByRole("link", { name: shell.heading })).toHaveAttribute("aria-current", "page");
     expect(await screenText(page)).not.toMatch(/[A-Za-z]/);
   });
