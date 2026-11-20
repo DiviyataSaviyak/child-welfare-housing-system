@@ -14,13 +14,13 @@ export function Bell({ href, unread }: { href: string; unread: LiveCount }) {
     <Link
       href={href}
       aria-label={count > 0 ? t("bellUnread", { count }) : t("bell")}
-      className="relative flex size-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/15"
+      className="relative flex size-10 shrink-0 items-center justify-center rounded-full text-header transition-colors hover:bg-accent"
     >
-      <BellIcon aria-hidden="true" className="size-[22px]" />
+      <BellIcon aria-hidden="true" className="size-[24px]" />
       {count > 0 && (
         <span
           aria-hidden="true"
-          className="absolute -top-0.5 -right-0.5 flex h-5.5 min-w-5.5 items-center justify-center rounded-full bg-gold px-1.5 text-[13px] font-bold text-foreground ring-2 ring-header"
+          className="absolute -top-0.5 -right-0.5 flex h-5.5 min-w-5.5 items-center justify-center rounded-full bg-destructive px-1.5 text-[13px] font-bold text-white ring-2 ring-white"
         >
           {count}
         </span>
