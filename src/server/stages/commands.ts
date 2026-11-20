@@ -1,3 +1,4 @@
+import { isHeld, WAITING_ONE } from "../amendments/held";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { colomboDay, dateToDay, dayToDate } from "@/lib/dates";
@@ -59,7 +60,8 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
       version: true,
       kind: true,
       release: { select: { dsReleasedOn: true } },
-      amendments: { where: { status: "WAITING" }, take: 1, select: { id: true } },
+      amendments: WAITING_ONE,
+      nominations: WAITING_ONE,
     },
   });
   if (!found || !canSeeCase(actor, found)) return refused("notFound");
@@ -68,7 +70,7 @@ export async function recordStageUpdate(db: PrismaClient, actor: Actor, input: S
   // STG-5: from the District's release to the DS until it is completed; a stage never moves the status.
   const dsReleasedOn = found.release?.dsReleasedOn;
   if (!takesProgress(found.status) || !dsReleasedOn) return refused("caseNotRunning");
-  if (found.amendments.length > 0) return refused("amendmentWaiting");
+  if (isHeld(found)) return refused("amendmentWaiting");
 
   const now = new Date();
   // Sinhala names for the audit record, which also keeps all three (UI-9).

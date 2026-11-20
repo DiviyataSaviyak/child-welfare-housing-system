@@ -1,6 +1,6 @@
 "use client";
 
-import { UserRound } from "lucide-react";
+import { ChevronDown, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -51,15 +51,16 @@ export function ProfileDialog({ userName, profile }: { userName: string; profile
         title={t("shell.profile")}
         aria-label={`${t("shell.signedInAs")} ${userName} · ${t("shell.profile")}`}
         aria-haspopup="dialog"
-        className="flex h-10 shrink-0 items-center gap-2.5 rounded-full bg-white/10 ps-1 pe-5 text-[15px] font-semibold whitespace-nowrap ring-1 ring-white/15 transition-colors ring-inset hover:bg-white/20"
+        className="flex h-[42px] shrink-0 items-center gap-2.5 rounded-full bg-white/90 ps-1 pe-3 text-[15px] font-bold whitespace-nowrap text-[#1f2e3a] shadow-[0_2px_8px_rgb(20_60_40/0.10)] ring-1 ring-black/[0.06] transition-colors ring-inset hover:bg-white dark:bg-white/[0.07] dark:text-foreground dark:shadow-none dark:ring-white/10 dark:hover:bg-white/[0.12]"
       >
         <span
           aria-hidden="true"
-          className="flex size-8 items-center justify-center rounded-full bg-gold text-foreground"
+          className="flex size-[34px] items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_25%,#2e7a5f,#094f37_70%)] text-white"
         >
-          <UserRound className="size-[18px]" />
+          <UserRound className="size-5" />
         </span>
         {userName}
+        <ChevronDown aria-hidden="true" className="size-4 text-[#1f2e3a] dark:text-foreground" />
       </button>
       <Modal open={open} onClose={() => setOpen(false)} labelledBy="profile-title" size="wide">
         <h2 id="profile-title" className="text-[22px] font-bold">

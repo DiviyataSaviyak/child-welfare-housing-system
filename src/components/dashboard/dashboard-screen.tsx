@@ -87,6 +87,15 @@ export async function DashboardScreen({
     return text ? `${path}?${text}` : path;
   };
 
+  // DSH-1 (17 Nov 2026): a DS office's row opens the case list (FND-1) at that office, with the
+  // dashboard's category and kind, so the list holds the cases the row counts.
+  const casesHref = (districtId: number, dsOfficeId: number) => {
+    const query = new URLSearchParams({ districtId: String(districtId), dsOfficeId: String(dsOfficeId) });
+    if (category) query.set("category", category);
+    if (kind) query.set("kind", kind);
+    return `${path}/cases?${query.toString()}`;
+  };
+
   const scope = [
     district && !oneDistrict ? t("district", { district: district.name }) : areaName,
     category && tc(`category.${category}`),
@@ -167,7 +176,7 @@ export async function DashboardScreen({
           <dl aria-label={t("tiles.label")} className="grid grid-cols-3 gap-4">
             {counts.map((tile, index) => (
               <div key={tile.label} className="flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4">
-                <dt className="font-semibold text-[#3F4843]">{tile.label}</dt>
+                <dt className="font-semibold text-soft-foreground">{tile.label}</dt>
                 <dd className="text-[26px] leading-tight font-bold tabular-nums">{formatNumber(tile.value)}</dd>
                 {index === 0 && <dd className="text-sm text-muted-foreground">{t("tiles.casesNote")}</dd>}
               </div>
@@ -177,7 +186,7 @@ export async function DashboardScreen({
           <dl aria-label={t("tiles.money")} className="grid grid-cols-3 gap-4">
             {AMOUNTS.map((amount) => (
               <div key={amount} className="flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4">
-                <dt className="font-semibold text-[#3F4843]">{t(`tiles.${amount}`)}</dt>
+                <dt className="font-semibold text-soft-foreground">{t(`tiles.${amount}`)}</dt>
                 <dd className="text-[26px] leading-tight font-bold tabular-nums">
                   {formatNumber(data.totals[amount])}
                 </dd>
@@ -260,11 +269,12 @@ export async function DashboardScreen({
                     <tr key={row.id} className="border-t hover:bg-accent/60">
                       <th scope="row" className="px-5 py-2.5 font-semibold">
                         {district ? (
-                          row.active ? (
-                            row.name
-                          ) : (
-                            tc("list.inactive", { office: row.name })
-                          )
+                          <Link
+                            href={casesHref(district.id, row.id)}
+                            className="text-primary underline underline-offset-3"
+                          >
+                            {row.active ? row.name : tc("list.inactive", { office: row.name })}
+                          </Link>
                         ) : (
                           <Link href={href(row.id)} className="text-primary underline underline-offset-3">
                             {row.name}
@@ -336,7 +346,7 @@ export async function DashboardScreen({
                             </span>
                           </Link>
                         </td>
-                        <td className="py-2 text-right text-lg font-bold text-[#8A4A06] tabular-nums">
+                        <td className="py-2 text-right text-lg font-bold text-amber-foreground tabular-nums">
                           {formatNumber(c.days)}
                         </td>
                       </tr>

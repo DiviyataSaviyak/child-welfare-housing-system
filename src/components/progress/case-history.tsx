@@ -16,6 +16,8 @@ const ACTIONS = [
   "release_corrected",
   "case_ds_released",
   "ds_release_corrected",
+  // Change 0009: a District release of several Ministry letters was split into one for each (REL-12).
+  "ds_release_split",
   "installment_started",
   "installment_paid",
   "installment_payment_undone",
@@ -32,6 +34,11 @@ const ACTIONS = [
   "amendment_submitted",
   "amendment_approved",
   "amendment_rejected",
+  // Change 0009: a DS asked the District to nominate a new beneficiary (AMD-12); the District nominated one,
+  // submitting the amendment, or sent the request back (AMD-13).
+  "nomination_asked",
+  "nomination_sent_back",
+  "amendment_nominated",
   "case_stopped",
   "case_reopened",
 ] as const;
@@ -99,6 +106,17 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
   // Records since change 0007 carry the installment's amount (INS-7); older ones don't.
   const rupees = (value: unknown) => (Number.isSafeInteger(value) ? formatRupees(value as number, locale) : null);
 
+  /** AMD-11: the allocation that went back with an approved amendment, on both cases' records. */
+  const returnedLine = (value: unknown, lines: string[]) => {
+    if (!value || typeof value !== "object") return;
+    const returned = value as Record<string, unknown>;
+    const reference = text(returned.referenceNumber);
+    if (!reference || returned.to !== "DISTRICT") return;
+    lines.push(t("returnedDISTRICT", { date: day(returned.returnedOn), reference }));
+    const note = text(returned.note);
+    if (note) lines.push(tc("money.note", { note }));
+  };
+
   function describe(entry: HistoryEntry): { sentence: string; lines: string[] } {
     const { after, before } = entry;
     const lines: string[] = [];
@@ -156,6 +174,14 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           sentence: t("actions.case_ds_released", {
             district: text(after.district) ?? tc("none"),
             office: text(after.office) ?? tc("none"),
+            reference: text(after.referenceNumber) ?? tc("none"),
+          }),
+          lines,
+        };
+      case "ds_release_split":
+        return {
+          sentence: t("actions.ds_release_split", {
+            letter: text(after.letterNumber) ?? tc("none"),
             reference: text(after.referenceNumber) ?? tc("none"),
           }),
           lines,
@@ -233,9 +259,28 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
           lines,
         };
       }
+      case "amendment_nominated": {
+        // AMD-13: the new beneficiary the District entered; the DS's reason is on its own line.
+        const added = count(after.documentsAdded);
+        if (added > 0) lines.push(t("documentsAdded", { count: added }));
+        const name = text(after.name);
+        const number = text(after.applicationNumber);
+        return {
+          sentence:
+            name && number
+              ? t("actions.amendment_nominatedFor", { name: person(name, text(after.childName)), number })
+              : t("actions.amendment_nominated"),
+          lines,
+        };
+      }
+      case "nomination_asked":
+      case "nomination_sent_back":
+        // AMD-12, AMD-13: the reason is on its own line.
+        return { sentence: t(`actions.${entry.action}`), lines };
       case "case_replaced": {
         // AMD-5: named since task 3 of change 0008; the move's earlier records name nobody.
         if (after.allocationMoved === true) lines.push(t("allocationMovedTo"));
+        returnedLine(after.returned, lines);
         const name = text(after.newName);
         const number = text(after.newApplicationNumber);
         return {
@@ -249,6 +294,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
       case "amendment_approved": {
         // AMD-5: on the new case, which the approval made; the amendment's reason is on its own line.
         if (after.allocationMoved === true) lines.push(t("allocationMovedFrom"));
+        returnedLine(after.returned, lines);
         const added = count(after.documentsAdded);
         if (added > 0) lines.push(t("documentsAdded", { count: added }));
         const name = text(after.replacedName);
@@ -317,7 +363,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
                 <span className="flex flex-col">
                   <span className="text-base">{sentence}</span>
                   {lines.map((line, index) => (
-                    <span key={index} className="text-[15px] break-words whitespace-pre-line text-[#3F4843]">
+                    <span key={index} className="text-[15px] break-words whitespace-pre-line text-soft-foreground">
                       {line}
                     </span>
                   ))}

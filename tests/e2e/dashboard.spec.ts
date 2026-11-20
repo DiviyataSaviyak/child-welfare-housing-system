@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { openAs } from "./case-helpers";
-import { signInAs } from "./helpers";
+import { newSavedCase, openAs, randomNic } from "./case-helpers";
+import { signInAs, TEST_CASE_NAME } from "./helpers";
 
 /** Screen text the test looks for (messages/si.json). */
 const TILES = [
@@ -100,5 +100,59 @@ test("a District CRPO's dashboard links to its release screen; a view-only accou
     .getByRole("link", { name: "ප්‍රතික්ෂේප කළ", exact: true })
     .click();
   await expect(secretary).toHaveURL(/\/oversight\/amendments\?tab=rejected$/);
+  await secretary.context().close();
+});
+
+// The case list's empty message and its DS office filter (messages/si.json, cases.list).
+const NO_CASES = "ගැළපෙන ප්‍රතිලාභීන් නැත.";
+
+test("AC-75: a DS office's name on the dashboard opens its cases, with the dashboard's category (DSH-1, FND-1)", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+  // One case in Homagama and one in Kaduwela, both Colombo's.
+  const name = `${TEST_CASE_NAME} AC-75 ${randomNic()}`;
+  const homagamaNic = randomNic();
+  const kaduwelaNic = randomNic();
+  await signInAs(page, "ds0101", /\/ds$/);
+  await newSavedCase(page, { name, nic: homagamaNic });
+  const kaduwela = await openAs(browser, "ds0103");
+  await newSavedCase(kaduwela, { name, nic: kaduwelaNic });
+  await kaduwela.context().close();
+
+  const ministry = await openAs(browser, "ho0001");
+  await ministry.getByRole("table", { name: BY_DISTRICT }).getByRole("link", { name: "කොළඹ", exact: true }).click();
+  await ministry
+    .getByRole("table", { name: COLOMBO_OFFICES })
+    .getByRole("link", { name: "හෝමාගම", exact: true })
+    .click();
+  await expect(ministry).toHaveURL(/\/ministry\/cases\?districtId=\d+&dsOfficeId=\d+$/);
+  await expect(ministry.locator("#districtId option:checked")).toHaveText("කොළඹ");
+  await expect(ministry.locator("#dsOfficeId option:checked")).toHaveText("හෝමාගම");
+  // The list holds Homagama's case, and not Kaduwela's.
+  const list = ministry.url();
+  await ministry.goto(`${list}&q=${homagamaNic}`);
+  await expect(ministry.getByText(name).first()).toBeVisible();
+  await ministry.goto(`${list}&q=${kaduwelaNic}`);
+  await expect(ministry.getByText(NO_CASES)).toBeVisible();
+
+  // The dashboard's category goes with the link.
+  const districtId = new URL(list).searchParams.get("districtId");
+  await ministry.goto(`/ministry?districtId=${districtId}&category=CARE_LEAVER`);
+  await ministry
+    .getByRole("table", { name: COLOMBO_OFFICES })
+    .getByRole("link", { name: "හෝමාගම", exact: true })
+    .click();
+  await expect(ministry).toHaveURL(/\/ministry\/cases\?districtId=\d+&dsOfficeId=\d+&category=CARE_LEAVER$/);
+  await expect(ministry.locator("#category option:checked")).toHaveText("නිවාසගත");
+  await ministry.context().close();
+
+  // A view-only account's summary opens its own case list (PRM-4).
+  const secretary = await openAs(browser, "dt0101");
+  await secretary.getByRole("link", { name: "හෝමාගම", exact: true }).click();
+  await expect(secretary).toHaveURL(/\/oversight\/cases\?districtId=\d+&dsOfficeId=\d+$/);
+  await secretary.goto(`${secretary.url()}&q=${homagamaNic}`);
+  await expect(secretary.getByText(name).first()).toBeVisible();
   await secretary.context().close();
 });

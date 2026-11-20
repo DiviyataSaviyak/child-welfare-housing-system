@@ -5,8 +5,8 @@ export type Area = keyof (typeof messages)["areas"];
 /** A menu entry's label key under "nav" in messages/si.json. */
 export type NavKey = Exclude<keyof (typeof messages)["nav"], "label" | CountWords>;
 
-/** What a screen reader says for a menu badge's number, by its key under "nav": cases or amendments waiting. */
-export type CountWords = "waiting" | "amendmentsWaiting";
+/** What a screen reader says for a menu badge's number, by its key under "nav": what waits there. */
+export type CountWords = "waiting" | "amendmentsWaiting" | "nominationsWaiting";
 
 /**
  * A number in the header or menu (NTF-1): the count, when the server read it (milliseconds), and the

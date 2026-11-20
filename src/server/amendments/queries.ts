@@ -10,8 +10,8 @@ import { type AmendmentPerson, amendmentPerson, readDetails } from "./details";
 
 /**
  * The new beneficiary as the amendment holds them, with the place names the case page's details show (in
- * the screen's language). The DS of residence is the existing case's (AMD-8). The values are as submitted,
- * so a detail the form didn't ask for is null.
+ * the screen's language). The DS of residence is the existing case's (AMD-8), or the one the District
+ * nominated (AMD-13). The values are as submitted, so a detail the form didn't ask for is null.
  */
 export type ProposedBeneficiary = Omit<CaseValues, "category" | "kind" | "applicationNumber" | "centres"> & {
   category: NonNullable<CaseValues["category"]>;
@@ -22,6 +22,7 @@ export type ProposedBeneficiary = Omit<CaseValues, "category" | "kind" | "applic
   districtName: string;
   officeName: string;
   buildDsOfficeId: number;
+  buildDistrictId: number;
   buildOfficeName: string;
   buildDistrictName: string;
   buildProvinceName: string;
@@ -47,6 +48,8 @@ export type AmendmentView = {
   documents: { id: string; name: string }[];
   /** The case the approval made, when the viewer may see it. */
   newCase: CaseLink | null;
+  /** AMD-13: the District officer who nominated the new beneficiary, when the District did. */
+  nominatedByName: string | null;
 };
 
 /**
@@ -70,6 +73,8 @@ export async function getAmendment(
       details: true,
       submittedAt: true,
       submittedBy: { select: LABEL_SELECT },
+      dsOfficeId: true,
+      nomination: { select: { id: true } },
       decidedAt: true,
       decidedBy: { select: LABEL_SELECT },
       rejectionReason: true,
@@ -112,7 +117,7 @@ export async function getAmendment(
     decidedByName: found.decidedBy && accountLabel(found.decidedBy, locale),
     rejectionReason: found.rejectionReason,
     existing,
-    proposed: await proposedBeneficiary(db, found.details, existing, locale),
+    proposed: await proposedBeneficiary(db, found.details, found.dsOfficeId, existing, locale),
     documents: files.map((file) => ({ id: file.id, name: file.originalName })),
     newCase: newCase && {
       id: newCase.id,
@@ -120,12 +125,14 @@ export async function getAmendment(
       name: newCase.name,
       childName: newCase.childName,
     },
+    nominatedByName: found.nomination ? accountLabel(found.submittedBy, locale) : null,
   };
 }
 
 async function proposedBeneficiary(
   db: PrismaClient,
   details: Parameters<typeof readDetails>[0],
+  residenceId: number,
   existing: CaseDetails,
   locale: Locale,
 ): Promise<ProposedBeneficiary | null> {
@@ -133,11 +140,18 @@ async function proposedBeneficiary(
   const values = stored && completeValues(stored.values);
   if (!stored || !values) return null;
   const provinceIds = [...new Set(values.centres.map((centre) => centre.provinceId))];
-  const [office, provinces] = await Promise.all([
+  const [office, residence, provinces] = await Promise.all([
     db.dsOffice.findUnique({
       where: { id: stored.buildDsOfficeId },
-      select: { ...NAMES, district: { select: { ...NAMES, province: { select: NAMES } } } },
+      select: { ...NAMES, districtId: true, district: { select: { ...NAMES, province: { select: NAMES } } } },
     }),
+    // AMD-13: the DS of residence the District chose; the existing case's otherwise.
+    residenceId === existing.dsOfficeId
+      ? Promise.resolve(null)
+      : db.dsOffice.findUnique({
+          where: { id: residenceId },
+          select: { ...NAMES, district: { select: { ...NAMES, province: { select: NAMES } } } },
+        }),
     provinceIds.length > 0
       ? db.province.findMany({ where: { id: { in: provinceIds } }, select: { id: true, ...NAMES } })
       : Promise.resolve([]),
@@ -147,10 +161,12 @@ async function proposedBeneficiary(
   return {
     ...values,
     centres: values.centres.map((centre) => ({ ...centre, provinceName: provinceName.get(centre.provinceId) ?? "" })),
-    provinceName: existing.provinceName,
-    districtName: existing.districtName,
-    officeName: existing.officeName,
+    provinceName: residence ? localName(residence.district.province, locale) : existing.provinceName,
+    districtName: residence ? localName(residence.district, locale) : existing.districtName,
+    officeName: residence ? localName(residence, locale) : existing.officeName,
+
     buildDsOfficeId: stored.buildDsOfficeId,
+    buildDistrictId: office.districtId,
     buildOfficeName: localName(office, locale),
     buildDistrictName: localName(office.district, locale),
     buildProvinceName: localName(office.district.province, locale),
@@ -253,4 +269,127 @@ export async function amendmentsWaiting(db: PrismaClient, viewer: Viewer): Promi
   const at = Date.now();
   const where = viewer.role === "MINISTRY_OFFICER" ? amendmentWhere(viewer, "WAITING") : null;
   return { count: where ? await db.amendment.count({ where }) : 0, at };
+}
+
+/** AMD-12: one request for a nomination on the District's "to nominate" tab. */
+export type NominationRow = {
+  id: string;
+  askedAt: Date;
+  reason: string;
+  /** The DS that asked, with its district. */
+  officeName: string;
+  districtName: string;
+  existing: CaseLink;
+};
+
+/** AMD-12: the waiting requests a District officer may nominate for: the cases built in their district. */
+function nominationWhere(viewer: Viewer): Prisma.NominationWhereInput | null {
+  if (viewer.role !== "DISTRICT_OFFICER") return null;
+  const built = officeFilter(viewer, "built");
+  return built ? { status: "WAITING", case: built } : null;
+}
+
+/** AMD-12: the District's "to nominate" tab, oldest first (a queue), a page at a time. */
+export async function listNominations(
+  db: PrismaClient,
+  viewer: Viewer,
+  { page = 1 }: { page?: number },
+  locale: Locale,
+): Promise<{ rows: NominationRow[]; total: number }> {
+  const where = nominationWhere(viewer);
+  if (!where) return { rows: [], total: 0 };
+  const [found, total] = await Promise.all([
+    db.nomination.findMany({
+      where,
+      orderBy: [{ askedAt: "asc" }, { id: "asc" }],
+      skip: (Math.max(1, page) - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      select: {
+        id: true,
+        askedAt: true,
+        reason: true,
+        dsOffice: { select: { ...NAMES, district: { select: NAMES } } },
+        case: { select: { id: true, applicationNumber: true, name: true, childName: true } },
+      },
+    }),
+    db.nomination.count({ where }),
+  ]);
+  return {
+    total,
+    rows: found.map((row) => ({
+      id: row.id,
+      askedAt: row.askedAt,
+      reason: row.reason,
+      officeName: localName(row.dsOffice, locale),
+      districtName: localName(row.dsOffice.district, locale),
+      existing: row.case,
+    })),
+  };
+}
+
+/**
+ * AMD-12, NTF-1: a District officer's menu count of requests waiting for their nomination, with the server
+ * time it was read (`useLiveCount` shows the newer reading).
+ */
+export async function nominationsWaiting(db: PrismaClient, viewer: Viewer): Promise<{ count: number; at: number }> {
+  const at = Date.now();
+  const where = nominationWhere(viewer);
+  return { count: where ? await db.nomination.count({ where }) : 0, at };
+}
+
+/** AMD-12, AMD-13: one request for a nomination, with its case as the viewer may see it. */
+export type NominationView = {
+  id: string;
+  status: "WAITING" | "NOMINATED" | "SENT_BACK";
+  version: number;
+  reason: string;
+  askedAt: Date;
+  askedByName: string;
+  sentBackReason: string | null;
+  sentBackAt: Date | null;
+  sentBackByName: string | null;
+  /** The amendment the District's nomination made. */
+  amendmentId: string | null;
+  existing: CaseDetails;
+};
+
+/** AMD-13: one request, for whoever may see its case (PRM-4); null for anyone else (PRM-1). */
+export async function getNomination(
+  db: PrismaClient,
+  viewer: Viewer,
+  id: string,
+  locale: Locale,
+): Promise<NominationView | null> {
+  const found = await db.nomination.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      caseId: true,
+      status: true,
+      version: true,
+      reason: true,
+      askedAt: true,
+      askedBy: { select: LABEL_SELECT },
+      sentBackReason: true,
+      sentBackAt: true,
+      sentBackBy: { select: LABEL_SELECT },
+      amendmentId: true,
+    },
+  });
+  if (!found) return null;
+  const existing = await getCase(db, viewer, found.caseId, locale);
+  if (!existing) return null;
+  return {
+    id: found.id,
+    status: found.status,
+    version: found.version,
+    reason: found.reason,
+    askedAt: found.askedAt,
+    askedByName: accountLabel(found.askedBy, locale),
+    sentBackReason: found.sentBackReason,
+    sentBackAt: found.sentBackAt,
+    sentBackByName: found.sentBackBy && accountLabel(found.sentBackBy, locale),
+    amendmentId: found.amendmentId,
+    existing,
+  };
 }

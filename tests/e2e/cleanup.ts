@@ -6,7 +6,8 @@
  * - deletes the cases they created (named with TEST_CASE_NAME), with their files and photos, decisions,
  *   release, installments, stage updates and notifications, and the allocation letters left with no case,
  *   with their scans;
- * - deletes the DS officer accounts they created (named TEST_OFFICER_NAME), and the accounts with no name
+ * - deletes the DS officer accounts they created (named TEST_OFFICER_NAME), the made-up accounts of the
+ *   users screen's tests (named from TEST_ACCOUNT_NAME, AC-72, AC-73), and the accounts with no name
  *   in NAMELESS_DISTRICT or its DS offices (AC-37, AC-40), so the admin's users screen doesn't fill up with
  *   them. Their audit records stay, with an actor id that no longer exists. An account that still holds
  *   case records is disabled instead.
@@ -16,7 +17,7 @@ import "dotenv/config";
 import { sampleUsersAllowed } from "../../prisma/seed-users";
 import { createPrismaClient } from "../../src/server/db";
 import { deleteStoredFile } from "../../src/server/files/storage";
-import { NAMELESS_DISTRICT, TEST_CASE_NAME, TEST_MARKER, TEST_OFFICER_NAME } from "./helpers";
+import { NAMELESS_DISTRICT, TEST_ACCOUNT_NAME, TEST_CASE_NAME, TEST_MARKER, TEST_OFFICER_NAME } from "./helpers";
 
 async function main() {
   if (!sampleUsersAllowed()) throw new Error("End-to-end cleanup only runs on development and test databases.");
@@ -41,21 +42,30 @@ async function main() {
       select: { storedName: true, thumbName: true },
     });
     await prisma.storedFile.deleteMany({ where: theirFiles });
+    // AMD-11: the returns their approvals recorded, which hold the amendments, cases and letters.
+    await prisma.allocationReturn.deleteMany({ where: { amendment: amendments } });
+    // AMD-12: the requests for a nomination, which hold the cases and the amendments they made.
+    await prisma.nomination.deleteMany({ where: { OR: [{ caseId: { in: caseIds } }, { amendment: amendments }] } });
     await prisma.amendment.deleteMany({ where: amendments });
     await prisma.notification.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.installment.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.release.deleteMany({ where: { caseId: { in: caseIds } } });
     // The scans of letters and District releases left with no case.
     const emptyLetter = {
-      OR: [{ letter: { releases: { none: {} } } }, { dsRelease: { releases: { none: {} } } }],
+      OR: [
+        { letter: { releases: { none: {} }, returns: { none: {} } } },
+        { dsRelease: { releases: { none: {} }, returns: { none: {} } } },
+      ],
     };
     files.push(
       ...(await prisma.storedFile.findMany({ where: emptyLetter, select: { storedName: true, thumbName: true } })),
     );
     await prisma.storedFile.deleteMany({ where: emptyLetter });
-    await prisma.releaseLetter.deleteMany({ where: { releases: { none: {} } } });
-    // The District's releases the test cases left with no case (REL-7).
-    await prisma.dsRelease.deleteMany({ where: { releases: { none: {} } } });
+    // The District's releases the test cases left with no case (REL-7), before their letters (REL-12).
+    await prisma.dsRelease.deleteMany({ where: { releases: { none: {} }, returns: { none: {} } } });
+    await prisma.releaseLetter.deleteMany({
+      where: { releases: { none: {} }, returns: { none: {} }, dsReleases: { none: {} } },
+    });
     await prisma.stageUpdate.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.decision.deleteMany({ where: { caseId: { in: caseIds } } });
     await prisma.case.deleteMany({ where: { id: { in: caseIds } } });
@@ -67,6 +77,7 @@ async function main() {
     const officerWhere = {
       OR: [
         { name: TEST_OFFICER_NAME, role: "DS_OFFICER" },
+        { name: { startsWith: `${TEST_ACCOUNT_NAME} ` } },
         { name: "", district: nameless },
         { name: "", dsOffice: { district: nameless } },
       ],

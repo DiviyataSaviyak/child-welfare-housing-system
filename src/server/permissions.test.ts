@@ -153,6 +153,7 @@ describe("a case lived in one DS office and built in another (CASE-13)", () => {
       installment: "built",
       stage: "built",
       release: "built",
+      nominate: "built",
     };
     for (const [action, office] of Object.entries(acting)) expect(actingOffice(action as CaseAction)).toBe(office);
   });

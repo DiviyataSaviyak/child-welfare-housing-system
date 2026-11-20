@@ -277,7 +277,10 @@ describe("an account that only views changes nothing (PRM-5, AC-42)", () => {
         scanId: null,
       });
       expect(letter.ok, `${label}, letter`).toBe(false);
-      expect((await uploadDocument(db, viewer, { name: "a.pdf", bytes: PDF })).ok, `${label}, document`).toBe(false);
+      // AMD-13: a District CRPO uploads the documents of a beneficiary it nominates, which change no case.
+      if (viewer.role !== "DISTRICT_OFFICER") {
+        expect((await uploadDocument(db, viewer, { name: "a.pdf", bytes: PDF })).ok, `${label}, document`).toBe(false);
+      }
       expect((await uploadPhoto(db, viewer, { name: "a.jpg", bytes: PDF })).ok, `${label}, photo`).toBe(false);
     }
     const after = await db.case.findUniqueOrThrow({ where: { id: caseId } });
@@ -374,12 +377,14 @@ describe("a case built in another DS office (CASE-13, PRM-1, PRM-4)", () => {
       progress: false,
       release: false,
       amend: true,
+      nominate: false,
     });
     expect((await getCase(db, builder, caseId, "si"))?.actsOn).toEqual({
       edit: false,
       progress: true,
       release: false,
       amend: false,
+      nominate: false,
     });
 
     const before = await current();

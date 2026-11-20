@@ -5,26 +5,30 @@ import { formatDate } from "@/lib/dates";
 import { formatRupees, RELEASE_AMOUNT } from "@/lib/money";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { dsOfficesWaiting, getDsRelease, recentDsReleases } from "@/server/releases/queries";
+import { SentCases } from "@/components/review/sent-cases";
+import { SentPopup } from "@/components/review/sent-popup";
+import { dsOfficesWaiting, dsReleaseWithCases, getDsRelease, recentDsReleases } from "@/server/releases/queries";
 
-type SearchParams = Promise<{ notice?: string | string[]; release?: string | string[] }>;
+type SearchParams = Promise<{ notice?: string | string[]; release?: string | string[]; open?: string | string[] }>;
 
 /**
- * REL-5: the District officer's "to release to DS offices" screen. The DS offices of the district whose
- * cases the Ministry allocated wait for the District's release, the most cases first, each opening its
- * release form (REL-6); beside them, the releases the district recorded last. The district comes only from
+ * REL-5: the District officer's "to release to DS offices" screen. One card for each DS office of the district
+ * and Ministry letter whose cases wait for the District's release, the most cases first, each opening its
+ * release form (REL-6, REL-12); beside them, the releases the district recorded last. The district comes only from
  * the account (PRM-4).
  */
 export default async function DistrictReleasePage({ searchParams }: { searchParams: SearchParams }) {
   const viewer = await requireRole("DISTRICT_OFFICER");
   const params = await searchParams;
   const releaseId = params.notice === "released" && typeof params.release === "string" ? params.release : null;
+  const openId = typeof params.open === "string" && params.open.length <= 64 ? params.open : null;
   const locale = await getLocale();
-  const [t, offices, releases, recorded] = await Promise.all([
+  const [t, offices, releases, recorded, opened] = await Promise.all([
     getTranslations("review"),
     dsOfficesWaiting(db, viewer, locale),
     recentDsReleases(db, viewer, locale),
     releaseId && releaseId.length <= 64 ? getDsRelease(db, viewer, releaseId, locale) : null,
+    openId ? dsReleaseWithCases(db, viewer, openId, locale) : null,
   ]);
 
   return (
@@ -38,7 +42,7 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
 
       <div className="flex items-start gap-6">
         <section aria-labelledby="waiting-title" className="flex min-w-0 flex-1 flex-col gap-2.5">
-          <h2 id="waiting-title" className="text-[17px] font-bold text-[#3F4843]">
+          <h2 id="waiting-title" className="text-[17px] font-bold text-soft-foreground">
             {t("district.waitingTitle")}
           </h2>
           {offices.length === 0 ? (
@@ -46,9 +50,9 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
           ) : (
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-2.5">
               {offices.map((office) => (
-                <li key={office.id}>
+                <li key={`${office.id}:${office.letterId}`}>
                   <Link
-                    href={`/oversight/release/${office.id}`}
+                    href={`/oversight/release/${office.id}/${office.letterId}`}
                     className="flex h-full flex-col gap-0.5 rounded-xl border-2 border-border bg-card px-4 py-3.5 hover:border-primary/60"
                   >
                     <span className="text-[17px] font-bold">{t("district.office", { name: office.name })}</span>
@@ -58,11 +62,9 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
                         amount: formatRupees(office.count * RELEASE_AMOUNT, locale),
                       })}
                     </span>
-                    {office.oldestLetter && (
-                      <span className="text-sm text-[#3F4843]">
-                        {t("district.oldestLetter", { date: formatDate(office.oldestLetter) })}
-                      </span>
-                    )}
+                    <span className="text-sm text-soft-foreground">
+                      {t("district.letter", { number: office.letterNumber, date: formatDate(office.letterDate) })}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -83,8 +85,15 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
             <ul className="flex flex-col">
               {releases.map((release) => (
                 <li key={release.id} className="flex flex-col border-t py-2">
-                  <span className="text-[15px] font-bold">
+                  <Link
+                    href={`/oversight/release?${new URLSearchParams({ open: release.id })}`}
+                    scroll={false}
+                    className="self-start text-[15px] font-bold text-primary underline-offset-2 hover:underline"
+                  >
                     {t("district.recordedName", { office: release.officeName, reference: release.referenceNumber })}
+                  </Link>
+                  <span className="text-sm text-soft-foreground">
+                    {t("district.recordedLetter", { number: release.letterNumber })}
                   </span>
                   <span className="text-sm text-muted-foreground">
                     {t("letters.recordedSub", {
@@ -99,6 +108,21 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
           )}
         </section>
       </div>
+
+      {opened && (
+        <SentPopup
+          title={t("sent.releaseTitle", { reference: opened.referenceNumber })}
+          subtitle={t("sent.releaseSubtitle", {
+            office: opened.officeName,
+            date: formatDate(opened.releasedOn),
+            letter: opened.letterNumber,
+            letterDate: formatDate(opened.letterDate),
+          })}
+          closeHref="/oversight/release"
+        >
+          <SentCases cases={opened.cases} href={(caseId) => `/oversight/cases/${caseId}`} />
+        </SentPopup>
+      )}
     </div>
   );
 }

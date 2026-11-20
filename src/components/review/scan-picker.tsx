@@ -93,7 +93,7 @@ export function ScanPicker({
           <button
             type="button"
             onClick={() => input.current?.click()}
-            className="h-11 self-start rounded-lg border border-dashed border-[#8C877C] bg-card px-4 font-semibold"
+            className="h-11 self-start rounded-lg border border-dashed border-input bg-card px-4 font-semibold"
           >
             {t("letters.scanChoose")}
           </button>

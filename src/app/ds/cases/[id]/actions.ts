@@ -11,6 +11,7 @@ import {
   START_FIELDS,
   type StartField,
 } from "@/lib/validation/progress";
+import { nominationForm } from "@/server/amendments/form-actions";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
 import { type PhotoUploadError, type UploadedFile, uploadPhoto } from "@/server/files/uploads";
@@ -109,4 +110,15 @@ export async function uploadPhotoAction(
   const file = form.get("file");
   if (!(file instanceof File)) return { ok: false, error: "fileEmpty" };
   return uploadPhoto(db, actor, { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+}
+
+/**
+ * AMD-12: a CRPO of the DS of residence asks the District to nominate a new beneficiary, then goes back to
+ * the case page. The office rules and AMD-2 apply in the server layer.
+ */
+export async function askNominationAction(_previous: ProgressState, form: FormData): Promise<ProgressState> {
+  const result = await nominationForm(await requireRole("DS_OFFICER"), form, "ask");
+  if (!result.ok) return result.state;
+  revalidatePath("/ds");
+  redirect(`/ds/cases/${result.caseId}?notice=nominationAsked`);
 }

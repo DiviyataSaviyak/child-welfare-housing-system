@@ -8,7 +8,7 @@ import { FormError, FormField } from "@/components/forms/form-field";
 import { PasswordField } from "@/components/forms/password-field";
 import { Button } from "@/components/ui/button";
 import { signIn, type SignInState } from "../actions";
-import { authButton, authLink } from "../styles";
+import { authButton, authInput, authLabel, authLink } from "../styles";
 
 export function SignInForm({ next }: { next: string }) {
   const t = useTranslations("login");
@@ -16,7 +16,7 @@ export function SignInForm({ next }: { next: string }) {
   const invalid = state.error !== null;
 
   return (
-    <form action={action} className="flex flex-col gap-5" noValidate>
+    <form action={action} className="flex flex-col gap-4 short:gap-3" noValidate>
       <input type="hidden" name="next" value={next} />
       <FormField
         id="username"
@@ -28,7 +28,10 @@ export function SignInForm({ next }: { next: string }) {
         defaultValue={state.username}
         invalid={invalid}
         errorId="sign-in-error"
-        leading={<UserRound className="size-5" />}
+        placeholder={t("username")}
+        labelClassName={authLabel}
+        className={authInput}
+        leading={<UserRound className="ms-1.5 size-6" />}
         required
       />
       <div className="flex flex-col gap-2.5">
@@ -39,10 +42,13 @@ export function SignInForm({ next }: { next: string }) {
           autoComplete="current-password"
           invalid={invalid}
           errorId="sign-in-error"
-          leading={<LockKeyhole className="size-5" />}
+          placeholder={t("password")}
+          labelClassName={authLabel}
+          className={authInput}
+          leading={<LockKeyhole className="ms-1.5 size-6" />}
           required
         />
-        <Link href="/forgot-password" className={`self-end text-[15px] ${authLink}`}>
+        <Link href="/forgot-password" className={`self-end text-[16px] ${authLink}`}>
           {t("forgot")}
         </Link>
       </div>

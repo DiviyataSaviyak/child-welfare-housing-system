@@ -70,7 +70,7 @@ export const CASE_PLACES = { dsOffice: OFFICE_PLACE, buildDsOffice: OFFICE_PLACE
 export type CaseOffice = "residence" | "built";
 
 /** What an office does to a case, each through one of its two offices (`actingOffice`). */
-export type CaseAction = "edit" | "delete" | "amend" | "installment" | "stage" | "release";
+export type CaseAction = "edit" | "delete" | "amend" | "installment" | "stage" | "release" | "nominate";
 
 const ACTING: Record<CaseAction, CaseOffice> = {
   // CASE-8, CASE-9: the DS of residence entered the case, so it corrects or deletes it.
@@ -83,6 +83,8 @@ const ACTING: Record<CaseAction, CaseOffice> = {
   stage: "built",
   // REL-6, REL-9: the District where it is built releases it to that DS.
   release: "built",
+  // AMD-13: the District where it is built nominates a new beneficiary when its DS asks.
+  nominate: "built",
 };
 
 /** Which of the two offices an action goes through (CASE-13). */

@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import { amendBuild } from "@/components/amendments/amend-build";
 import { caseName, formValues, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
-import type { BuildSetting } from "@/components/forms/case-form";
 import { CaseForm } from "@/components/forms/case-form";
-import { type BuildOffices, buildOfficesFor, canAmend } from "@/server/amendments/rules";
-import { type CaseDetails, getCase } from "@/server/cases/queries";
+import { canAmend } from "@/server/amendments/rules";
+import { getCase } from "@/server/cases/queries";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
-import { type DistrictOptions, districtsWithOffices, provinceOptions } from "@/server/lists/queries";
+import { districtsWithOffices, provinceOptions } from "@/server/lists/queries";
 import { checkNicAction, removeDocumentAction, uploadDocumentAction } from "../../actions";
 import { submitAmendmentAction } from "./actions";
 
@@ -29,18 +29,14 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
     {
       status: details.status,
       paid: details.installments.some((i) => i.status === "RELEASED"),
-      waiting: details.amendment?.status === "WAITING",
+      waiting: details.amendment?.status === "WAITING" || details.nomination?.status === "WAITING",
     },
   );
   if (!allowed) redirect(`/ds/cases/${id}`);
 
-  const limit = buildOfficesFor({
-    status: details.status,
-    buildDsOffice: { id: details.buildDsOfficeId, districtId: details.buildDistrictId },
-  });
   const [t, districts, provinces] = await Promise.all([
     getTranslations("cases"),
-    districtsWithOffices(db, locale, limit.kind === "district" ? { districts: { id: limit.districtId } } : {}),
+    districtsWithOffices(db, locale),
     provinceOptions(db, locale),
   ]);
   const name = caseName(t, details.name, details.childName);
@@ -60,7 +56,7 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
           <span className="text-muted-foreground">{details.applicationNumber}</span>
           <StatusChip status={details.status} />
         </p>
-        <p className="text-[15px] text-[#3F4843]">{t("amend.intro")}</p>
+        <p className="text-[15px] text-soft-foreground">{t("amend.intro")}</p>
       </section>
       <CaseForm
         // The amendment's id is chosen now, so sending this form twice makes one amendment (ERR-8).
@@ -74,7 +70,7 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
           districtName: details.districtName,
           officeName: details.officeName,
         }}
-        build={amendBuild(limit, details, districts)}
+        build={amendBuild(details, districts)}
         provinces={provinces}
         documents={[]}
         mode="amend"
@@ -88,27 +84,4 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
       />
     </div>
   );
-}
-
-/** AMD-8: the form's "where is the land?", limited to where the existing case's money has gone. */
-function amendBuild(limit: BuildOffices, details: CaseDetails, districts: DistrictOptions[]): BuildSetting {
-  switch (limit.kind) {
-    case "any":
-      return { kind: "choose", districts, districtId: null, dsOfficeId: null };
-    case "district":
-      return {
-        kind: "choose",
-        districts,
-        districtId: limit.districtId,
-        dsOfficeId: null,
-        sameAllowed: details.districtId === limit.districtId,
-      };
-    case "office":
-      return {
-        kind: "fixed",
-        dsOfficeId: limit.dsOfficeId === details.dsOfficeId ? null : limit.dsOfficeId,
-        districtName: details.buildDistrictName,
-        officeName: details.buildOfficeName,
-      };
-  }
 }

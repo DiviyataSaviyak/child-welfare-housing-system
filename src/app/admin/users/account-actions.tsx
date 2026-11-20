@@ -149,7 +149,7 @@ function ToggleAccount({ id, name, active }: { id: string; name: string; active:
             <button
               type="submit"
               disabled={pending}
-              className={`h-12 rounded-lg px-6 text-[17px] font-semibold text-white ${active ? "bg-destructive" : "bg-primary"}`}
+              className={`h-12 rounded-lg px-6 text-[17px] font-semibold ${active ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
             >
               {pending ? t("confirm.working") : active ? t("disable") : t("enable")}
             </button>

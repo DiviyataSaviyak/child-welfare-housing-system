@@ -38,6 +38,7 @@ export type DsReleaseFormCase = {
  */
 export function DsReleaseForm({
   dsOfficeId,
+  letterId,
   officeName,
   cases,
   today,
@@ -45,6 +46,8 @@ export function DsReleaseForm({
   upload,
 }: {
   dsOfficeId: number;
+  /** The Ministry letter the release is for (REL-12). */
+  letterId: string;
   officeName: string;
   cases: DsReleaseFormCase[];
   /** "YYYY-MM-DD", in Colombo. */
@@ -90,6 +93,7 @@ export function DsReleaseForm({
     setCheckErrors(null);
     const form = new FormData();
     form.set("dsOfficeId", String(dsOfficeId));
+    form.set("letterId", letterId);
     for (const c of ticked) form.append("case", `${c.id}:${c.version}`);
     for (const field of DS_RELEASE_FIELDS) form.set(field, values[field]);
     if (scan?.state === "done") form.set("scanId", scan.id);
@@ -117,7 +121,7 @@ export function DsReleaseForm({
         <legend className="sr-only">{t("district.casesLabel")}</legend>
         <div className="overflow-hidden rounded-lg border">
           <div className="flex flex-wrap items-center justify-between gap-3 bg-muted px-3.5 py-2">
-            <span className="text-[15px] font-bold text-[#3F4843]">
+            <span className="text-[15px] font-bold text-soft-foreground">
               {t("letters.office", { office: officeName, count: cases.length })}
             </span>
             <TickAll
@@ -145,8 +149,8 @@ export function DsReleaseForm({
                 <span className={`flex min-w-0 flex-col ${ticks ? "" : "text-muted-foreground"}`}>
                   <span className="font-bold">{c.name}</span>
                   <span className="text-sm text-muted-foreground">{c.detail}</span>
-                  <span className="text-sm text-[#3F4843]">{c.letter}</span>
-                  {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                  <span className="text-sm text-soft-foreground">{c.letter}</span>
+                  {c.residence && <span className="text-sm text-soft-foreground">{c.residence}</span>}
                   {c.amendmentWaiting && <AmendmentFlag text={t("letters.amendmentFlag")} />}
                 </span>
                 <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>

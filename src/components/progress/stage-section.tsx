@@ -33,8 +33,8 @@ export async function StageSection({ progress, update }: { progress: StageProgre
                     done
                       ? "border-primary bg-primary text-primary-foreground"
                       : isNext
-                        ? "border-primary bg-card text-[#4F5752]"
-                        : "border-[#B9B4A8] bg-card text-[#4F5752]"
+                        ? "border-primary bg-card text-muted-foreground"
+                        : "border-[#B9B4A8] dark:border-[#4a544e] bg-card text-muted-foreground"
                   }`}
                 >
                   {done ? <Check className="size-4.5" strokeWidth={3} /> : index + 1}
@@ -42,11 +42,11 @@ export async function StageSection({ progress, update }: { progress: StageProgre
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className={`text-[17px] ${done || isNext ? "font-bold" : "font-medium"}`}>{stage.name}</span>
                   {stage.reachedOn && (
-                    <span className="text-[15px] text-[#4F5752]">
+                    <span className="text-[15px] text-muted-foreground">
                       {t("reachedOn", { date: formatDate(stage.reachedOn) })}
                     </span>
                   )}
-                  {isNext && <span className="text-[15px] text-[#4F5752]">{t("next")}</span>}
+                  {isNext && <span className="text-[15px] text-muted-foreground">{t("next")}</span>}
                   {stage.inactive && <span className="text-sm text-muted-foreground">{t("inactive")}</span>}
                   {stage.note && <span className="text-[15px] whitespace-pre-line">{stage.note}</span>}
                   {stage.photos.length > 0 && <PhotoGallery photos={stage.photos} label={stage.name} />}
@@ -57,7 +57,7 @@ export async function StageSection({ progress, update }: { progress: StageProgre
         </ol>
       )}
       {allDone && <p className="font-semibold text-primary">{t("allDone")}</p>}
-      {!progress.hasStageList && <p className="text-[15px] text-[#4F5752]">{t("noStageList")}</p>}
+      {!progress.hasStageList && <p className="text-[15px] text-muted-foreground">{t("noStageList")}</p>}
 
       {progress.visits.length > 0 && (
         <div className="flex flex-col gap-2 border-t pt-3">

@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentNotes } from "@/components/amendments/amendment-notes";
+import { NominationNotes } from "@/components/amendments/nomination-notes";
 import { CaseColumns, CaseDetailsSection, caseSubtitle, ReplacementNotes } from "@/components/cases/case-view";
-import { MoneySection } from "@/components/cases/money-section";
+import { MoneySection, ReturnNote } from "@/components/cases/money-section";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { StatusChip } from "@/components/cases/status-chip";
 import { FormNotice } from "@/components/forms/form-field";
@@ -148,7 +149,7 @@ export default async function HoCasePage({
           <p className="text-lg">
             {t("created.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
-          <p className="text-[#3F4843]">{t("created.textMinistry")}</p>
+          <p className="text-soft-foreground">{t("created.textMinistry")}</p>
         </section>
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}
@@ -156,6 +157,7 @@ export default async function HoCasePage({
       <ReviewNotice notice={notice} />
       <ReplacementNotes details={details} audience="ministry" />
       <AmendmentNotes details={details} ownOffice={false} audience="ministry" />
+      <NominationNotes details={details} ownOffice={false} nominateHref={null} />
       <CompletedBanner details={details} />
       <CaseColumns
         main={
@@ -179,6 +181,7 @@ export default async function HoCasePage({
                 </Link>
               </section>
             )}
+            {details.allocationReturn && <ReturnNote returned={details.allocationReturn} />}
             {details.release && (
               <MoneySection
                 audience="ministry"

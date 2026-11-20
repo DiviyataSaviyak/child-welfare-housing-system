@@ -7,7 +7,7 @@ import { CredentialsBox } from "@/components/credentials-box";
 import { FormError, FormField } from "@/components/forms/form-field";
 import { Button } from "@/components/ui/button";
 import type { AccountField } from "@/lib/validation/user";
-import { designationsOf, OFFICE_TYPES, type OfficeType, placeOf, roleOf } from "@/server/auth/designations";
+import { designationsOf, OFFICE_TYPES, type OfficeType, placeOf } from "@/server/auth/designations";
 import type { AccountDetails, DistrictChoice, PlaceChoice } from "@/server/users/queries";
 import type { AccountFormState } from "./actions";
 
@@ -186,10 +186,7 @@ export function AccountForm({
                     onChange={set("designation")}
                     className="mt-1 size-5 shrink-0 accent-primary"
                   />
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-base font-bold">{t(`designations.${designation}`)}</span>
-                    <span className="text-sm text-muted-foreground">{t(`roleHints.${roleOf(designation)}`)}</span>
-                  </span>
+                  <span className="text-base font-bold">{t(`designations.${designation}`)}</span>
                 </label>
               );
             })}

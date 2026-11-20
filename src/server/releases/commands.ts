@@ -43,6 +43,8 @@ export const MAX_LETTER_CASES = 500;
 
 export type LetterInput = {
   districtId: number;
+  /** The DS office chosen on the screen (REL-1), whose cases alone the form showed; null for all. */
+  dsOfficeId?: number | null;
   /** The cases ticked on the letter, each with its version when the form was shown (CASE-10). */
   cases: { id: string; version: number }[];
   /** The form as typed; it is checked here against the cases' own dates. */
@@ -75,6 +77,7 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
         id: true,
         status: true,
         dsOfficeId: true,
+        buildDsOfficeId: true,
         version: true,
         createdAt: true,
         ...CASE_PLACES,
@@ -85,6 +88,13 @@ export async function recordLetter(db: PrismaClient, actor: Actor, input: Letter
   const elsewhere = (c: (typeof found)[number]) =>
     !canSeeCase(actor, c) || c.buildDsOffice.districtId !== input.districtId;
   if (!district || found.length !== ids.length || found.some(elsewhere)) return refused("notFound");
+  // REL-2: with a DS office chosen, the form showed only its cases; another office's case is one that changed.
+  const dsOfficeId = input.dsOfficeId ?? null;
+  if (dsOfficeId !== null) {
+    const office = await db.dsOffice.findUnique({ where: { id: dsOfficeId }, select: { districtId: true } });
+    if (office?.districtId !== district.id) return refused("notFound");
+    if (found.some((c) => c.buildDsOfficeId !== dsOfficeId)) return refused("conflict");
+  }
   for (const c of found) {
     const refusal = moveRefusal(actor.role, "allocate", c.status);
     if (refusal) return refused(refusal);
@@ -316,6 +326,8 @@ export type DsCorrectionResult =
 export type DsReleaseInput = {
   /** The DS office the cases are released to: where each of them is built (CASE-13). */
   dsOfficeId: number;
+  /** The Ministry's letter every case is on (REL-6, REL-12). */
+  letterId: string;
   /** The cases ticked on the release, each with its version when the form was shown (CASE-10). */
   cases: { id: string; version: number }[];
   /** The form as typed; it is checked here against the dates of the cases' Ministry letters. */
@@ -327,8 +339,8 @@ export type DsReleaseInput = {
 const dsRefused = (error: DsReleaseCommandError) => ({ ok: false as const, error, errors: {} });
 
 /**
- * REL-6, REL-7, REL-9: records a District officer's release to one DS office of the district, of cases the
- * Ministry allocated to the district, all of them built in that DS office (CASE-13). In one transaction the
+ * REL-6, REL-7, REL-9, REL-12: records a District officer's release to one DS office of the district, of cases
+ * the Ministry allocated to the district on one letter, all of them built in that DS office (CASE-13). In one transaction the
  * release is saved with its scan, each case moves to ALLOCATION_RECEIVED (its DS offices are told,
  * transitions.ts), its allocation gets the release and its date, and, for a house kind, its four NOT_STARTED
  * installments of Rs. 500,000 are made. A land kind's are made one at a time as the DS starts them (INS-7).
@@ -353,12 +365,16 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
         buildDsOfficeId: true,
         kind: true,
         ...CASE_PLACES,
-        release: { select: { id: true, releasedOn: true } },
+        release: { select: { id: true, releasedOn: true, letterId: true } },
       },
     }),
   ]);
-  // REL-9, PRM-1: a case the actor doesn't see, or one built in another DS office, reads as not found.
-  const elsewhere = (c: (typeof found)[number]) => !canSeeCase(actor, c) || c.buildDsOfficeId !== input.dsOfficeId;
+  // REL-9, PRM-1: a case the actor doesn't see, or one built in another DS office, reads as not found. So
+  // does one of another letter (REL-12): the form lists only the letter's cases.
+  const elsewhere = (c: (typeof found)[number]) =>
+    !canSeeCase(actor, c) ||
+    c.buildDsOfficeId !== input.dsOfficeId ||
+    (c.release !== null && c.release.letterId !== input.letterId);
   if (!office || found.length !== ids.length || found.some(elsewhere)) return dsRefused("notFound");
   for (const c of found) {
     const refusal = moveRefusal(actor.role, "release", c.status);
@@ -385,6 +401,7 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
     releasedOn: release.releasedOn,
     office: office.nameSi,
     district: office.district.nameSi,
+    letterId: input.letterId,
     cases: ids.length,
   };
 
@@ -395,6 +412,7 @@ export async function recordDsRelease(db: PrismaClient, actor: Actor, input: DsR
           id: dsReleaseId,
           districtId: office.districtId,
           dsOfficeId: office.id,
+          letterId: input.letterId,
           referenceNumber: release.referenceNumber,
           releasedOn: dayToDate(release.releasedOn),
           note: release.note,

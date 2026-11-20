@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { transliterate } from "../../src/lib/transliterate";
 import {
@@ -9,12 +10,13 @@ import {
   signIn,
   signInAs,
   signInError,
+  TEST_ACCOUNT_NAME,
   TEST_MARKER,
   TEST_OFFICER_NAME,
   TEXT,
 } from "./helpers";
 
-/** The account form's office type, then designation (ADM-2). Each designation's card also says what it can do. */
+/** The account form's office type, then designation (ADM-2). Each designation's card shows only its name (UI-11). */
 async function chooseDesignation(page: Page, officeType: string, designation: string) {
   await page.getByRole("radio", { name: officeType, exact: true }).check();
   await page.getByRole("radio", { name: new RegExp(`^${designation}`) }).check();
@@ -89,7 +91,7 @@ test("AC-3: the admin creates a DS officer, who signs in and must set a new pass
     await officer.getByLabel("නව මුරපදය නැවත").fill("Officer-Own-Pass-1");
     await officer.getByRole("button", { name: "සුරකින්න" }).click();
     await expect(officer).toHaveURL(/\/ds$/);
-    await expect(officer.getByRole("banner")).toContainText(`${OFFICES.signIn} ප්‍රාදේශීය ලේකම් කාර්යාලය`);
+    await expect(officer.getByTestId("area-label")).toContainText(`${OFFICES.signIn} ප්‍රාදේශීය ලේකම් කාර්යාලය`);
   });
 });
 
@@ -111,10 +113,16 @@ test("the form explains what is wrong and keeps what was typed", async ({ page }
   await expect(page.getByRole("radio", { name: DIVISIONAL_SECRETARIAT, exact: true })).toBeChecked();
 });
 
-test("each office type offers its own designations and asks for its own place (AC-38)", async ({ page }) => {
+test("each office type offers its own designations and asks for its own place (AC-38, AC-74)", async ({ page }) => {
   await signInAs(page, "ad0001", /\/admin\/users$/);
   await page.goto("/admin/users/new");
   const designations = page.getByRole("group", { name: "තනතුර *" }).getByRole("radio");
+
+  // AC-74: a designation's card shows its name and nothing about what its role can do.
+  await page.getByRole("radio", { name: DIVISIONAL_SECRETARIAT, exact: true }).check();
+  await expect(page.getByRole("radio", { name: CRPO, exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "සහකාර ප්‍රාදේශීය ලේකම්", exact: true })).toBeVisible();
+  await expect(page.getByText("නැරඹීමට පමණි")).toHaveCount(0);
 
   await page.getByRole("radio", { name: "දිස්ත්‍රික් ලේකම් කාර්යාලය", exact: true }).check();
   await expect(designations).toHaveCount(4);
@@ -440,6 +448,112 @@ test("the admin adds and reorders renovation stages (LST-4)", async ({ page }) =
 
   // The other kind's list is untouched.
   await expect(page.getByRole("region", { name: "නව නිවසක් ඉදිකිරීම" })).not.toContainText(suffix);
+});
+
+/** Runs the made-up data script (tests/e2e/made-up-cases.ts) and reads what it prints. */
+function madeUp<T>(command: "places" | "pages", marker: string): T {
+  return JSON.parse(execSync(`npx tsx tests/e2e/made-up-cases.ts ${command} ${marker}`, { encoding: "utf8" })) as T;
+}
+
+type Place = { id: number; name: string };
+
+/** Opens the users screen and types the search, which applies as it is typed (ADM-12). */
+async function searchUsers(page: Page, text: string) {
+  await page.goto("/admin/users");
+  await page.getByRole("searchbox", { name: "සොයන්න" }).fill(text);
+  await expect(page).toHaveURL(/[?&]q=/);
+}
+
+test("AC-72: the admin narrows the users by province, district and DS office", async ({ page }) => {
+  const marker = String(Date.now());
+  const places = madeUp<{ province: Place; district: Place; office: Place }>("places", marker);
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  await searchUsers(page, `${TEST_ACCOUNT_NAME} ${marker}`);
+  const users = page.getByRole("region", { name: "පරිශීලකයින්" });
+  const rows = users.getByRole("row");
+  const chips = page.getByRole("list", { name: "යොදා ඇති පෙරහන්" }).getByRole("link");
+  const province = page.getByLabel("පළාත", { exact: true });
+  const district = page.getByLabel("දිස්ත්‍රික්කය", { exact: true });
+  const office = page.getByLabel("ප්‍රාදේශීය ලේකම් කාර්යාලය", { exact: true });
+  await expect(rows).toHaveCount(1 + 8);
+  await expect(office).toBeDisabled();
+
+  // Each choice applies at once and shows how many accounts it would leave.
+  await expect(province.locator(`option[value="${places.province.id}"]`)).toHaveText(`${places.province.name} (6)`);
+  await province.selectOption(String(places.province.id));
+  await expect(page).toHaveURL(new RegExp(`provinceId=${places.province.id}`));
+  await expect(rows).toHaveCount(1 + 6);
+  // Only the province's districts are offered: Kandy, Matale and Nuwara Eliya.
+  await expect(district.locator("option")).toHaveCount(1 + 3);
+  await expect(district.locator(`option[value="${places.district.id}"]`)).toHaveText(`${places.district.name} (4)`);
+
+  await district.selectOption(String(places.district.id));
+  await expect(rows).toHaveCount(1 + 4);
+  await expect(office).toBeEnabled();
+  await expect(office.locator(`option[value="${places.office.id}"]`)).toHaveText(`${places.office.name} (2)`);
+
+  await office.selectOption(String(places.office.id));
+  await expect(rows).toHaveCount(1 + 2);
+  await expect(users.getByRole("cell", { name: new RegExp(`${places.office.name} ප්‍රා.ලේ.`) })).toHaveCount(2);
+  // Three chips, and "remove all".
+  await expect(chips).toHaveText([
+    `${places.province.name}×`,
+    `${places.district.name}×`,
+    `${places.office.name} ප්‍රා.ලේ.×`,
+    "සියල්ල ඉවත් කරන්න",
+  ]);
+
+  // Removing the district removes its DS office too.
+  await page.getByRole("link", { name: `පෙරහන ඉවත් කරන්න: ${places.district.name}` }).click();
+  await expect(page).not.toHaveURL(/districtId|dsOfficeId/);
+  await expect(rows).toHaveCount(1 + 6);
+  await expect(chips).toHaveCount(2);
+
+  // Choosing a district with no province chosen chooses its province.
+  await page.getByRole("link", { name: "සියල්ල ඉවත් කරන්න" }).click();
+  await expect(rows).toHaveCount(1 + 8);
+  await expect(province).toHaveValue("");
+  await district.selectOption(String(places.district.id));
+  await expect(province).toHaveValue(String(places.province.id));
+  await expect(rows).toHaveCount(1 + 4);
+});
+
+test("AC-73: the users list shows 50 to a page, filters by status and sorts by a heading", async ({ page }) => {
+  const marker = String(Date.now());
+  const made = madeUp<{ total: number; neverSignedIn: number }>("pages", marker);
+  await signInAs(page, "ad0001", /\/admin\/users$/);
+  await searchUsers(page, `${TEST_ACCOUNT_NAME} ${marker}`);
+  const rows = page.getByRole("region", { name: "පරිශීලකයින්" }).getByRole("row");
+  const tabs = page.getByRole("navigation", { name: "කාර්යාල වර්ගය" }).getByRole("link");
+
+  await expect(page.getByText(`1–50, මුළු ${made.total}`)).toBeVisible();
+  await expect(rows).toHaveCount(1 + 50);
+  await page.getByRole("link", { name: "ඊළඟ පිටුව" }).click();
+  await expect(rows).toHaveCount(1 + made.total - 50);
+  await expect(page.getByText(`51–${made.total}, මුළු ${made.total}`)).toBeVisible();
+
+  // The office type tabs count under the other filters.
+  await expect(tabs.first()).toHaveText(`සියල්ල (${made.total})`);
+  await page.getByLabel("තත්ත්වය", { exact: true }).selectOption("neverSignedIn");
+  await expect(page).not.toHaveURL(/page=/);
+  await expect(rows).toHaveCount(1 + made.neverSignedIn);
+  await expect(tabs.first()).toHaveText(`සියල්ල (${made.neverSignedIn})`);
+  await expect(page.getByText(`ගිණුම් ${made.neverSignedIn}`, { exact: true })).toBeVisible();
+  for (const row of await rows.all().then((all) => all.slice(1))) {
+    await expect(row).toContainText("තවම නැත");
+    await expect(row).toContainText("සක්‍රියයි");
+  }
+
+  // The last sign-in heading sorts the latest first; a second click turns it round.
+  await page.getByRole("link", { name: "පෙරහන ඉවත් කරන්න: කිසිදා ඇතුළු වී නැත" }).click();
+  await expect(rows).toHaveCount(1 + 50);
+  const lastSignIn = page.getByRole("link", { name: /^අවසන් පිවිසුම/ });
+  await lastSignIn.click();
+  await expect(page).toHaveURL(/sort=lastSignIn/);
+  await expect(rows.nth(1)).toContainText("2026.10.28");
+  await lastSignIn.click();
+  await expect(page).toHaveURL(/order=reversed/);
+  await expect(rows.nth(1)).toContainText("තවම නැත");
 });
 
 test("Ministry officers get 'not found' on the admin pages (PRM-2)", async ({ page }) => {

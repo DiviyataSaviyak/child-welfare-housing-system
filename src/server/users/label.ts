@@ -4,7 +4,7 @@ import { localName, NAMES, type Names } from "@/lib/names";
 import en from "../../../messages/en.json";
 import si from "../../../messages/si.json";
 import ta from "../../../messages/ta.json";
-import { DESIGNATIONS, type Designation, isDesignation } from "../auth/designations";
+import { isDesignation } from "../auth/designations";
 
 const MESSAGES = { si, ta, en };
 
@@ -26,13 +26,6 @@ export const LABEL_SELECT = {
 } as const;
 
 const users = (locale: Locale) => createTranslator({ locale, messages: MESSAGES[locale], namespace: "users" });
-
-/** The designations whose label in this language contains the text, for searching accounts with no name. */
-export function designationsNamed(text: string, locale: Locale): Designation[] {
-  const t = users(locale);
-  const wanted = text.toLocaleLowerCase();
-  return DESIGNATIONS.filter((d) => t(`designations.${d}`).toLocaleLowerCase().includes(wanted));
-}
 
 /**
  * ADM-10: how an account is shown wherever a name would be. An account with no name (ADM-2) shows its

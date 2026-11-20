@@ -111,7 +111,7 @@ export function ReasonAction({
             <button
               type="submit"
               disabled={pending}
-              className={`h-12 rounded-lg px-6 text-[17px] font-bold text-white disabled:opacity-60 ${danger ? "bg-destructive" : "bg-primary"}`}
+              className={`h-12 rounded-lg px-6 text-[17px] font-bold disabled:opacity-60 ${danger ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
             >
               {pending ? texts.working : texts.confirm}
             </button>

@@ -81,6 +81,22 @@ enum AmendmentStatus {
   REJECTED
 }
 
+/// AMD-12, AMD-13: a DS's request that the District nominate a new beneficiary: waiting for the District,
+/// nominated (it became an amendment), or sent back with a reason.
+enum NominationStatus {
+  WAITING
+  NOMINATED
+  SENT_BACK
+}
+
+/// AMD-11: how far a replaced beneficiary's allocation went back: from the DS office to its District. Task 4
+/// of change 0009 also sent it back to the Ministry; task 5 took that out (a database check since then), and
+/// the value stays because PostgreSQL can't drop it.
+enum ReturnedTo {
+  DISTRICT
+  MINISTRY
+}
+
 enum DecisionType {
   SUBMIT
   VERIFY
@@ -124,6 +140,10 @@ enum NotificationType {
   AMENDMENT_APPROVED
   /// The Ministry rejected an amendment; the notice hangs on the existing case (AMD-10).
   AMENDMENT_REJECTED
+  /// For a District officer: a DS asks the District to nominate a new beneficiary (AMD-12).
+  NOMINATION_ASKED
+  /// The District sent a DS's request for a nomination back (AMD-13).
+  NOMINATION_SENT_BACK
 }
 
 /// Places and stages carry a name in each screen language (UI-9).
@@ -141,16 +161,19 @@ model Province {
 }
 
 model District {
-  id         Int             @id @default(autoincrement())
-  nameEn     String          @unique @map("name_en")
-  nameSi     String          @unique @map("name_si")
-  nameTa     String          @unique @map("name_ta")
-  provinceId Int             @map("province_id")
-  province   Province        @relation(fields: [provinceId], references: [id])
-  dsOffices  DsOffice[]
-  letters    ReleaseLetter[]
-  dsReleases DsRelease[]
-  users      User[]
+  id          Int                @id @default(autoincrement())
+  nameEn      String             @unique @map("name_en")
+  nameSi      String             @unique @map("name_si")
+  nameTa      String             @unique @map("name_ta")
+  provinceId  Int                @map("province_id")
+  province    Province           @relation(fields: [provinceId], references: [id])
+  dsOffices   DsOffice[]
+  letters     ReleaseLetter[]
+  dsReleases  DsRelease[]
+  users       User[]
+  returns     AllocationReturn[]
+  /// AMD-12: the requests that the District nominate a new beneficiary.
+  nominations Nomination[]
 
   @@index([provinceId])
   @@map("district")
@@ -158,25 +181,29 @@ model District {
 
 /// A Divisional Secretariat. Never deleted: inactive offices keep their accounts and cases (LST-3).
 model DsOffice {
-  id         Int         @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   /// Three capital letters, unique nationally, used in case numbers (CASE-5).
-  code       String      @unique @db.Char(3)
-  nameEn     String      @map("name_en")
-  nameSi     String      @map("name_si")
-  nameTa     String      @map("name_ta")
-  districtId Int         @map("district_id")
-  district   District    @relation(fields: [districtId], references: [id])
-  active     Boolean     @default(true)
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
-  users      User[]
+  code        String             @unique @db.Char(3)
+  nameEn      String             @map("name_en")
+  nameSi      String             @map("name_si")
+  nameTa      String             @map("name_ta")
+  districtId  Int                @map("district_id")
+  district    District           @relation(fields: [districtId], references: [id])
+  active      Boolean            @default(true)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  users       User[]
   /// The cases of the people who live in this DS division.
-  cases      Case[]      @relation("CaseResidence")
+  cases       Case[]             @relation("CaseResidence")
   /// The cases whose house is built, or land bought, in this DS division (CASE-13).
-  casesBuilt Case[]      @relation("CaseBuilt")
-  dsReleases DsRelease[]
-  /// The amendments of this DS's beneficiaries (AMD-8: the new beneficiary lives here too).
-  amendments Amendment[]
+  casesBuilt  Case[]             @relation("CaseBuilt")
+  dsReleases  DsRelease[]
+  /// The amendments whose new beneficiary lives here: the case's DS, or the one the District nominated (AMD-13).
+  amendments  Amendment[]
+  /// AMD-12: the requests for a nomination this DS made.
+  nominations Nomination[]
+  /// AMD-11: the allocations that went back from this office.
+  returns     AllocationReturn[]
 
   @@unique([districtId, nameSi])
   @@index([districtId])
@@ -228,45 +255,45 @@ model AuditLog {
 
 /// An officer's account. Never deleted (ADM-7).
 model User {
-  id                     String          @id
+  id                     String             @id
   /// The officer's full name.
   name                   String
   /// Better Auth needs a unique address; officers without one get a placeholder (see src/lib/auth.ts).
-  email                  String          @unique
-  emailVerified          Boolean         @default(false) @map("email_verified")
+  email                  String             @unique
+  emailVerified          Boolean            @default(false) @map("email_verified")
   image                  String?
-  createdAt              DateTime        @default(now()) @map("created_at")
-  updatedAt              DateTime        @updatedAt @map("updated_at")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
   /// Generated sign-in name such as ds0101 (ADM-2).
-  username               String?         @unique
-  displayUsername        String?         @map("display_username")
+  username               String?            @unique
+  displayUsername        String?            @map("display_username")
   /// DS_OFFICER, DISTRICT_OFFICER, MINISTRY_OFFICER, VIEWER or ADMIN; a database check allows nothing else.
   /// The designation decides it (src/server/auth/designations.ts).
   role                   String?
   /// true means the account is disabled (ADM-6).
-  banned                 Boolean         @default(false)
-  banReason              String?         @map("ban_reason")
-  banExpires             DateTime?       @map("ban_expires")
+  banned                 Boolean            @default(false)
+  banReason              String?            @map("ban_reason")
+  banExpires             DateTime?          @map("ban_expires")
   /// A code from src/server/auth/designations.ts; an admin has none. A database check holds the pairs of
   /// role and designation.
   designation            String?
   mobile                 String?
   /// The officer's real email address, if they have one. Codes for a forgotten password go to it (AUTH-7).
-  contactEmail           String?         @map("contact_email")
+  contactEmail           String?            @map("contact_email")
   /// An account has the one place its office type belongs to and no other (checked by the database): a DS
   /// office, a district or a province. An office can have several accounts (ADM-3, ADM-9).
-  dsOfficeId             Int?            @map("ds_office_id")
-  dsOffice               DsOffice?       @relation(fields: [dsOfficeId], references: [id])
-  districtId             Int?            @map("district_id")
-  district               District?       @relation(fields: [districtId], references: [id])
-  provinceId             Int?            @map("province_id")
-  province               Province?       @relation(fields: [provinceId], references: [id])
-  mustChangePassword     Boolean         @default(true) @map("must_change_password")
+  dsOfficeId             Int?               @map("ds_office_id")
+  dsOffice               DsOffice?          @relation(fields: [dsOfficeId], references: [id])
+  districtId             Int?               @map("district_id")
+  district               District?          @relation(fields: [districtId], references: [id])
+  provinceId             Int?               @map("province_id")
+  province               Province?          @relation(fields: [provinceId], references: [id])
+  mustChangePassword     Boolean            @default(true) @map("must_change_password")
   /// When the current temporary password was issued; it stops working after 7 days (SEC-4).
-  temporaryPasswordSetAt DateTime?       @map("temporary_password_set_at")
-  failedSignIns          Int             @default(0) @map("failed_sign_ins")
-  lockedUntil            DateTime?       @map("locked_until")
-  lastSignInAt           DateTime?       @map("last_sign_in_at")
+  temporaryPasswordSetAt DateTime?          @map("temporary_password_set_at")
+  failedSignIns          Int                @default(0) @map("failed_sign_ins")
+  lockedUntil            DateTime?          @map("locked_until")
+  lastSignInAt           DateTime?          @map("last_sign_in_at")
   sessions               Session[]
   accounts               Account[]
   casesCreated           Case[]
@@ -278,8 +305,11 @@ model User {
   notifications          Notification[]
   stageUpdates           StageUpdate[]
   resetCodes             ResetCode[]
-  amendmentsSubmitted    Amendment[]     @relation("AmendmentSubmittedBy")
-  amendmentsDecided      Amendment[]     @relation("AmendmentDecidedBy")
+  amendmentsSubmitted    Amendment[]        @relation("AmendmentSubmittedBy")
+  amendmentsDecided      Amendment[]        @relation("AmendmentDecidedBy")
+  allocationReturns      AllocationReturn[]
+  nominationsAsked       Nomination[]       @relation("NominationAskedBy")
+  nominationsSentBack    Nomination[]       @relation("NominationSentBackBy")
 
   @@index([dsOfficeId])
   @@index([districtId])
@@ -393,73 +423,73 @@ model UnknownSignInName {
 
 /// A beneficiary's case. Never deleted, except drafts (CASE-8).
 model Case {
-  id                String         @id
+  id                String            @id
   /// The Application Number (ඉල්ලුම් අංකය) the DS types from the paper application, kept as typed without
   /// spaces at either end (CASE-12). Version 1's case numbers became Application Numbers.
-  applicationNumber String         @map("application_number")
+  applicationNumber String            @map("application_number")
   /// The Application Number in capitals without spaces (`applicationKey` in src/server/cases/numbers.ts):
   /// unique within the DS office of residence.
-  applicationKey    String         @map("application_key")
+  applicationKey    String            @map("application_key")
   /// The DS office of residence: it enters the case, and edits it while it awaits its allocation.
-  dsOfficeId        Int            @map("ds_office_id")
-  dsOffice          DsOffice       @relation("CaseResidence", fields: [dsOfficeId], references: [id])
+  dsOfficeId        Int               @map("ds_office_id")
+  dsOffice          DsOffice          @relation("CaseResidence", fields: [dsOfficeId], references: [id])
   /// The DS office where the house is built or the land bought (CASE-13): the DS office of residence
   /// unless the form says otherwise. The money, the installments and the stages follow it.
-  buildDsOfficeId   Int            @map("build_ds_office_id")
-  buildDsOffice     DsOffice       @relation("CaseBuilt", fields: [buildDsOfficeId], references: [id])
+  buildDsOfficeId   Int               @map("build_ds_office_id")
+  buildDsOffice     DsOffice          @relation("CaseBuilt", fields: [buildDsOfficeId], references: [id])
   category          Category
   kind              Kind
   /// A new case is saved straight into AWAITING_ALLOCATION (CASE-5).
-  status            CaseStatus     @default(AWAITING_ALLOCATION)
+  status            CaseStatus        @default(AWAITING_ALLOCATION)
   /// The care leaver, or the guardian of a child at risk.
   name              String?
   /// Only for children at risk.
-  childName         String?        @map("child_name")
+  childName         String?           @map("child_name")
   /// As entered, in capitals without spaces.
   nic               String?
   /// The NIC in its 12-digit form, so old and new numbers match (CASE-6).
-  nicKey            String?        @map("nic_key")
+  nicKey            String?           @map("nic_key")
   address           String?
   /// The Grama Niladhari division (ග්‍රාම නිලධාරී වසම), as typed. Optional.
-  gnDivision        String?        @map("gn_division")
-  mobile1           String?        @map("mobile_1")
-  mobile2           String?        @map("mobile_2")
+  gnDivision        String?           @map("gn_division")
+  mobile1           String?           @map("mobile_1")
+  mobile2           String?           @map("mobile_2")
   remark            String?
   // Change 0007's details (CASE-14 to CASE-17). Every one may be empty, because the cases entered before it
   // don't have them; the form requires them (src/lib/validation/case.ts), not the database.
   /// A calendar day: the care leaver's, or the child's (CASE-14, CASE-15).
-  dateOfBirth       DateTime?      @map("date_of_birth") @db.Date
+  dateOfBirth       DateTime?         @map("date_of_birth") @db.Date
   /// Care leavers only (a database check).
-  careGroup         CareGroup?     @map("care_group")
+  careGroup         CareGroup?        @map("care_group")
   /// Care leavers only (a database check).
-  maritalStatus     MaritalStatus? @map("marital_status")
+  maritalStatus     MaritalStatus?    @map("marital_status")
   /// Children at risk only (a database check).
   relationship      Relationship?
   /// The relationship as typed, set only when `relationship` is `OTHER` (a database check).
-  relationshipOther String?        @map("relationship_other")
+  relationshipOther String?           @map("relationship_other")
   /// 1 to 30 (a database check).
-  familyMembers     Int?           @map("family_members")
-  disabledChildren  Boolean?       @map("disabled_children")
+  familyMembers     Int?              @map("family_members")
+  disabledChildren  Boolean?          @map("disabled_children")
   /// The aid received; an empty list means none. NULL in the database only on a case entered before
   /// change 0007, which Prisma reads as an empty list.
   aid               Aid[]
   /// The aid as typed, set only when `aid` holds `OTHER` (a database check).
-  aidOther          String?        @map("aid_other")
+  aidOther          String?           @map("aid_other")
   /// The GN division where the land is (CASE-17), as typed. Optional.
-  landGnDivision    String?        @map("land_gn_division")
-  createdById       String         @map("created_by_id")
-  createdBy         User           @relation(fields: [createdById], references: [id])
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
+  landGnDivision    String?           @map("land_gn_division")
+  createdById       String            @map("created_by_id")
+  createdBy         User              @relation(fields: [createdById], references: [id])
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
   /// When the system found it finished (CLS-1).
-  completedAt       DateTime?      @map("completed_at")
+  completedAt       DateTime?         @map("completed_at")
   /// The case this one was entered in place of. Version 1's CASE-11 made these links; change 0006 removed
   /// it, and change 0008's amendments take its place. A case is replaced once.
-  replacesCaseId    String?        @unique @map("replaces_case_id")
-  replaces          Case?          @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
-  replacedBy        Case?          @relation("Replacement")
+  replacesCaseId    String?           @unique @map("replaces_case_id")
+  replaces          Case?             @relation("Replacement", fields: [replacesCaseId], references: [id], onDelete: SetNull)
+  replacedBy        Case?             @relation("Replacement")
   /// Goes up by one on every save, so a form opened earlier can't overwrite a newer change (CASE-10).
-  version           Int            @default(1)
+  version           Int               @default(1)
   decisions         Decision[]
   files             StoredFile[]
   release           Release?
@@ -469,9 +499,15 @@ model Case {
   /// A care leaver's child development centres, in the order they lived in them (CASE-14).
   centres           CareCentre[]
   /// The amendments asking to replace this case's beneficiary (AMD-1); at most one waits (a database rule).
-  amendments        Amendment[]    @relation("AmendmentOf")
+  amendments        Amendment[]       @relation("AmendmentOf")
   /// The approved amendment that made this case, if one did (AMD-5).
-  madeBy            Amendment?     @relation("AmendmentNewCase")
+  madeBy            Amendment?        @relation("AmendmentNewCase")
+  /// AMD-11: the allocation that went back when this case's beneficiary was replaced.
+  allocationReturn  AllocationReturn? @relation("ReturnOf")
+  /// AMD-11: the allocation that went back when this case replaced another.
+  returnedFor       AllocationReturn? @relation("ReturnFor")
+  /// AMD-12: the DS's requests that the District nominate a new beneficiary; at most one waits.
+  nominations       Nomination[]
 
   @@unique([dsOfficeId, applicationKey])
   @@index([dsOfficeId, status])
@@ -579,20 +615,24 @@ model StoredFile {
 /// of several verified cases of that district, which the District gives out through each case's DS
 /// office (REL-2, 6 Oct 2026).
 model ReleaseLetter {
-  id           String       @id
-  districtId   Int          @map("district_id")
-  district     District     @relation(fields: [districtId], references: [id])
+  id           String             @id
+  districtId   Int                @map("district_id")
+  district     District           @relation(fields: [districtId], references: [id])
   /// As written on the letter, such as MWCA/3/8/16/04-2026.
-  letterNumber String       @map("letter_number")
+  letterNumber String             @map("letter_number")
   /// A calendar day, never in the future and never before the verification of one of its cases.
-  letterDate   DateTime     @map("letter_date") @db.Date
+  letterDate   DateTime           @map("letter_date") @db.Date
   /// The letter's "valid only until" day; never before its date (a database check).
-  validUntil   DateTime     @map("valid_until") @db.Date
+  validUntil   DateTime           @map("valid_until") @db.Date
   note         String?
-  byId         String       @map("by_id")
-  by           User         @relation(fields: [byId], references: [id])
-  at           DateTime     @default(now())
+  byId         String             @map("by_id")
+  by           User               @relation(fields: [byId], references: [id])
+  at           DateTime           @default(now())
   releases     Release[]
+  /// The District's releases of its cases, one for each DS office it reaches or more (REL-12).
+  dsReleases   DsRelease[]
+  /// AMD-11: the allocations of the letter that went back, to the District or to the Ministry.
+  returns      AllocationReturn[]
   /// The scanned letter, if one was added.
   files        StoredFile[]
 
@@ -628,28 +668,34 @@ model Release {
 }
 
 /// The District's release (දිස්ත්‍රික් මුදා හැරීම) to one of its DS offices of cases the Ministry allocated to
-/// the district (REL-6). The command checks that the office is in the district and that the day is never
-/// before the Ministry's letter of any of its cases.
+/// the district on one letter (REL-6, REL-12). The command checks that the office is in the district, that
+/// every case is on the letter, and that the day is never before the letter.
 model DsRelease {
-  id              String       @id
-  districtId      Int          @map("district_id")
-  district        District     @relation(fields: [districtId], references: [id])
-  dsOfficeId      Int          @map("ds_office_id")
-  dsOffice        DsOffice     @relation(fields: [dsOfficeId], references: [id])
+  id              String             @id
+  districtId      Int                @map("district_id")
+  district        District           @relation(fields: [districtId], references: [id])
+  dsOfficeId      Int                @map("ds_office_id")
+  dsOffice        DsOffice           @relation(fields: [dsOfficeId], references: [id])
+  /// The Ministry's letter of every case on it (REL-12, 18 Nov 2026).
+  letterId        String             @map("letter_id")
+  letter          ReleaseLetter      @relation(fields: [letterId], references: [id], onDelete: Restrict)
   /// As on the District's letter or voucher.
-  referenceNumber String       @map("reference_number")
+  referenceNumber String             @map("reference_number")
   /// A calendar day, never in the future.
-  releasedOn      DateTime     @map("released_on") @db.Date
+  releasedOn      DateTime           @map("released_on") @db.Date
   note            String?
-  byId            String       @map("by_id")
-  by              User         @relation(fields: [byId], references: [id])
-  at              DateTime     @default(now())
+  byId            String             @map("by_id")
+  by              User               @relation(fields: [byId], references: [id])
+  at              DateTime           @default(now())
   releases        Release[]
+  /// AMD-11: the allocations of the release that went back.
+  returns         AllocationReturn[]
   /// The scanned letter, if one was added.
   files           StoredFile[]
 
   @@index([districtId, at])
   @@index([dsOfficeId])
+  @@index([letterId])
   @@map("ds_release")
 }
 
@@ -732,39 +778,129 @@ model StageUpdate {
 /// Number among the WAITING ones; who decided and when are set only once decided; the rejection's reason only
 /// when rejected; the new case only when approved.
 model Amendment {
-  id              String          @id
+  id               String            @id
   /// The case whose beneficiary is to be replaced. Restricted, so a case with an amendment can't be deleted.
-  caseId          String          @map("case_id")
-  case            Case            @relation("AmendmentOf", fields: [caseId], references: [id], onDelete: Restrict)
-  /// The case's DS of residence, copied when submitted: the new beneficiary's too (AMD-8).
-  dsOfficeId      Int             @map("ds_office_id")
-  dsOffice        DsOffice        @relation(fields: [dsOfficeId], references: [id])
+  caseId           String            @map("case_id")
+  case             Case              @relation("AmendmentOf", fields: [caseId], references: [id], onDelete: Restrict)
+  /// The new beneficiary's DS of residence: the case's, copied when submitted (AMD-8), or the one the District
+  /// chose when it nominated them (AMD-13).
+  dsOfficeId       Int               @map("ds_office_id")
+  dsOffice         DsOffice          @relation(fields: [dsOfficeId], references: [id])
   /// The new beneficiary's Application Number as CASE-12 compares it (`applicationKey`).
-  applicationKey  String          @map("application_key")
+  applicationKey   String            @map("application_key")
   /// The case form's values for the new beneficiary (`CompleteCaseValues`, with the centres), without the
   /// documents. Personal data, like a case's (SEC-8).
-  details         Json
+  details          Json
   /// 5 to 1,000 characters (a database check).
-  reason          String
-  status          AmendmentStatus @default(WAITING)
-  submittedById   String          @map("submitted_by_id")
-  submittedBy     User            @relation("AmendmentSubmittedBy", fields: [submittedById], references: [id])
-  submittedAt     DateTime        @default(now()) @map("submitted_at")
-  decidedById     String?         @map("decided_by_id")
-  decidedBy       User?           @relation("AmendmentDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
-  decidedAt       DateTime?       @map("decided_at")
+  reason           String
+  status           AmendmentStatus   @default(WAITING)
+  submittedById    String            @map("submitted_by_id")
+  submittedBy      User              @relation("AmendmentSubmittedBy", fields: [submittedById], references: [id])
+  submittedAt      DateTime          @default(now()) @map("submitted_at")
+  decidedById      String?           @map("decided_by_id")
+  decidedBy        User?             @relation("AmendmentDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  decidedAt        DateTime?         @map("decided_at")
   /// 5 to 1,000 characters, set only when rejected (a database check).
-  rejectionReason String?         @map("rejection_reason")
+  rejectionReason  String?           @map("rejection_reason")
   /// The case the approval made; set only when approved (a database check).
-  newCaseId       String?         @unique @map("new_case_id")
-  newCase         Case?           @relation("AmendmentNewCase", fields: [newCaseId], references: [id], onDelete: Restrict)
+  newCaseId        String?           @unique @map("new_case_id")
+  newCase          Case?             @relation("AmendmentNewCase", fields: [newCaseId], references: [id], onDelete: Restrict)
   /// Goes up by one on every change, so a page opened earlier can't decide it again (CASE-10).
-  version         Int             @default(1)
+  version          Int               @default(1)
   /// Its documents, until the approval moves them to the new case.
-  files           StoredFile[]
+  files            StoredFile[]
+  /// AMD-11: the allocation its approval sent back, if the new beneficiary is built elsewhere.
+  allocationReturn AllocationReturn?
+  /// AMD-13: the DS's request that made it, when the District nominated the new beneficiary; the District
+  /// officer who did is `submittedBy`.
+  nomination       Nomination?
 
   @@index([caseId])
   @@index([dsOfficeId])
   @@index([status, submittedAt])
   @@map("amendment")
+}
+
+/// AMD-12, AMD-13: a CRPO's request that the District nominate a new beneficiary from another DS division of
+/// the district. While it waits, the case is held as by a waiting amendment (AMD-3). The District nominates
+/// (the request then names the amendment it made) or sends it back with a reason. Never deleted. Database
+/// rules the schema can't hold (hand-written in the migration `20261118090100_nominations`): at most one
+/// WAITING request per case; the amendment only when nominated; the reason for sending back, who and when,
+/// only when sent back.
+model Nomination {
+  id             String           @id
+  caseId         String           @map("case_id")
+  case           Case             @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  /// The DS that asked: the case's DS of residence.
+  dsOfficeId     Int              @map("ds_office_id")
+  dsOffice       DsOffice         @relation(fields: [dsOfficeId], references: [id])
+  /// The district asked: where the case is built, when it was asked.
+  districtId     Int              @map("district_id")
+  district       District         @relation(fields: [districtId], references: [id])
+  /// 5 to 1,000 characters (a database check).
+  reason         String
+  status         NominationStatus @default(WAITING)
+  askedById      String           @map("asked_by_id")
+  askedBy        User             @relation("NominationAskedBy", fields: [askedById], references: [id])
+  askedAt        DateTime         @default(now()) @map("asked_at")
+  /// The amendment the District's nomination made; set only when nominated.
+  amendmentId    String?          @unique @map("amendment_id")
+  amendment      Amendment?       @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+  /// 5 to 1,000 characters, set only when sent back.
+  sentBackReason String?          @map("sent_back_reason")
+  sentBackById   String?          @map("sent_back_by_id")
+  sentBackBy     User?            @relation("NominationSentBackBy", fields: [sentBackById], references: [id])
+  sentBackAt     DateTime?        @map("sent_back_at")
+  /// Goes up by one on every change (CASE-10).
+  version        Int              @default(1)
+
+  @@index([caseId])
+  @@index([dsOfficeId])
+  @@index([districtId, status])
+  @@map("nomination")
+}
+
+/// AMD-11: a replaced beneficiary's Rs. 2,000,000 that went back, because the approved amendment's new
+/// beneficiary is built outside the place the money had reached. Written by the approval; never changed.
+/// The letter and the District's release keep showing the existing case through it, marked returned.
+model AllocationReturn {
+  id              String        @id
+  amendmentId     String        @unique @map("amendment_id")
+  amendment       Amendment     @relation(fields: [amendmentId], references: [id], onDelete: Restrict)
+  /// The replaced case, whose allocation went back.
+  caseId          String        @unique @map("case_id")
+  case            Case          @relation("ReturnOf", fields: [caseId], references: [id], onDelete: Restrict)
+  /// The case the approval made.
+  newCaseId       String        @unique @map("new_case_id")
+  newCase         Case          @relation("ReturnFor", fields: [newCaseId], references: [id], onDelete: Restrict)
+  letterId        String        @map("letter_id")
+  letter          ReleaseLetter @relation(fields: [letterId], references: [id], onDelete: Restrict)
+  /// The District's release it came back from; empty when the District hadn't released it.
+  dsReleaseId     String?       @map("ds_release_id")
+  dsRelease       DsRelease?    @relation(fields: [dsReleaseId], references: [id], onDelete: Restrict)
+  /// The district it came back from: the letter's.
+  districtId      Int           @map("district_id")
+  district        District      @relation(fields: [districtId], references: [id])
+  /// The DS office it came back from, set together with `dsReleaseId` (a database check).
+  dsOfficeId      Int?          @map("ds_office_id")
+  dsOffice        DsOffice?     @relation(fields: [dsOfficeId], references: [id], onDelete: Restrict)
+  /// To the District only when it had reached a DS office of the same district (a database check).
+  returnedTo      ReturnedTo    @map("returned_to")
+  /// Always 2,000,000 (a database check).
+  amount          Int
+  /// A calendar day, never in the future, nor before the letter or the District's release.
+  returnedOn      DateTime      @map("returned_on") @db.Date
+  /// 1 to 50 characters (a database check).
+  referenceNumber String        @map("reference_number")
+  /// Up to 1,000 characters (a database check).
+  note            String?
+  byId            String        @map("by_id")
+  by              User          @relation(fields: [byId], references: [id])
+  at              DateTime      @default(now())
+
+  @@index([letterId])
+  @@index([dsReleaseId])
+  @@index([districtId])
+  @@index([dsOfficeId])
+  @@map("allocation_return")
 }

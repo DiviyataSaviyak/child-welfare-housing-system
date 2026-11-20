@@ -37,7 +37,7 @@ async function districtOfficer(db: PrismaClient, districtId: number): Promise<Ac
 
 /**
  * For the database tests: the District's release (REL-6, REL-7) of cases the Ministry allocated, through
- * `recordDsRelease`, one release for each DS office where they are built, dated the latest of their letters
+ * `recordDsRelease`, one release for each DS office where they are built and letter (REL-12), dated the letter
  * (or `on`), by a District officer of its district. The cases are then `ALLOCATION_RECEIVED`, with four
  * `NOT_STARTED` installments; paying installment 1 moves one on to `IN_PROGRESS` (INS-5).
  */
@@ -54,19 +54,24 @@ export async function releaseToDsForTests(
       version: true,
       buildDsOfficeId: true,
       buildDsOffice: { select: { districtId: true } },
-      release: { select: { releasedOn: true } },
+      release: { select: { releasedOn: true, letterId: true } },
     },
   });
   if (cases.length !== caseIds.length) throw new Error("Every case must be allocated to its district first.");
-  const byOffice = new Map<number, typeof cases>();
-  for (const c of cases) byOffice.set(c.buildDsOfficeId, [...(byOffice.get(c.buildDsOfficeId) ?? []), c]);
-  for (const [dsOfficeId, theirs] of byOffice) {
+  const byOffice = new Map<string, typeof cases>();
+  for (const c of cases) {
+    const key = `${c.buildDsOfficeId}:${c.release!.letterId}`;
+    byOffice.set(key, [...(byOffice.get(key) ?? []), c]);
+  }
+  for (const theirs of byOffice.values()) {
+    const { buildDsOfficeId: dsOfficeId, release } = theirs[0];
     const latestLetter = theirs
       .map((c) => dateToDay(c.release!.releasedOn))
       .sort()
       .at(-1)!;
     const result = await recordDsRelease(db, await districtOfficer(db, theirs[0].buildDsOffice.districtId), {
       dsOfficeId,
+      letterId: release!.letterId,
       cases: theirs.map((c) => ({ id: c.id, version: c.version })),
       form: {
         referenceNumber: "DS/පරීක්ෂණ",

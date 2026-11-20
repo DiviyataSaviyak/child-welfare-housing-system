@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import type { CaseStatus } from "@/generated/prisma/enums";
 import { FormError, FormField, FormTextArea } from "@/components/forms/form-field";
 import { Modal } from "@/components/modal";
 import { colomboDay, formatDate, parseDay } from "@/lib/dates";
@@ -34,6 +35,7 @@ import {
 } from "@/lib/validation/case";
 import { parseReason, type ReasonErrorKey } from "@/lib/validation/decision";
 import type { AmendmentError } from "@/server/amendments/commands";
+import { replacementStep } from "@/server/amendments/rules";
 import type { CaseCommandError } from "@/server/cases/commands";
 import type { NicMatch } from "@/server/cases/duplicates";
 import type { DistrictOptions } from "@/server/lists/queries";
@@ -63,22 +65,43 @@ export type OfficeSetting =
 /** CASE-13, CASE-17: where the land is (the house, for a renovation). */
 export type BuildSetting =
   /**
-   * Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. An amendment's
-   * new beneficiary may be limited to the district the money went to (AMD-8): `districts` holds only it,
-   * and `sameAllowed` is false when the DS of residence is in another district.
+   * Asked on the form; `dsOfficeId` is another DS office, or null for the DS of residence. For an
+   * amendment's new beneficiary, `money` says where the existing case's money has reached, so the form can
+   * say when the chosen place sends it back (AMD-8, AMD-11).
    */
   | {
       kind: "choose";
       districts: DistrictOptions[];
       districtId: number | null;
       dsOfficeId: number | null;
-      sameAllowed?: boolean;
+      money?: MoneyReached;
     }
   /** Once the case is allocated, it stays; `dsOfficeId` is null for the DS of residence. */
   | { kind: "fixed"; dsOfficeId: number | null; districtName: string; officeName: string };
 
-/** AMD-1: the case whose beneficiary an amendment would replace, for the form's summary. */
-export type AmendSetting = { caseId: string; existingName: string; existingNumber: string };
+/**
+ * AMD-11: where an amended case's money has reached: its status, and its DS office where built with that
+ * office's district. `residenceDistrictId` is the district of the DS of residence, which "the same DS
+ * division" means.
+ */
+export type MoneyReached = {
+  status: CaseStatus;
+  buildDsOffice: { id: number; districtId: number };
+  districtName: string;
+  officeName: string;
+  residenceDistrictId: number;
+};
+
+/**
+ * AMD-1: the case whose beneficiary an amendment would replace, for the form's summary. `nomination` is the
+ * DS's request the District nominates for, with its version (AMD-13).
+ */
+export type AmendSetting = {
+  caseId: string;
+  existingName: string;
+  existingNumber: string;
+  nomination?: { id: string; version: number };
+};
 
 export type CaseFormActions = DocumentActions & {
   save: (state: CaseFormState, form: FormData) => Promise<CaseFormState>;
@@ -191,9 +214,7 @@ export function CaseForm({
   const [centres, setCentres] = useState(initial.centres.length > 0 ? initial.centres : [EMPTY_CENTRE]);
   const [districtId, setDistrictId] = useState(office.kind === "choose" ? String(office.districtId ?? "") : "");
   const [dsOfficeId, setDsOfficeId] = useState(office.kind === "choose" ? String(office.dsOfficeId ?? "") : "");
-  // AMD-8: the DS of residence may be outside the district the money went to.
-  const sameAllowed = build.kind !== "choose" || build.sameAllowed !== false;
-  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null && sameAllowed ? "same" : "other");
+  const [built, setBuilt] = useState<Built>(build.dsOfficeId === null ? "same" : "other");
   const [buildDistrictId, setBuildDistrictId] = useState(build.kind === "choose" ? String(build.districtId ?? "") : "");
   const [buildOfficeId, setBuildOfficeId] = useState(build.kind === "choose" ? String(build.dsOfficeId ?? "") : "");
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -290,6 +311,10 @@ export function CaseForm({
     if (amend) {
       form.set("caseId", amend.caseId);
       form.set("reason", reason);
+      if (amend.nomination) {
+        form.set("nominationId", amend.nomination.id);
+        form.set("nominationVersion", String(amend.nomination.version));
+      }
     }
     startTransition(() => dispatch(form));
   }
@@ -413,11 +438,22 @@ export function CaseForm({
       : buildDistrict && buildOfficeName
         ? { province: buildDistrict.provinceName, district: buildDistrict.name, office: buildOfficeName }
         : null;
+  const moneyBack = build.kind === "choose" && build.money ? moneyBackText(build.money) : null;
   const house = kind === "RENOVATION";
   const busy = pending || uploading;
   const birthDay = parseDay(values.dateOfBirth.trim());
   const age = birthDay && birthDay <= today ? ageOn(birthDay, today) : null;
   const placeText = (place: Place) => t("form.land.place", place);
+  // AMD-11: once the land's DS office is known, whether choosing it sends the money back to the District.
+  function moneyBackText(money: MoneyReached): string | null {
+    const landOffice = built === "same" ? residence : chosenBuildOffice;
+    const landDistrict = built === "same" ? (district?.id ?? money.residenceDistrictId) : buildDistrict?.id;
+    if (landOffice === null || landDistrict === undefined) return null;
+    const step = replacementStep(money, { id: landOffice, districtId: landDistrict });
+    if (step === null) return t("amend.landInLetterDistrict", { district: money.districtName });
+    return step.returnedTo === "DISTRICT" ? t("amend.moneyBackDistrict", { office: money.officeName }) : null;
+  }
+
   const choice = (key: "yes" | "no") => t(key);
 
   const centreLines = centres
@@ -454,7 +490,7 @@ export function CaseForm({
         className="flex min-w-0 flex-1 flex-col gap-5"
       >
         {intro && (
-          <p className="rounded-lg bg-[#E4EDF8] px-4 py-3 text-[15px] text-[#1E4E8C]">{t("form.changeIntro")}</p>
+          <p className="rounded-lg bg-info px-4 py-3 text-[15px] text-info-foreground">{t("form.changeIntro")}</p>
         )}
 
         <Part number={1} id="part-category" title={t("form.partCategory")}>
@@ -503,23 +539,19 @@ export function CaseForm({
             </h3>
             {build.kind === "choose" ? (
               <>
-                {sameAllowed ? (
-                  <ChoiceCards
-                    name="built"
-                    labelledBy="built-title"
-                    options={[
-                      { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
-                      { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
-                    ]}
-                    value={built}
-                    onChange={(value) => {
-                      setBuilt(value === "other" ? "other" : "same");
-                      setBuildMissing(false);
-                    }}
-                  />
-                ) : (
-                  <p className="text-[15px] text-[#3F4843]">{t("amend.landInDistrict")}</p>
-                )}
+                <ChoiceCards
+                  name="built"
+                  labelledBy="built-title"
+                  options={[
+                    { value: "same", label: t("form.built.same"), hint: t("form.built.sameHint") },
+                    { value: "other", label: t("form.built.other"), hint: t("form.built.otherHint") },
+                  ]}
+                  value={built}
+                  onChange={(value) => {
+                    setBuilt(value === "other" ? "other" : "same");
+                    setBuildMissing(false);
+                  }}
+                />
                 {built === "other" && (
                   <div className="grid grid-cols-2 gap-5 rounded-lg bg-muted p-4">
                     <Select
@@ -551,13 +583,22 @@ export function CaseForm({
                   </div>
                 )}
                 {landPlace && (
-                  <p data-testid="land-place" className="text-[15px] text-[#3F4843]">
+                  <p data-testid="land-place" className="text-[15px] text-soft-foreground">
                     {placeText(landPlace)}
+                  </p>
+                )}
+                {moneyBack && (
+                  <p
+                    data-testid="money-back"
+                    role="status"
+                    className="rounded-lg border border-caution-border bg-caution px-4 py-3 text-[15px] text-caution-foreground"
+                  >
+                    {moneyBack}
                   </p>
                 )}
               </>
             ) : (
-              <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
+              <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-soft-foreground">
                 {build.dsOfficeId === null
                   ? t("form.built.fixedSame")
                   : t("form.built.fixed", { district: build.districtName, office: build.officeName })}
@@ -604,13 +645,13 @@ export function CaseForm({
                 />
               </div>
               {district && (
-                <p data-testid="residence-province" className="text-[15px] text-[#3F4843]">
+                <p data-testid="residence-province" className="text-[15px] text-soft-foreground">
                   {t("form.province", { province: district.provinceName })}
                 </p>
               )}
             </div>
           ) : (
-            <p data-testid="residence-place" className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
+            <p data-testid="residence-place" className="rounded-lg bg-muted px-4 py-3 text-[15px] text-soft-foreground">
               {t(office.kind === "own" ? "form.officeAuto" : "form.officeFixed", {
                 province: office.provinceName,
                 district: office.districtName,
@@ -876,7 +917,7 @@ export function CaseForm({
             id="case-errors"
             role="alert"
             tabIndex={-1}
-            className="flex flex-col gap-1.5 rounded-lg border-2 border-destructive bg-destructive/5 px-5 py-4 text-[#8F1B12]"
+            className="flex flex-col gap-1.5 rounded-lg border-2 border-destructive bg-destructive/5 px-5 py-4 text-[#8F1B12] dark:text-[#f59b90]"
           >
             <p className="text-[17px] font-bold">{t("form.errors.summary")}</p>
             <ul className="flex flex-col gap-1 text-[15px]">
@@ -943,14 +984,14 @@ export function CaseForm({
           ))}
         </ol>
         <hr className="border-border" />
-        <p className="text-[15px] text-[#3F4843]">{t("form.help")}</p>
+        <p className="text-[15px] text-soft-foreground">{t("form.help")}</p>
       </aside>
 
       <Modal open={confirming} onClose={() => setConfirming(false)} labelledBy="confirm-title">
         <h2 id="confirm-title" className="text-[23px] font-bold">
           {amend ? t("amend.confirmTitle") : t("form.confirm.title")}
         </h2>
-        <p className="text-[#3F4843]">{amend ? t("amend.confirmText") : t("form.confirm.text")}</p>
+        <p className="text-soft-foreground">{amend ? t("amend.confirmText") : t("form.confirm.text")}</p>
         <dl className="flex max-h-[55vh] flex-col overflow-y-auto rounded-lg border">
           {[
             // AMD-1: the summary shows both beneficiaries: the existing one, then the new one's details.
@@ -1030,7 +1071,7 @@ export function CaseForm({
           ))}
         </dl>
         {matches.length > 0 && <NicMatches matches={matches} />}
-        <p className="text-[15px] text-[#3F4843]">{amend ? t("amend.confirmAfter") : t("form.confirm.after")}</p>
+        <p className="text-[15px] text-soft-foreground">{amend ? t("amend.confirmAfter") : t("form.confirm.after")}</p>
         <div className="flex justify-end gap-3">
           <button
             type="button"

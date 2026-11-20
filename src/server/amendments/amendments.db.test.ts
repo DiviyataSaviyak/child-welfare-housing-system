@@ -7,16 +7,32 @@ import { addDays, colomboDay, dayToDate } from "@/lib/dates";
 import type { CaseValues } from "@/lib/validation/case";
 import { NOTE_ONLY } from "@/lib/validation/progress";
 import { type Actor, deleteCase, saveCase } from "../cases/commands";
-import { getCase, todoItems } from "../cases/queries";
+import { getCase, officeMoney, todoItems } from "../cases/queries";
 import { fileForViewer, uploadDocument } from "../files/uploads";
 import { caseHistory } from "../history/queries";
 import { markInstallmentPaid, startInstallment } from "../installments/commands";
 import { listNotifications } from "../notifications/queries";
 import { recordLetter } from "../releases/commands";
-import { casesForDsRelease, casesForLetter } from "../releases/queries";
+import {
+  casesForDsRelease,
+  casesForLetter,
+  dsReleaseWithCases,
+  getDsRelease,
+  letterWithCases,
+  recentLetters,
+} from "../releases/queries";
 import { recordStageUpdate } from "../stages/commands";
 import { approveAmendment, rejectAmendment, type SubmitAmendmentInput, submitAmendment } from "./commands";
-import { amendmentsWaiting, countAmendments, getAmendment, listAmendments } from "./queries";
+import { askNomination, sendBackNomination } from "./nominations";
+import {
+  amendmentsWaiting,
+  countAmendments,
+  getAmendment,
+  getNomination,
+  listAmendments,
+  listNominations,
+  nominationsWaiting,
+} from "./queries";
 
 const db = createTestClient();
 
@@ -102,7 +118,7 @@ async function newCase(name: string, buildDsOfficeId: number | null = null) {
     values: values(name),
     documentIds: [],
   });
-  if (!result.ok) throw new Error(result.error);
+  if (!result.ok) throw new Error(String(result.error));
   // Entered a few days ago, so a letter can be dated before today.
   await db.case.update({ where: { id: result.value.id }, data: { createdAt: dayToDate(daysAgo(5)) } });
   return load(result.value.id);
@@ -202,7 +218,7 @@ describe("submitting an amendment (AMD-1)", () => {
   it("keeps the new beneficiary and the reason for the Ministry, and leaves the case as it was", async () => {
     const existing = await newCase("පවතින ප්‍රතිලාභී");
     const upload = await uploadDocument(db, dsA, { name: "නව ලේඛනය.pdf", bytes: PDF });
-    if (!upload.ok) throw new Error(upload.error);
+    if (!upload.ok) throw new Error(String(upload.error));
     const id = randomUUID();
     const newcomer = values("නව ප්‍රතිලාභී", { applicationNumber: "amd/7" });
 
@@ -321,30 +337,22 @@ describe("the new beneficiary (AMD-8, AC-66)", () => {
     expect(another).toEqual({ ok: false, error: "applicationNumberTaken" });
   });
 
-  it("is built where the money has gone: any DS before the letter, the district after it, the DS after the release", async () => {
-    // Awaiting its allocation: anywhere.
+  it("may be built in any active DS office before the letter, and in the letter's district after it (AMD-8, AC-77)", async () => {
     const waiting = await newCase("ප්‍රතිපාදන නොලැබූ");
     expect(await amend(waiting, { buildDsOfficeId: far.id })).toMatchObject({ ok: true });
 
-    // On a letter to its district: a DS office of that district only.
     const onLetter = await allocate((await newCase("ලිපියට ඇතුළත්")).id);
     expect(onLetter.status).toBe("ALLOCATED_TO_DISTRICT");
     expect(await amend(onLetter, { buildDsOfficeId: far.id })).toEqual({ ok: false, error: "buildOfficeNotAllowed" });
     expect(await amend(onLetter, { buildDsOfficeId: dsBuilt.dsOfficeId })).toMatchObject({ ok: true });
 
-    // Released to its DS: that DS only.
     const released = await received("ප්‍රතිපාදන ලැබූ");
     expect(released.status).toBe("ALLOCATION_RECEIVED");
-    expect(await amend(released, { buildDsOfficeId: dsBuilt.dsOfficeId })).toEqual({
-      ok: false,
-      error: "buildOfficeNotAllowed",
-    });
-    expect(await amend(released)).toMatchObject({ ok: true });
+    expect(await amend(released, { buildDsOfficeId: far.id })).toEqual({ ok: false, error: "buildOfficeNotAllowed" });
+    expect(await amend(released, { buildDsOfficeId: dsBuilt.dsOfficeId })).toMatchObject({ ok: true });
 
-    // A case released to the DS where it is built, in another DS: the new beneficiary is built there too.
     const builtElsewhere = await received("අසල ඉදිවන", dsBuilt.dsOfficeId);
-    expect(await amend(builtElsewhere)).toEqual({ ok: false, error: "buildOfficeNotAllowed" });
-    expect(await amend(builtElsewhere, { buildDsOfficeId: dsBuilt.dsOfficeId })).toMatchObject({ ok: true });
+    expect(await amend(builtElsewhere)).toMatchObject({ ok: true });
   });
 });
 
@@ -375,7 +383,8 @@ describe("while an amendment waits (AMD-3, AC-47)", () => {
     // Allocated and on its letter: the District's release form flags it, and it can still be released.
     const onLetter = await allocate((await newCase("ලිපියේ සංශෝධිත")).id);
     expect(await amend(onLetter)).toMatchObject({ ok: true });
-    const releaseForm = await casesForDsRelease(db, await districtOfficer(), dsA.dsOfficeId!, "si");
+    const { letterId } = await db.release.findUniqueOrThrow({ where: { caseId: onLetter.id } });
+    const releaseForm = await casesForDsRelease(db, await districtOfficer(), dsA.dsOfficeId!, letterId, "si");
     expect(releaseForm?.cases.find((c) => c.id === onLetter.id)?.amendmentWaiting).toBe(true);
     await releaseToDsForTests(db, [onLetter.id], { on: dayToDate(daysAgo(2)) });
 
@@ -484,12 +493,18 @@ async function submitted(existing: { id: string; version: number }, overrides: P
   return result.value.id;
 }
 
-/** The Ministry approves, with the versions it was shown. */
-async function approve(amendmentId: string, by: Actor = ministry) {
+/** The Ministry approves, with the versions it was shown, and the return's fields when it asks for them (AMD-11). */
+async function approve(
+  amendmentId: string,
+  by: Actor = ministry,
+  returned: { returnedOn: string; referenceNumber: string; note: string } | null = null,
+) {
   const row = await db.amendment.findUnique({ where: { id: amendmentId }, select: { version: true, caseId: true } });
   const caseVersion = row ? (await load(row.caseId)).version : 1;
-  return approveAmendment(db, by, { amendmentId, version: row?.version ?? 1, caseVersion });
+  return approveAmendment(db, by, { amendmentId, version: row?.version ?? 1, caseVersion, returned });
 }
+
+const RETURN = { returnedOn: "", referenceNumber: "RET/AMD/11", note: "" };
 
 const noticesOf = async (who: Actor, caseId: string) =>
   (await listNotifications(db, who, 200)).filter((n) => n.caseId === caseId).map((n) => n.type);
@@ -498,7 +513,7 @@ describe("approving an amendment (AMD-5, AC-44, AC-45)", () => {
   it("makes the new beneficiary's case in the existing one's place, before the allocation", async () => {
     const existing = await newCase("ප්‍රතිස්ථාපනය වන");
     const upload = await uploadDocument(db, dsA, { name: "නව ලේඛනය.pdf", bytes: PDF });
-    if (!upload.ok) throw new Error(upload.error);
+    if (!upload.ok) throw new Error(String(upload.error));
     const id = await submitted(existing, {
       values: values("අනුමත නව", { applicationNumber: "amd/44" }),
       buildDsOfficeId: dsBuilt.dsOfficeId,
@@ -506,7 +521,7 @@ describe("approving an amendment (AMD-5, AC-44, AC-45)", () => {
     });
 
     const result = await approve(id);
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(String(result.error));
     const made = await db.case.findUniqueOrThrow({ where: { id: result.caseId }, include: { centres: true } });
     expect(made).toMatchObject({
       status: "AWAITING_ALLOCATION",
@@ -580,7 +595,7 @@ describe("approving an amendment (AMD-5, AC-44, AC-45)", () => {
     const officer = await districtOfficer();
 
     const result = await approve(id);
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(String(result.error));
     const made = await db.case.findUniqueOrThrow({
       where: { id: result.caseId },
       include: { release: true, installments: { orderBy: { number: "asc" } } },
@@ -626,7 +641,7 @@ describe("approving an amendment (AMD-5, AC-44, AC-45)", () => {
       buildDsOfficeId: dsBuilt.dsOfficeId,
     });
     const result = await approve(id);
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(String(result.error));
     expect(
       await db.case.findUniqueOrThrow({ where: { id: result.caseId }, include: { release: true, installments: true } }),
     ).toMatchObject({
@@ -640,8 +655,379 @@ describe("approving an amendment (AMD-5, AC-44, AC-45)", () => {
     const land = await received("ඉඩම් ලැබුණු");
     const landId = await submitted(land, { values: values("ඉඩම් පමණක්", { kind: "LAND_ONLY" }) });
     const approved = await approve(landId);
-    if (!approved.ok) throw new Error(approved.error);
+    if (!approved.ok) throw new Error(String(approved.error));
     expect(await db.installment.count({ where: { caseId: approved.caseId } })).toBe(0);
+  });
+});
+
+describe("a replacement built outside the place the money has reached (AMD-11, AC-76, AC-77)", () => {
+  it("sends a DS office's allocation back to the District, which releases it to the new DS office (AC-76)", async () => {
+    const existing = await received("කඩුවෙල ලැබූ");
+    const release = await db.release.findUniqueOrThrow({ where: { caseId: existing.id } });
+    const officer = await districtOfficer();
+    const id = await submitted(existing, { buildDsOfficeId: dsBuilt.dsOfficeId });
+    const before = (await officeMoney(db, dsA))?.received ?? 0;
+
+    // The return's date and reference are required, and the date can't be before the District's release.
+    expect(await approve(id, ministry, { ...RETURN, returnedOn: "", referenceNumber: "" })).toEqual({
+      ok: false,
+      error: null,
+      errors: { returnedOn: "dateRequired", referenceNumber: "referenceRequired" },
+    });
+    expect(await approve(id, ministry, { ...RETURN, returnedOn: daysAgo(3) })).toEqual({
+      ok: false,
+      error: null,
+      errors: { returnedOn: "dateBeforeAllocation" },
+    });
+    expect(await approve(id)).toEqual({ ok: false, error: "conflict" });
+    expect((await load(existing.id)).status).toBe("ALLOCATION_RECEIVED");
+
+    const result = await approve(id, ministry, { ...RETURN, returnedOn: today(), note: "ආපසු යවන ලදී" });
+    if (!result.ok) throw new Error(String(result.error));
+    const made = await db.case.findUniqueOrThrow({
+      where: { id: result.caseId },
+      include: { release: true, installments: true },
+    });
+    // On the same letter, waiting for the District's release to the new DS office; no installment yet.
+    expect(made).toMatchObject({
+      status: "ALLOCATED_TO_DISTRICT",
+      buildDsOfficeId: dsBuilt.dsOfficeId,
+      release: { id: release.id, letterId: release.letterId, dsReleaseId: null, dsReleasedOn: null },
+      installments: [],
+    });
+    expect(await db.allocationReturn.findUniqueOrThrow({ where: { amendmentId: id } })).toMatchObject({
+      caseId: existing.id,
+      newCaseId: made.id,
+      letterId: release.letterId,
+      dsReleaseId: release.dsReleaseId,
+      districtId: districtA,
+      dsOfficeId: dsA.dsOfficeId,
+      returnedTo: "DISTRICT",
+      amount: 2_000_000,
+      referenceNumber: "RET/AMD/11",
+      note: "ආපසු යවන ලදී",
+      byId: ministry.userId,
+    });
+    // HOME-4: the DS office no longer counts the Rs. 2,000,000.
+    expect((await officeMoney(db, dsA))?.received).toBe(before - 2_000_000);
+    // REL-10, REL-11: the existing beneficiary never received it, so neither the letter nor the District's
+    // release lists or counts them; the letter lists the new one.
+    const onLetter = await letterWithCases(db, ministry, release.letterId, "si");
+    expect(onLetter?.cases.map((c) => c.id)).toContain(made.id);
+    expect(onLetter?.cases.map((c) => c.id)).not.toContain(existing.id);
+    const onRelease = await dsReleaseWithCases(db, officer, release.dsReleaseId!, "si");
+    expect(onRelease?.cases.map((c) => c.id)).not.toContain(existing.id);
+    expect((await getDsRelease(db, officer, release.dsReleaseId!, "si"))?.count).toBe(onRelease?.cases.length);
+
+    // Both case pages and both histories show it.
+    expect((await getCase(db, dsA, existing.id, "si"))?.allocationReturn).toMatchObject({
+      side: "replaced",
+      returnedTo: "DISTRICT",
+      referenceNumber: "RET/AMD/11",
+      returnedOn: today(),
+    });
+    expect((await getCase(db, dsBuilt, made.id, "si"))?.allocationReturn).toMatchObject({ side: "new" });
+    expect(
+      (await caseHistory(db, dsA, existing.id, "si"))?.find((e) => e.action === "case_replaced")?.after,
+    ).toMatchObject({ allocationMoved: true, returned: { to: "DISTRICT", referenceNumber: "RET/AMD/11" } });
+    expect(
+      (await caseHistory(db, dsBuilt, made.id, "si"))?.find((e) => e.action === "amendment_approved")?.after,
+    ).toMatchObject({ returned: { to: "DISTRICT", returnedOn: today() } });
+
+    // AMD-10: the District officer hears of the new case, which waits for its release to the new DS office.
+    expect(await noticesOf(officer, made.id)).toEqual(["AMENDMENT_APPROVED"]);
+    const { letterId } = await db.release.findUniqueOrThrow({ where: { caseId: made.id } });
+    const waiting = await casesForDsRelease(db, officer, dsBuilt.dsOfficeId!, letterId, "si");
+    expect(waiting?.cases.map((c) => c.id)).toContain(made.id);
+    await releaseToDsForTests(db, [made.id], { on: dayToDate(daysAgo(2)) });
+    const now = await load(made.id);
+    expect(now.status).toBe("ALLOCATION_RECEIVED");
+    expect(await start(dsBuilt, now)).toMatchObject({ ok: true });
+    expect(await pay(dsBuilt, await load(made.id))).toMatchObject({ ok: true });
+  });
+
+  it("never sends the money back to the Ministry: another district is refused after the letter (AC-77)", async () => {
+    const existing = await received("ගම්පහට යන");
+    const release = await db.release.findUniqueOrThrow({ where: { caseId: existing.id } });
+    const letters = await recentLetters(db, ministry, "si", 50);
+    expect(letters.find((l) => l.id === release.letterId)?.count).toBe(1);
+
+    // An amendment submitted before the letter, built in another district, can't be approved after it.
+    const early = await newCase("ලිපියට පෙර දුර");
+    const earlyId = await submitted(early, { buildDsOfficeId: far.id });
+    await allocate(early.id);
+    expect(await approve(earlyId, ministry, { ...RETURN, returnedOn: today() })).toEqual({
+      ok: false,
+      error: "buildOfficeNotAllowed",
+    });
+    expect((await load(early.id)).status).toBe("ALLOCATED_TO_DISTRICT");
+    expect(await db.allocationReturn.count({ where: { caseId: early.id } })).toBe(0);
+
+    // A case awaiting its allocation may still be replaced by one built in another district.
+    const waiting = await newCase("ප්‍රතිපාදන නැති දුර");
+    const waitingId = await submitted(waiting, { buildDsOfficeId: far.id });
+    const made = await approve(waitingId);
+    if (!made.ok) throw new Error(String(made.error));
+    expect(await load(made.caseId)).toMatchObject({ status: "AWAITING_ALLOCATION", buildDsOfficeId: far.id });
+    expect(await db.allocationReturn.count({ where: { amendmentId: waitingId } })).toBe(0);
+
+    // A replacement built in the same DS office asks for no return, as before.
+    const same = await received("එම කාර්යාලයේ");
+    const sameId = await submitted(same);
+    const kept = await approve(sameId);
+    if (!kept.ok) throw new Error(String(kept.error));
+    expect(await db.allocationReturn.count({ where: { amendmentId: sameId } })).toBe(0);
+  });
+});
+
+/** The DS's request that the District nominate a new beneficiary (AMD-12). */
+async function asked(existing: { id: string; version: number }, by: Actor = dsA) {
+  const id = randomUUID();
+  const result = await askNomination(db, by, {
+    id,
+    caseId: existing.id,
+    caseVersion: existing.version,
+    reason: "මෙම කොට්ඨාසයේ වෙනත් ප්‍රතිලාභියෙකු නැත",
+  });
+  if (!result.ok) throw new Error(String(result.error));
+  return id;
+}
+
+/** The District nominates the new beneficiary for the request, living in `dsOfficeId` (AMD-13). */
+function nominate(
+  existing: { id: string },
+  nominationId: string,
+  dsOfficeId: number,
+  by: Actor,
+  overrides: Partial<SubmitAmendmentInput> = {},
+) {
+  return db.nomination.findUniqueOrThrow({ where: { id: nominationId } }).then(async (request) =>
+    submitAmendment(db, by, {
+      id: randomUUID(),
+      caseId: existing.id,
+      caseVersion: (await load(existing.id)).version,
+      buildDsOfficeId: null,
+      values: values("නාමයෝජිත"),
+      reason: REASON,
+      documentIds: [],
+      nomination: { id: nominationId, version: request.version, dsOfficeId },
+      ...overrides,
+    }),
+  );
+}
+
+describe("a new beneficiary nominated by the District (AMD-12, AMD-13, AC-78, AC-79)", () => {
+  it("asks the District, holds the case, and the District's nomination goes to the Ministry, which approves it (AC-78)", async () => {
+    const existing = await received("නාමයෝජනය ඉල්ලූ");
+    const officer = await districtOfficer();
+    const nominationId = await asked(existing);
+
+    // AMD-12: the District hears of it and sees it under "to nominate"; the DS can't pay or amend.
+    expect(await noticesOf(officer, existing.id)).toContain("NOMINATION_ASKED");
+    const list = await listNominations(db, officer, {}, "si");
+    expect(list.rows.map((r) => r.id)).toContain(nominationId);
+    expect((await nominationsWaiting(db, officer)).count).toBeGreaterThan(0);
+    expect((await nominationsWaiting(db, ministry)).count).toBe(0);
+    expect(await start(dsA, await load(existing.id))).toMatchObject({ ok: false, error: "amendmentWaiting" });
+    expect(await amend(await load(existing.id))).toEqual({ ok: false, error: "amendmentWaiting" });
+    expect(
+      await askNomination(db, dsA, {
+        id: randomUUID(),
+        caseId: existing.id,
+        caseVersion: existing.version,
+        reason: REASON,
+      }),
+    ).toEqual({ ok: false, error: "amendmentWaiting" });
+    expect((await getCase(db, dsA, existing.id, "si"))?.nomination).toMatchObject({ status: "WAITING" });
+
+    // AMD-13: the District enters a beneficiary who lives and builds in another DS office of the district.
+    const nominated = await nominate(existing, nominationId, dsBuilt.dsOfficeId!, officer, {
+      values: values("නාමයෝජිත නව", { applicationNumber: "nom/78" }),
+    });
+    if (!nominated.ok) throw new Error(String(nominated.error));
+    const amendmentId = nominated.value.id;
+    expect(await db.amendment.findUniqueOrThrow({ where: { id: amendmentId } })).toMatchObject({
+      dsOfficeId: dsBuilt.dsOfficeId,
+      submittedById: officer.userId,
+      status: "WAITING",
+    });
+    expect(await db.nomination.findUniqueOrThrow({ where: { id: nominationId } })).toMatchObject({
+      status: "NOMINATED",
+      amendmentId,
+    });
+    expect((await getAmendment(db, ministry, amendmentId, "si"))?.nominatedByName).toBeTruthy();
+    // Still held, now by the amendment.
+    expect(await start(dsA, await load(existing.id))).toMatchObject({ ok: false, error: "amendmentWaiting" });
+
+    // The Ministry approves it with the return: the new case is the nominated DS's, back with the District.
+    const before = (await officeMoney(db, dsA))?.received ?? 0;
+    const result = await approve(amendmentId, ministry, { ...RETURN, returnedOn: today() });
+    if (!result.ok) throw new Error(String(result.error));
+    const made = await load(result.caseId);
+    expect(made).toMatchObject({
+      dsOfficeId: dsBuilt.dsOfficeId,
+      buildDsOfficeId: dsBuilt.dsOfficeId,
+      status: "ALLOCATED_TO_DISTRICT",
+      createdById: officer.userId,
+    });
+    expect((await officeMoney(db, dsA))?.received).toBe(before - 2_000_000);
+    expect(await noticesOf(dsBuilt, made.id)).toContain("AMENDMENT_APPROVED");
+    expect(await noticesOf(dsA, existing.id)).toContain("AMENDMENT_APPROVED");
+    expect(await noticesOf(officer, made.id)).toContain("AMENDMENT_APPROVED");
+    expect(await getCase(db, dsBuilt, made.id, "si")).toMatchObject({ actsOn: { edit: true } });
+
+    // The District releases it to the new DS office, which pays installment 1.
+    await releaseToDsForTests(db, [made.id], { on: dayToDate(daysAgo(1)) });
+    expect(await start(dsBuilt, await load(made.id))).toMatchObject({ ok: true });
+    expect(await pay(dsBuilt, await load(made.id))).toMatchObject({ ok: true });
+
+    // Both histories show the request, the nomination and the approval.
+    const actions = (await caseHistory(db, dsA, existing.id, "si"))?.map((e) => e.action);
+    expect(actions).toEqual(expect.arrayContaining(["nomination_asked", "amendment_nominated", "case_replaced"]));
+    expect((await caseHistory(db, dsBuilt, made.id, "si"))?.map((e) => e.action)).toContain("amendment_approved");
+  });
+
+  it("is sent back with a reason, and the case is no longer held (AC-79)", async () => {
+    const existing = await received("ආපසු යවන ඉල්ලීම");
+    const officer = await districtOfficer();
+    const nominationId = await asked(existing);
+    const request = await db.nomination.findUniqueOrThrow({ where: { id: nominationId } });
+
+    expect(await sendBackNomination(db, officer, { nominationId, version: request.version, reason: "ab" })).toEqual({
+      ok: false,
+      error: "reasonTooShort",
+    });
+    expect(
+      await sendBackNomination(db, officer, {
+        nominationId,
+        version: request.version,
+        reason: "වෙනත් ප්‍රතිලාභියෙකු නැත",
+      }),
+    ).toEqual({ ok: true, id: nominationId });
+    expect(await noticesOf(dsA, existing.id)).toContain("NOMINATION_SENT_BACK");
+    expect((await getCase(db, dsA, existing.id, "si"))?.nomination).toMatchObject({
+      status: "SENT_BACK",
+      sentBackReason: "වෙනත් ප්‍රතිලාභියෙකු නැත",
+    });
+    // Sent back once: it can't be nominated or sent back again.
+    expect(await nominate(existing, nominationId, dsBuilt.dsOfficeId!, officer)).toEqual({
+      ok: false,
+      error: "nominationDecided",
+    });
+    // The case can have an installment again, and its history says so.
+    expect(await start(dsA, await load(existing.id))).toMatchObject({ ok: true });
+    expect((await caseHistory(db, dsA, existing.id, "si"))?.map((e) => e.action)).toContain("nomination_sent_back");
+    // Once the DS submits an amendment, the sent-back request is no longer shown.
+    const other = await received("ආපසු පසු සංශෝධනය");
+    const second = await asked(other);
+    const secondVersion = (await db.nomination.findUniqueOrThrow({ where: { id: second } })).version;
+    await sendBackNomination(db, officer, { nominationId: second, version: secondVersion, reason: REASON });
+    expect(await amend(await load(other.id))).toMatchObject({ ok: true });
+    expect((await getCase(db, dsA, other.id, "si"))?.nomination).toBeNull();
+  });
+
+  it("refuses everyone else, another district's places, and an Application Number already used (AC-79)", async () => {
+    const existing = await allocate((await newCase("නාමයෝජන සීමා")).id);
+    const officer = await districtOfficer();
+    const farOfficer = await account(
+      actor("amend-test-far-district", "DISTRICT_OFFICER", "DISTRICT_CRPO", { districtId: far.districtId }),
+      "සං. දුර දිස්ත්‍රික්",
+    );
+    // Only a CRPO of the DS of residence asks.
+    for (const who of [accountant, ministry, officer]) {
+      expect(
+        await askNomination(db, who, {
+          id: randomUUID(),
+          caseId: existing.id,
+          caseVersion: existing.version,
+          reason: REASON,
+        }),
+      ).toEqual({ ok: false, error: "roleNotAllowed" });
+    }
+    for (const who of [dsBuilt, dsFar]) {
+      expect(
+        await askNomination(db, who, {
+          id: randomUUID(),
+          caseId: existing.id,
+          caseVersion: existing.version,
+          reason: REASON,
+        }),
+      ).toEqual({ ok: false, error: "notFound" });
+    }
+    const nominationId = await asked(existing);
+    const version = (await db.nomination.findUniqueOrThrow({ where: { id: nominationId } })).version;
+
+    // Only a District officer of the district where it is built nominates or sends back.
+    for (const who of [dsA, accountant, secretary, ministry]) {
+      expect(await nominate(existing, nominationId, dsBuilt.dsOfficeId!, who)).toMatchObject({
+        ok: false,
+        error: "roleNotAllowed",
+      });
+      expect(await sendBackNomination(db, who, { nominationId, version, reason: REASON })).toEqual({
+        ok: false,
+        error: "roleNotAllowed",
+      });
+    }
+    expect(await nominate(existing, nominationId, dsBuilt.dsOfficeId!, farOfficer)).toEqual({
+      ok: false,
+      error: "notFound",
+    });
+    expect(await sendBackNomination(db, farOfficer, { nominationId, version, reason: REASON })).toEqual({
+      ok: false,
+      error: "notFound",
+    });
+    expect(await listNominations(db, farOfficer, {}, "si")).toMatchObject({ total: 0 });
+    expect(await getNomination(db, farOfficer, nominationId, "si")).toBeNull();
+    expect(await getNomination(db, accountant, nominationId, "si")).toMatchObject({ id: nominationId });
+
+    // AMD-13: the DS of residence is another DS office of the same district, never another district's or the case's own.
+    expect(await nominate(existing, nominationId, far.id, officer)).toEqual({
+      ok: false,
+      error: "residenceNotAllowed",
+    });
+    expect(await nominate(existing, nominationId, dsA.dsOfficeId!, officer)).toEqual({
+      ok: false,
+      error: "residenceNotAllowed",
+    });
+    // AMD-8: after the letter, the land is in its district.
+    expect(await nominate(existing, nominationId, dsBuilt.dsOfficeId!, officer, { buildDsOfficeId: far.id })).toEqual({
+      ok: false,
+      error: "buildOfficeNotAllowed",
+    });
+    // CASE-12: the Application Number must be free in the nominated DS office.
+    const taken = await saveCase(db, dsBuilt, {
+      id: randomUUID(),
+      version: null,
+      dsOfficeId: null,
+      buildDsOfficeId: null,
+      values: values("අංකය ගත්", { applicationNumber: "nom/79" }),
+      documentIds: [],
+    });
+    expect(taken).toMatchObject({ ok: true });
+    expect(
+      await nominate(existing, nominationId, dsBuilt.dsOfficeId!, officer, {
+        values: values("අංකය එකම", { applicationNumber: "NOM/79" }),
+      }),
+    ).toEqual({ ok: false, error: "applicationNumberTaken" });
+    expect((await db.nomination.findUniqueOrThrow({ where: { id: nominationId } })).status).toBe("WAITING");
+
+    // A rejection tells the District officer who nominated, and the DS may ask again.
+    const nominated = await nominate(existing, nominationId, dsBuilt.dsOfficeId!, officer);
+    if (!nominated.ok) throw new Error(String(nominated.error));
+    expect(
+      await rejectAmendment(db, ministry, { amendmentId: nominated.value.id, version: 1, reason: REASON }),
+    ).toMatchObject({ ok: true });
+    expect(await noticesOf(officer, existing.id)).toContain("AMENDMENT_REJECTED");
+    expect(await asked(await load(existing.id))).toBeTruthy();
+  });
+
+  it("leaves a CRPO's amendment of the same DS as before, with no District step (AC-79)", async () => {
+    const existing = await received("එම කොට්ඨාසය");
+    const id = await submitted(existing);
+    expect(await db.nomination.count({ where: { caseId: existing.id } })).toBe(0);
+    const result = await approve(id);
+    if (!result.ok) throw new Error(String(result.error));
+    expect(await load(result.caseId)).toMatchObject({ dsOfficeId: dsA.dsOfficeId, status: "ALLOCATION_RECEIVED" });
   });
 });
 
@@ -662,18 +1048,19 @@ describe("an approval refused (AMD-4, AMD-5, AC-46, AC-48, AC-66)", () => {
     expect((await load(existing.id)).status).toBe("AWAITING_ALLOCATION");
   });
 
-  it("names the rule that failed when the letter moved the money away from the new beneficiary's land", async () => {
-    const existing = await newCase("දුර ඉඩම");
-    const id = await submitted(existing, { buildDsOfficeId: far.id });
-    await allocate(existing.id);
-    expect(await approve(id)).toEqual({ ok: false, error: "buildOfficeNotAllowed" });
+  it("asks again when the District's release moved the money after the page was shown (AMD-11)", async () => {
+    const existing = await allocate((await newCase("අසල ඉඩම")).id);
+    const id = await submitted(existing, { buildDsOfficeId: dsBuilt.dsOfficeId });
+    await releaseToDsForTests(db, [existing.id], { on: dayToDate(daysAgo(2)) });
+    // The page asked for no return: it must be shown again, now asking for one.
+    expect(await approve(id)).toEqual({ ok: false, error: "conflict" });
     const unchanged = await load(existing.id);
-    expect(unchanged.status).toBe("ALLOCATED_TO_DISTRICT");
+    expect(unchanged.status).toBe("ALLOCATION_RECEIVED");
     expect(await db.case.count({ where: { replacesCaseId: existing.id } })).toBe(0);
-    // The Ministry rejects it with that reason instead.
-    expect(
-      await rejectAmendment(db, ministry, { amendmentId: id, version: 1, reason: "ඉඩම වෙනත් දිස්ත්‍රික්කයක" }),
-    ).toEqual({ ok: true, caseId: existing.id });
+    // The Ministry can still reject it.
+    expect(await rejectAmendment(db, ministry, { amendmentId: id, version: 1, reason: "ඉඩම වෙනත් කොට්ඨාසයක" })).toEqual(
+      { ok: true, caseId: existing.id },
+    );
   });
 
   it("is refused once an installment is paid, or decided, or changed meanwhile", async () => {
@@ -742,7 +1129,7 @@ describe("a replaced case (STS-2, CASE-9, AC-71)", () => {
     const existing = await received("අවසන් ප්‍රතිස්ථාපිත");
     const id = await submitted(existing);
     const result = await approve(id);
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) throw new Error(String(result.error));
     const replaced = await db.case.findUniqueOrThrow({ where: { id: existing.id }, include: { centres: true } });
     expect(replaced.status).toBe("REPLACED");
 

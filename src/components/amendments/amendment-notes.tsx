@@ -43,7 +43,7 @@ export async function AmendmentNotes({
       <section
         aria-labelledby="amendment-title"
         data-testid="amendment-waiting"
-        className="flex max-w-4xl items-start gap-3 rounded-xl border border-[#E8B45A] bg-[#FFF4E0] px-5 py-4 text-[#6B3A04]"
+        className="flex max-w-4xl items-start gap-3 rounded-xl border border-warning-border bg-warning px-5 py-4 text-warning-foreground"
       >
         <FilePen aria-hidden="true" className="mt-0.5 size-5.5 shrink-0" />
         <div className="flex flex-col gap-1">
@@ -72,7 +72,7 @@ export async function AmendmentNotes({
         </h2>
         <p>{t("amend.rejectedText", person)}</p>
         <p className="whitespace-pre-line">{t("amend.rejectionReason", { reason: amendment.rejectionReason ?? "" })}</p>
-        {ownOffice && <p className="text-[15px] text-[#3F4843]">{t("amend.again")}</p>}
+        {ownOffice && <p className="text-[15px] text-soft-foreground">{t("amend.again")}</p>}
         {open}
       </div>
     </section>

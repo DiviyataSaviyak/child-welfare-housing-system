@@ -14,7 +14,15 @@ import { openNotification } from "../notifications/commands";
 import { listNotifications } from "../notifications/queries";
 import { recordStageUpdate } from "../stages/commands";
 import { correctDsRelease, correctRelease, type DsReleaseInput, recordDsRelease, recordLetter } from "./commands";
-import { awaitingDsRelease, casesForDsRelease, dsOfficesWaiting, getDsRelease, recentDsReleases } from "./queries";
+import {
+  awaitingDsRelease,
+  casesForDsRelease,
+  dsOfficesWaiting,
+  dsReleaseWithCases,
+  getDsRelease,
+  letterWithCases,
+  recentDsReleases,
+} from "./queries";
 
 const db = createTestClient();
 
@@ -86,31 +94,53 @@ let elsewhere: { id: number; districtId: number };
 
 const load = (id: string) => db.case.findUniqueOrThrow({ where: { id } });
 
-/** A case of dsA's office (or built in `buildDsOfficeId`), saved, then allocated on a letter `letterDaysAgo` ago. */
-async function allocated(options: { buildDsOfficeId?: number; letterDaysAgo?: number } = {}) {
-  const saved = await saveCase(db, dsA, {
-    id: randomUUID(),
-    version: null,
-    dsOfficeId: null,
-    buildDsOfficeId: options.buildDsOfficeId ?? null,
-    values: values(),
-    documentIds: [],
-  });
-  if (!saved.ok) throw new Error(saved.error);
+/**
+ * `count` cases of dsA's office (or built in `buildDsOfficeId`), saved, then allocated together on one letter
+ * `letterDaysAgo` ago, numbered `letterNumber`.
+ */
+async function allocatedTogether(
+  count: number,
+  options: { buildDsOfficeId?: number; letterDaysAgo?: number; letterNumber?: string } = {},
+) {
   const letterDay = daysAgo(options.letterDaysAgo ?? 0);
-  // Entered before the letter's day, so the letter can be dated then (REL-2).
-  await db.case.update({ where: { id: saved.value.id }, data: { createdAt: dayToDate(addDays(letterDay, -1)) } });
-  const ready = await load(saved.value.id);
-  const office = await db.dsOffice.findUniqueOrThrow({ where: { id: ready.buildDsOfficeId } });
+  const ready = [];
+  for (let i = 0; i < count; i++) {
+    const saved = await saveCase(db, dsA, {
+      id: randomUUID(),
+      version: null,
+      dsOfficeId: null,
+      buildDsOfficeId: options.buildDsOfficeId ?? null,
+      values: values(),
+      documentIds: [],
+    });
+    if (!saved.ok) throw new Error(saved.error);
+    // Entered before the letter's day, so the letter can be dated then (REL-2).
+    await db.case.update({ where: { id: saved.value.id }, data: { createdAt: dayToDate(addDays(letterDay, -1)) } });
+    ready.push(await load(saved.value.id));
+  }
+  const office = await db.dsOffice.findUniqueOrThrow({ where: { id: ready[0].buildDsOfficeId } });
   const letter = await recordLetter(db, ministry, {
     districtId: office.districtId,
-    cases: [{ id: ready.id, version: ready.version }],
-    form: { letterNumber: "MWCA/DS/7", letterDate: letterDay, validUntil: "2099-12-31", note: "" },
+    cases: ready.map((c) => ({ id: c.id, version: c.version })),
+    form: {
+      letterNumber: options.letterNumber ?? "MWCA/DS/7",
+      letterDate: letterDay,
+      validUntil: "2099-12-31",
+      note: "",
+    },
     scanId: null,
   });
   if (!letter.ok) throw new Error(String(letter.error ?? JSON.stringify(letter.errors)));
-  return load(ready.id);
+  return Promise.all(ready.map((c) => load(c.id)));
 }
+
+/** A case of dsA's office (or built in `buildDsOfficeId`), saved, then allocated on a letter of its own. */
+async function allocated(options: { buildDsOfficeId?: number; letterDaysAgo?: number } = {}) {
+  return (await allocatedTogether(1, options))[0];
+}
+
+/** The letter of a case on one. */
+const letterOf = async (caseId: string) => (await db.release.findUniqueOrThrow({ where: { caseId } })).letterId;
 
 const form = (overrides: Partial<Record<DsReleaseField, string>> = {}): Record<DsReleaseField, string> => ({
   referenceNumber: "DS/2026/01",
@@ -119,13 +149,16 @@ const form = (overrides: Partial<Record<DsReleaseField, string>> = {}): Record<D
   ...overrides,
 });
 
-function release(
+/** The District's release of `cases`, for the letter of the first one unless `letterId` says otherwise. */
+async function release(
   by: Actor,
   cases: { id: string; version: number }[],
   overrides: Partial<Omit<DsReleaseInput, "form">> & { form?: Partial<Record<DsReleaseField, string>> } = {},
 ) {
+  const first = cases[0] && (await db.release.findUnique({ where: { caseId: cases[0].id } }));
   return recordDsRelease(db, by, {
     dsOfficeId: dsA.dsOfficeId!,
+    letterId: first?.letterId ?? "no-letter",
     cases: cases.map((c) => ({ id: c.id, version: c.version })),
     scanId: null,
     ...overrides,
@@ -175,18 +208,16 @@ afterAll(async () => {
 
 describe("the District's release to a DS office (REL-5 to REL-7, AC-53)", () => {
   it("releases the ticked cases with their installments, tells their DS, and leaves the others waiting", async () => {
-    const first = await allocated({ letterDaysAgo: 3 });
-    const second = await allocated({ letterDaysAgo: 2 });
-    const left = await allocated();
+    const [first, second, left] = await allocatedTogether(3, { letterDaysAgo: 3 });
+    const letterId = await letterOf(first.id);
     const waitingBefore = (await awaitingDsRelease(db, crpo)).count;
 
-    // REL-5: the office waits with its three cases, the oldest letter shown; REL-6: its cases, oldest letter first.
-    const office = (await dsOfficesWaiting(db, crpo, "si")).find((o) => o.id === dsA.dsOfficeId);
-    expect(office).toMatchObject({ oldestLetter: daysAgo(3) });
-    expect(office?.count).toBeGreaterThanOrEqual(3);
-    const form = await casesForDsRelease(db, crpo, dsA.dsOfficeId!, "si");
-    const order = form?.cases.map((c) => c.id).filter((id) => [first.id, second.id, left.id].includes(id));
-    expect(order).toEqual([first.id, second.id, left.id]);
+    // REL-5: the office and the letter wait with its three cases; REL-6: the letter's cases, longest waiting first.
+    const office = (await dsOfficesWaiting(db, crpo, "si")).find((o) => o.letterId === letterId);
+    expect(office).toMatchObject({ id: dsA.dsOfficeId, letterNumber: "MWCA/DS/7", letterDate: daysAgo(3), count: 3 });
+    const form = await casesForDsRelease(db, crpo, dsA.dsOfficeId!, letterId, "si");
+    expect(form?.letter).toEqual({ id: letterId, letterNumber: "MWCA/DS/7", letterDate: daysAgo(3) });
+    expect(form?.cases.map((c) => c.id).sort()).toEqual([first.id, second.id, left.id].sort());
     expect(form?.cases.find((c) => c.id === first.id)).toMatchObject({
       letterNumber: "MWCA/DS/7",
       letterDate: daysAgo(3),
@@ -201,6 +232,7 @@ describe("the District's release to a DS office (REL-5 to REL-7, AC-53)", () => 
     expect(await db.dsRelease.findUniqueOrThrow({ where: { id: dsReleaseId } })).toMatchObject({
       districtId: districtA,
       dsOfficeId: dsA.dsOfficeId,
+      letterId,
       referenceNumber: "DS/2026/02",
       releasedOn: dayToDate(daysAgo(1)),
       note: "පළමු මුදා හැරීම",
@@ -242,7 +274,7 @@ describe("the District's release to a DS office (REL-5 to REL-7, AC-53)", () => 
       releasedOn: daysAgo(1),
       note: "පළමු මුදා හැරීම",
       cases: 2,
-      latestLetter: daysAgo(2),
+      latestLetter: daysAgo(3),
       scanId: null,
     });
     expect(details?.installments).toHaveLength(4);
@@ -257,12 +289,16 @@ describe("the District's release to a DS office (REL-5 to REL-7, AC-53)", () => 
       district: details?.buildDistrictName,
     });
 
-    expect(await getDsRelease(db, crpo, dsReleaseId, "si")).toMatchObject({ count: 2, referenceNumber: "DS/2026/02" });
+    expect(await getDsRelease(db, crpo, dsReleaseId, "si")).toMatchObject({
+      count: 2,
+      referenceNumber: "DS/2026/02",
+      letterNumber: "MWCA/DS/7",
+    });
     expect((await recentDsReleases(db, crpo, "si"))[0]?.id).toBe(dsReleaseId);
     // Nobody else has the District's screen (REL-9).
     for (const other of [dsA, ministry, secretary, otherCrpo]) {
       expect(await getDsRelease(db, other, dsReleaseId, "si")).toBeNull();
-      expect(await casesForDsRelease(db, other, dsA.dsOfficeId!, "si")).toBeNull();
+      expect(await casesForDsRelease(db, other, dsA.dsOfficeId!, letterId, "si")).toBeNull();
       expect(await dsOfficesWaiting(db, other, "si")).not.toContainEqual(
         expect.objectContaining({ id: dsA.dsOfficeId }),
       );
@@ -330,9 +366,12 @@ describe("the District's release to a DS office (REL-5 to REL-7, AC-53)", () => 
     const there = { dsOfficeId: elsewhere.id };
     expect((await getCase(db, crpo, built.id, "si"))?.actsOn.release).toBe(false);
     expect(await release(crpo, [built], there)).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
-    expect((await casesForDsRelease(db, otherCrpo, elsewhere.id, "si"))?.cases.map((c) => c.id)).toContain(built.id);
+    const builtLetter = await letterOf(built.id);
+    expect((await casesForDsRelease(db, otherCrpo, elsewhere.id, builtLetter, "si"))?.cases.map((c) => c.id)).toContain(
+      built.id,
+    );
     expect(
-      (await casesForDsRelease(db, otherCrpo, elsewhere.id, "si"))?.cases.find((c) => c.id === built.id),
+      (await casesForDsRelease(db, otherCrpo, elsewhere.id, builtLetter, "si"))?.cases.find((c) => c.id === built.id),
     ).toMatchObject({
       residenceName: expect.any(String),
     });
@@ -379,8 +418,7 @@ describe("the District's release to a DS office (REL-5 to REL-7, AC-53)", () => 
 
 describe("correcting a District release (REL-8, AC-57)", () => {
   it("changes it for every case on it, logging the old and new value on each", async () => {
-    const first = await allocated({ letterDaysAgo: 10 });
-    const second = await allocated({ letterDaysAgo: 9 });
+    const [first, second] = await allocatedTogether(2, { letterDaysAgo: 10 });
     const result = await release(crpo, [first, second], { form: { releasedOn: daysAgo(8) } });
     if (!result.ok) throw new Error(JSON.stringify(result));
     const version = (await load(first.id)).version;
@@ -391,7 +429,7 @@ describe("correcting a District release (REL-8, AC-57)", () => {
     expect(await correct(ministry, {})).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
     expect(await correct(secretary, {})).toEqual({ ok: false, error: "roleNotAllowed", errors: {} });
     expect(await correct(otherCrpo, {})).toEqual({ ok: false, error: "notFound", errors: {} });
-    expect(await correct(crpo, { releasedOn: daysAgo(10) })).toEqual({
+    expect(await correct(crpo, { releasedOn: daysAgo(11) })).toEqual({
       ok: false,
       error: null,
       errors: { releasedOn: "releaseBeforeLetter" },
@@ -431,8 +469,7 @@ describe("correcting a District release (REL-8, AC-57)", () => {
   });
 
   it("can't move past an installment or a stage already recorded on one of its cases", async () => {
-    const paid = await allocated({ letterDaysAgo: 20 });
-    const visited = await allocated({ letterDaysAgo: 20 });
+    const [paid, visited] = await allocatedTogether(2, { letterDaysAgo: 20 });
     const result = await release(crpo, [paid, visited], { form: { releasedOn: daysAgo(15) } });
     if (!result.ok) throw new Error(JSON.stringify(result));
     await db.installment.updateMany({
@@ -485,5 +522,90 @@ describe("the District officer's notifications (NTF-1)", () => {
     expect(await openNotification(db, secretary, notices[0]!.id)).toBeNull();
     // The DS officer's own notices name no letter.
     expect((await listNotifications(db, dsA)).find((n) => n.caseId === first.id)?.letter).toBeNull();
+  });
+});
+
+describe("a letter's and a release's beneficiaries (REL-10, REL-11, AC-80)", () => {
+  it("lists every beneficiary of a letter for the Ministry, and of a release for its district's CRPO only", async () => {
+    const [first, second] = await allocatedTogether(2);
+    const done = await release(crpo, [first, second], { form: { referenceNumber: "DS/2026/SENT" } });
+    if (!done.ok) throw new Error(String(done.error));
+    const { letterId, dsReleaseId } = await db.release.findUniqueOrThrow({ where: { caseId: first.id } });
+
+    const letter = await letterWithCases(db, ministry, letterId, "si");
+    expect(letter).toMatchObject({ letterNumber: "MWCA/DS/7" });
+    expect(letter?.cases.map((c) => c.id).sort()).toEqual([first.id, second.id].sort());
+    for (const other of [crpo, dsA, secretary]) expect(await letterWithCases(db, other, letterId, "si")).toBeNull();
+
+    const sent = await dsReleaseWithCases(db, crpo, dsReleaseId!, "si");
+    expect(sent).toMatchObject({ referenceNumber: "DS/2026/SENT", letterNumber: "MWCA/DS/7", letterDate: today() });
+    expect(sent?.cases.map((c) => c.id).sort()).toEqual([first.id, second.id].sort());
+    for (const other of [otherCrpo, secretary, ministry, dsA]) {
+      expect(await dsReleaseWithCases(db, other, dsReleaseId!, "si")).toBeNull();
+    }
+    expect(await letterWithCases(db, ministry, "no-such-letter", "si")).toBeNull();
+  });
+});
+
+describe("one letter, one record, down to the DS office (REL-5, REL-6, REL-12, AC-81)", () => {
+  it("keeps each letter's cases apart: on the waiting list, the release form, the release and its page", async () => {
+    const third = await allocatedTogether(5, { letterDaysAgo: 6, letterNumber: "MWCA/W/3" });
+    const fourth = await allocatedTogether(2, { letterDaysAgo: 5, letterNumber: "MWCA/W/4" });
+    const fifth = await allocatedTogether(3, { letterDaysAgo: 4, letterNumber: "MWCA/W/5" });
+    const [letter3, letter4, letter5] = await Promise.all([third, fourth, fifth].map((cases) => letterOf(cases[0].id)));
+
+    // Each letter is its own record with only its own cases (REL-3, REL-10).
+    for (const [letterId, cases] of [
+      [letter3, third],
+      [letter4, fourth],
+      [letter5, fifth],
+    ] as const) {
+      const page = await letterWithCases(db, ministry, letterId, "si");
+      expect(page?.cases.map((c) => c.id).sort()).toEqual(cases.map((c) => c.id).sort());
+    }
+
+    // REL-5: one row for each letter of the office, with its own count.
+    const rows = (await dsOfficesWaiting(db, crpo, "si")).filter((o) =>
+      [letter3, letter4, letter5].includes(o.letterId),
+    );
+    expect(rows.map((o) => [o.id, o.letterNumber, o.count])).toEqual([
+      [dsA.dsOfficeId, "MWCA/W/3", 5],
+      [dsA.dsOfficeId, "MWCA/W/5", 3],
+      [dsA.dsOfficeId, "MWCA/W/4", 2],
+    ]);
+
+    // REL-6: the form for letter 3 lists only its five; a letter of another district is not found.
+    const form = await casesForDsRelease(db, crpo, dsA.dsOfficeId!, letter3, "si");
+    expect(form?.cases.map((c) => c.id).sort()).toEqual(third.map((c) => c.id).sort());
+    expect(await casesForDsRelease(db, crpo, dsA.dsOfficeId!, "no-such-letter", "si")).toBeNull();
+    const there = await allocated({ buildDsOfficeId: elsewhere.id });
+    expect(await casesForDsRelease(db, crpo, elsewhere.id, await letterOf(there.id), "si")).toBeNull();
+
+    // REL-12: a case of letter 4 refuses the whole release of letter 3, and nothing is released.
+    expect(await release(crpo, [...third, fourth[0]])).toEqual({ ok: false, error: "notFound", errors: {} });
+    expect(await release(crpo, third, { letterId: letter4 })).toEqual({ ok: false, error: "notFound", errors: {} });
+    for (const c of [...third, fourth[0]]) expect((await load(c.id)).status).toBe("ALLOCATED_TO_DISTRICT");
+
+    // Released separately, each release holds only its letter's cases and shows that letter.
+    const released3 = await release(crpo, third, { form: { referenceNumber: "DS/W/3" } });
+    const released4 = await release(crpo, fourth, { form: { referenceNumber: "DS/W/4" } });
+    if (!released3.ok || !released4.ok) throw new Error("not released");
+    expect(await db.dsRelease.findUniqueOrThrow({ where: { id: released3.dsReleaseId } })).toMatchObject({
+      letterId: letter3,
+    });
+    const page3 = await dsReleaseWithCases(db, crpo, released3.dsReleaseId, "si");
+    expect(page3).toMatchObject({ letterNumber: "MWCA/W/3", letterDate: daysAgo(6) });
+    expect(page3?.cases.map((c) => c.id).sort()).toEqual(third.map((c) => c.id).sort());
+    const page4 = await dsReleaseWithCases(db, crpo, released4.dsReleaseId, "si");
+    expect(page4).toMatchObject({ letterNumber: "MWCA/W/4" });
+    expect(page4?.cases.map((c) => c.id).sort()).toEqual(fourth.map((c) => c.id).sort());
+    const recent = await recentDsReleases(db, crpo, "si");
+    expect(recent.find((r) => r.id === released4.dsReleaseId)).toMatchObject({ letterNumber: "MWCA/W/4", count: 2 });
+
+    // The third letter still waits on its own.
+    const left = (await dsOfficesWaiting(db, crpo, "si")).filter((o) =>
+      [letter3, letter4, letter5].includes(o.letterId),
+    );
+    expect(left.map((o) => [o.letterNumber, o.count])).toEqual([["MWCA/W/5", 3]]);
   });
 });

@@ -3,14 +3,15 @@ import { getTranslations } from "next-intl/server";
 import type { AmendmentStatus } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
 import type { AmendmentView as View } from "@/server/amendments/queries";
+import { ReturnNote } from "@/components/cases/money-section";
 import { type Audience, type BeneficiaryFields, caseFieldRows, DocumentLinks } from "../cases/case-view";
 import { caseName } from "../cases/page-header";
 
 /** The amendment's own status colours, as the case statuses' (UI-6): waiting, approved, rejected. */
 const STYLE: Record<AmendmentStatus, string> = {
-  WAITING: "bg-[#FBEBD3] text-[#8A4A06]",
+  WAITING: "bg-amber text-amber-foreground",
   APPROVED: "bg-primary text-primary-foreground",
-  REJECTED: "bg-[#ECECEC] text-[#4A4A4A]",
+  REJECTED: "bg-grey text-grey-foreground",
 };
 
 export async function AmendmentStatusChip({ status }: { status: AmendmentStatus }) {
@@ -50,7 +51,12 @@ export async function AmendmentView({
         <h2 id="amendment-summary" className="sr-only">
           {t("amend.view.title")}
         </h2>
-        <p>{t("amend.view.submittedBy", { date: formatDate(view.submittedAt), name: view.submittedByName })}</p>
+        <p>
+          {view.nominatedByName
+            ? t("amend.view.nominatedBy", { date: formatDate(view.submittedAt), name: view.nominatedByName })
+            : t("amend.view.submittedBy", { date: formatDate(view.submittedAt), name: view.submittedByName })}
+        </p>
+
         <p className="whitespace-pre-line" data-testid="amendment-reason">
           {t("amend.reasonLine", { reason: view.reason })}
         </p>
@@ -75,6 +81,7 @@ export async function AmendmentView({
         {actions && <div className="mt-2 flex flex-wrap items-center gap-3">{actions}</div>}
       </section>
       {above}
+      {view.existing.allocationReturn && <ReturnNote returned={view.existing.allocationReturn} />}
       <div className="grid max-w-[1360px] items-start gap-6 lg:grid-cols-2">
         <Beneficiary
           id="existing"

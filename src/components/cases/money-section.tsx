@@ -1,22 +1,23 @@
 import { FileText } from "lucide-react";
+import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { InstallmentStatus, Kind } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/dates";
 import { formatRupees, paidOut } from "@/lib/money";
 import { isHouseKind } from "@/lib/validation/case";
-import type { InstallmentDetails, ReleaseDetails } from "@/server/cases/queries";
+import type { AllocationReturnDetails, InstallmentDetails, ReleaseDetails } from "@/server/cases/queries";
 import { isUpcoming, landBalance, schedule, type Upcoming } from "@/server/installments/rules";
 import type { Audience } from "./case-view";
 
 /** Installment status colours from the prototype; each pair meets WCAG AA contrast (UI-6). */
 const DOT: Record<InstallmentStatus, string> = {
-  NOT_STARTED: "border-[#B9B4A8] bg-card text-[#4F5752]",
-  PROCESSING: "border-[#C07A12] bg-[#FFF4E0] text-[#8A4A06]",
+  NOT_STARTED: "border-[#B9B4A8] dark:border-[#4a544e] bg-card text-muted-foreground",
+  PROCESSING: "border-[#C07A12] dark:border-[#d39a3c] bg-warning text-amber-foreground",
   RELEASED: "border-primary bg-primary text-primary-foreground",
 };
 const STATUS_TEXT: Record<InstallmentStatus, string> = {
-  NOT_STARTED: "text-[#4F5752]",
-  PROCESSING: "text-[#8A4A06]",
+  NOT_STARTED: "text-muted-foreground",
+  PROCESSING: "text-amber-foreground",
   RELEASED: "text-primary",
 };
 
@@ -100,7 +101,7 @@ export async function MoneySection({
         {t("money.title")}
       </h2>
       {waiting ? (
-        <p className="rounded-lg bg-background px-4 py-3 text-[#3F4843]">
+        <p className="rounded-lg bg-background px-4 py-3 text-soft-foreground">
           {t(audience === "ds" ? "money.allocatedDs" : "money.allocated", {
             amount: formatRupees(release.amount, locale),
             district: letter.districtName,
@@ -112,16 +113,26 @@ export async function MoneySection({
             <div key={tile.label} className="flex flex-col gap-0.5 rounded-lg bg-background px-4 py-3">
               <dt className="text-[15px] text-muted-foreground">{tile.label}</dt>
               <dd className="text-[22px] font-bold">{formatRupees(tile.amount, locale)}</dd>
-              <dd className="text-sm text-[#3F4843]">{tile.detail}</dd>
+              <dd className="text-sm text-soft-foreground">{tile.detail}</dd>
             </div>
           ))}
         </dl>
       )}
 
-      <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
+      <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-[15px] text-soft-foreground">
         <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
         <p className="flex-1">
-          <strong className="text-foreground">{t("money.letterName", { number: letter.letterNumber })}</strong>{" "}
+          {audience === "ministry" ? (
+            // REL-10: the Ministry opens the letter's page, with every beneficiary on it.
+            <Link
+              href={`/ministry/allocate?${new URLSearchParams({ open: letter.id })}`}
+              className="font-bold text-primary underline-offset-2 hover:underline"
+            >
+              {t("money.letterName", { number: letter.letterNumber })}
+            </Link>
+          ) : (
+            <strong className="text-foreground">{t("money.letterName", { number: letter.letterNumber })}</strong>
+          )}{" "}
           {audience !== "ds"
             ? t("money.letterHo", {
                 date: formatDate(letter.letterDate),
@@ -140,7 +151,7 @@ export async function MoneySection({
       </div>
 
       {dsRelease && (
-        <div className="flex flex-col gap-1.5 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
+        <div className="flex flex-col gap-1.5 rounded-lg border px-3.5 py-2.5 text-[15px] text-soft-foreground">
           <div className="flex items-center gap-3">
             <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
             <p className="flex-1">
@@ -232,13 +243,46 @@ export async function MoneySection({
         <p className="rounded-lg bg-background px-4 py-3 font-semibold text-primary">{t("money.allStarted")}</p>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-[#3F4843]">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-soft-foreground">
         <div className="flex flex-col gap-0.5">
           {letter.note && <p className="whitespace-pre-line">{t("money.note", { note: letter.note })}</p>}
           <p>{t("money.recordedBy", { name: release.byName, date: formatDate(release.at) })}</p>
         </div>
         {correction}
       </div>
+    </section>
+  );
+}
+
+/**
+ * AMD-11: the Rs. 2,000,000 that went back when a beneficiary was replaced by one built outside the place
+ * the money had reached: on the replaced case, and on the case that replaced it, which waits for the money
+ * again. In the money column, above the money section when there is one.
+ */
+export async function ReturnNote({ returned }: { returned: AllocationReturnDetails }) {
+  const t = await getTranslations("cases");
+  const date = formatDate(returned.returnedOn);
+  return (
+    <section
+      aria-labelledby="returned-title"
+      data-testid="allocation-returned"
+      className="flex flex-col gap-1.5 rounded-xl border border-caution-border bg-caution px-6 py-4.5 text-[15px] text-caution-foreground"
+    >
+      <h2 id="returned-title" className="text-lg font-bold">
+        {t("returned.title")}
+      </h2>
+      <p>
+        {t("returned.DISTRICT", {
+          date,
+          office: returned.officeName ?? "",
+          district: returned.districtName,
+          reference: returned.referenceNumber,
+        })}
+      </p>
+      <p>{returned.side === "replaced" ? t("returned.replaced") : t("returned.newDISTRICT")}</p>
+
+      {returned.note && <p className="whitespace-pre-line">{t("money.note", { note: returned.note })}</p>}
+      <p>{t("money.recordedBy", { name: returned.byName, date: formatDate(returned.at) })}</p>
     </section>
   );
 }

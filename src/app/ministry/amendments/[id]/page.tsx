@@ -1,12 +1,15 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { AmendmentStatusChip, AmendmentView } from "@/components/amendments/amendment-view";
-import { ApproveAction } from "@/components/amendments/approve-action";
+import { ApproveAction, type ReturnAsk } from "@/components/amendments/approve-action";
 import { caseName, PageHeader } from "@/components/cases/page-header";
 import { FormNotice } from "@/components/forms/form-field";
 import { ReasonAction } from "@/components/progress/reason-action";
 import { DuplicateCases } from "@/components/review/duplicate-cases";
-import { getAmendment } from "@/server/amendments/queries";
+import { colomboDay } from "@/lib/dates";
+import { returnLimits } from "@/lib/validation/progress";
+import { type AmendmentView as View, getAmendment } from "@/server/amendments/queries";
+import { replacementStep } from "@/server/amendments/rules";
 import { duplicatesInFull } from "@/server/cases/duplicates";
 import { requireRole } from "@/server/context";
 import { db } from "@/server/db";
@@ -58,6 +61,7 @@ export default async function MinistryAmendmentPage({
           key={`approve-${view.version}-${existing.version}`}
           hidden={{ ...hidden, caseVersion: String(existing.version) }}
           action={approveAmendmentAction}
+          returnAsk={returnAsk(view, t)}
           texts={{
             button: t("amend.view.approve"),
             title: t("amend.view.approveTitle"),
@@ -110,4 +114,34 @@ export default async function MinistryAmendmentPage({
       />
     </div>
   );
+}
+
+/**
+ * AMD-11: what the approval asks about the money going back to the District, when the new beneficiary is
+ * built in another DS office than the one the existing case's money has reached; null when nothing goes back.
+
+ */
+function returnAsk(view: View, t: Awaited<ReturnType<typeof getTranslations<"cases">>>): ReturnAsk | null {
+  const { existing, proposed } = view;
+  const release = existing.release;
+  if (!proposed || !release) return null;
+  const step = replacementStep(
+    { status: existing.status, buildDsOffice: { id: existing.buildDsOfficeId, districtId: existing.buildDistrictId } },
+    { id: proposed.buildDsOfficeId, districtId: proposed.buildDistrictId },
+  );
+  // Null is refused by the approval (buildOfficeNotAllowed), which then says so.
+  if (step?.returnedTo !== "DISTRICT") return null;
+  return {
+    title: t("amend.view.returnTitle"),
+    text: t("amend.view.approveReturnDistrict", {
+      office: existing.buildOfficeName,
+      district: existing.buildDistrictName,
+    }),
+    limits: returnLimits(colomboDay(new Date()), release.letter.letterDate, release.dsRelease?.releasedOn ?? null),
+    labels: {
+      returnedOn: t("amend.view.returnedOn"),
+      referenceNumber: t("amend.view.returnReference"),
+      note: t("amend.view.returnNote"),
+    },
+  };
 }

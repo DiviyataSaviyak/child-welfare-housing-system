@@ -34,17 +34,21 @@ const releaseForm = (form: FormData) =>
 /**
  * REL-2, REL-3: records a district's allocation letter, which allocates every case ticked on it to the
  * district. The page then shows the letter's notice by its id, never by names (SEC-8), and stays on the
- * district.
+ * district and the DS office chosen (REL-1).
  */
 export async function recordLetterAction(_previous: LetterState, form: FormData): Promise<LetterState> {
   const actor = await requireRole("MINISTRY_OFFICER");
   const districtId = positive(read(form, "districtId"));
   const cases = tickedCases(form.getAll("case"), MAX_LETTER_CASES);
-  if (!districtId || !cases) return { error: "notFound", errors: {} };
+  // REL-1: the DS office chosen on the screen, if any.
+  const office = read(form, "dsOfficeId");
+  const dsOfficeId = office === "" ? null : positive(office);
+  if (!districtId || !cases || dsOfficeId === undefined) return { error: "notFound", errors: {} };
 
   const scanId = read(form, "scanId");
   const result = await recordLetter(db, actor, {
     districtId,
+    dsOfficeId,
     cases,
     form: releaseForm(form),
     scanId: scanId.length > 0 && scanId.length <= 64 ? scanId : null,
@@ -53,7 +57,12 @@ export async function recordLetterAction(_previous: LetterState, form: FormData)
   // The menu's waiting counts live in the layout (NTF-1).
   revalidatePath("/ministry", "layout");
   redirect(
-    `/ministry/allocate?${new URLSearchParams({ notice: "letterRecorded", letter: result.letterId, districtId: String(districtId) })}`,
+    `/ministry/allocate?${new URLSearchParams({
+      notice: "letterRecorded",
+      letter: result.letterId,
+      districtId: String(districtId),
+      ...(dsOfficeId === null ? {} : { dsOfficeId: String(dsOfficeId) }),
+    })}`,
   );
 }
 

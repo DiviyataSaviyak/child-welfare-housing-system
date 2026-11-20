@@ -22,12 +22,12 @@ function Submit() {
       type="submit"
       disabled={pending}
       aria-busy={pending}
-      className="flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-semibold whitespace-nowrap ring-1 ring-white/30 transition-colors ring-inset hover:bg-white hover:text-header disabled:opacity-70"
+      className="flex h-[44px] shrink-0 items-center gap-2 rounded-[14px] bg-white/90 px-3.5 text-[13px] font-semibold whitespace-nowrap text-[#1f2e3a] shadow-[0_2px_8px_rgb(20_60_40/0.10)] ring-1 ring-black/[0.06] transition-colors ring-inset hover:bg-white disabled:opacity-70 dark:bg-white/[0.07] dark:text-foreground dark:shadow-none dark:ring-white/10 dark:hover:bg-white/[0.12]"
     >
       {pending ? (
-        <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+        <LoaderCircle aria-hidden="true" className="size-5 animate-spin text-[#0a6b44] dark:text-[#6fd0a4]" />
       ) : (
-        <LogOut aria-hidden="true" className="size-4" />
+        <LogOut aria-hidden="true" className="size-5 text-[#0a6b44] dark:text-[#6fd0a4]" />
       )}
       {pending ? t("signingOut") : t("signOut")}
     </button>
