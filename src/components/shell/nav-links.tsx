@@ -1,16 +1,34 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { Banknote, FilePen, FileText, House, ListChecks, type LucideIcon, MapPin, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { useLiveCount } from "./live-count";
-import type { CountWords, LiveCount } from "./types";
+import { Fragment } from "react";
+import type { CountWords, LiveCount, NavKey } from "./types";
+
+/** Each menu entry's icon, as in the header mockup. */
+const ICONS: Record<NavKey, LucideIcon> = {
+  dsHome: House,
+  dsNewCase: UserPlus,
+  ministryDashboard: House,
+  oversightDashboard: House,
+  adminUsers: Users,
+  adminLists: ListChecks,
+  ministryCases: FileText,
+  oversightCases: FileText,
+  ministryAllocate: Banknote,
+  districtRelease: Banknote,
+  ministryAmendments: FilePen,
+  oversightAmendments: FilePen,
+};
 
 export type NavLinkItem = {
   href: string;
   label: string;
+  icon: NavKey;
   exact?: boolean;
   alsoActive?: string[];
   /** How many cases wait there, shown in a badge when more than 0. */
@@ -28,37 +46,38 @@ export function NavLinks({ label, items, place }: { label: string; items: NavLin
   return (
     <nav
       aria-label={label}
-      className="flex h-14 shrink-0 items-stretch gap-1 border-b border-border bg-card px-6 shadow-[0_1px_2px_rgb(28_36_32/0.04)]"
+      className="flex h-[61px] shrink-0 items-stretch bg-[#01433d] bg-[linear-gradient(180deg,#00332e_0%,#01433d_5%,#01433d_95%,#00382f_100%)] ps-[26px] pe-6 text-white dark:bg-[#0d3631] dark:bg-none"
     >
-      {items.map((item) => {
+      {items.map((item, index) => {
         const active = item.exact
           ? pathname === item.href
           : within(pathname, item.href) || (item.alsoActive ?? []).some((path) => within(pathname, path));
+        const Icon = ICONS[item.icon];
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "relative my-2 flex items-center gap-2.5 rounded-lg px-4 text-[17px] transition-colors",
-              active
-                ? "font-bold text-primary"
-                : "font-medium text-muted-foreground hover:bg-accent hover:text-primary",
-            )}
-          >
-            {active && (
-              <span aria-hidden="true" className="absolute inset-x-3 -bottom-2 h-[3px] rounded-t-full bg-primary" />
-            )}
-            {item.label}
-            {item.count && <WaitingBadge live={item.count} words={item.countWords ?? "waiting"} />}
-          </Link>
+          <Fragment key={item.href}>
+            {index > 0 && <span aria-hidden="true" className="mx-[11px] h-[26px] w-px self-center bg-white/25" />}
+            <Link
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "my-[7px] flex items-center gap-3 rounded-[14px] px-6 text-[17px] font-semibold whitespace-nowrap transition-colors",
+                active
+                  ? "bg-[#108e66] bg-[linear-gradient(180deg,#14996e,#0e8760)] text-white shadow-[0_2px_6px_rgb(0_0_0/0.18)]"
+                  : "text-white/95 hover:bg-white/10 hover:text-white",
+              )}
+            >
+              <Icon aria-hidden="true" className="size-[22px] shrink-0" strokeWidth={2} />
+              {item.label}
+              {item.count && <WaitingBadge live={item.count} words={item.countWords ?? "waiting"} />}
+            </Link>
+          </Fragment>
         );
       })}
       <span
         data-testid="area-label"
-        className="ms-auto flex min-w-0 items-center gap-2 self-center ps-4 text-[15px] font-semibold text-[#0b6138] dark:text-[#6fd0a4]"
+        className="ms-auto flex min-w-0 items-center gap-2 self-center ps-4 text-[15px] font-semibold text-white"
       >
-        <MapPin aria-hidden="true" className="size-4 shrink-0" />
+        <MapPin aria-hidden="true" className="size-[18px] shrink-0 text-[#7fd6ad]" />
         <span className="truncate">{place}</span>
       </span>
     </nav>

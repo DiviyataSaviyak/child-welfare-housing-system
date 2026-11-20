@@ -14,7 +14,7 @@ export function Bell({ href, unread }: { href: string; unread: LiveCount }) {
     <Link
       href={href}
       aria-label={count > 0 ? t("bellUnread", { count }) : t("bell")}
-      className="relative flex size-10 shrink-0 items-center justify-center rounded-full text-[#0a6b44] transition-colors hover:bg-white/70 dark:text-[#6fd0a4] dark:hover:bg-white/10"
+      className="relative flex size-10 shrink-0 items-center justify-center rounded-full text-[#155b58] transition-colors hover:bg-white/70 dark:text-[#6fd0a4] dark:hover:bg-white/10"
     >
       <BellIcon aria-hidden="true" className="size-[26px]" strokeWidth={2.25} />
       {count > 0 && (
