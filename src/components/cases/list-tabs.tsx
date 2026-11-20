@@ -37,7 +37,7 @@ function TabGroup({ tabs }: { tabs: ListTab[] }) {
           href={tab.href}
           aria-current={tab.current ? "page" : undefined}
           className={`flex h-10.5 items-center rounded-md px-4.5 font-semibold whitespace-nowrap ${
-            tab.current ? "bg-card text-primary shadow-sm" : "text-[#3F4843]"
+            tab.current ? "bg-card text-primary shadow-sm" : "text-soft-foreground"
           }`}
         >
           {tab.label}

@@ -38,9 +38,9 @@ import {
 
 /** The colour of each kind of to-do item, as in the prototype. */
 const TODO_COLOUR: Record<TodoItem["type"], string> = {
-  amendmentRejected: "bg-[#FDE7E4]",
-  received: "bg-[#FBEBD3]",
-  due: "bg-[#E4EDF8]",
+  amendmentRejected: "bg-rose",
+  received: "bg-amber",
+  due: "bg-info",
   stale: "bg-muted",
 };
 
@@ -223,7 +223,7 @@ export default async function DsHomePage({
                           {row.category && ` · ${t(`category.${row.category}`)}`}
                         </span>
                         {otherOffice(row) && (
-                          <span className="text-sm font-semibold text-[#1E4E8C]">{otherOffice(row)}</span>
+                          <span className="text-sm font-semibold text-info-foreground">{otherOffice(row)}</span>
                         )}
                       </Link>
                     </td>
@@ -240,7 +240,7 @@ export default async function DsHomePage({
                       <span className="flex flex-col">
                         <span>{progress(row)}</span>
                         {row.status === "IN_PROGRESS" && daysBetween(row.updatedAt, now) >= STALE_DAYS && (
-                          <span className="text-sm font-semibold text-[#8A4A06]">
+                          <span className="text-sm font-semibold text-amber-foreground">
                             {t("home.progress.stale", { days: daysBetween(row.updatedAt, now) })}
                           </span>
                         )}
@@ -285,7 +285,7 @@ export default async function DsHomePage({
                   ] as const
                 ).map(([key, amount]) => (
                   <div key={key} className="flex justify-between gap-3 border-b py-2 last:border-b-0">
-                    <dt className="text-[15px] text-[#3F4843]">{t(`home.money.${key}`)}</dt>
+                    <dt className="text-[15px] text-soft-foreground">{t(`home.money.${key}`)}</dt>
                     <dd className="font-bold whitespace-nowrap">{formatRupees(amount, locale)}</dd>
                   </div>
                 ))}
@@ -340,7 +340,7 @@ function TodoLink({ item, t }: { item: TodoItem; t: HomeT }) {
   return (
     <Link href={content.href} className={`flex flex-col gap-1 rounded-lg px-3.5 py-3 ${TODO_COLOUR[item.type]}`}>
       <span className="font-bold">{content.title}</span>
-      <span className="text-[15px] text-[#3F4843]">{content.text}</span>
+      <span className="text-[15px] text-soft-foreground">{content.text}</span>
       <span className="text-[15px] font-semibold text-primary">{content.action} →</span>
     </Link>
   );

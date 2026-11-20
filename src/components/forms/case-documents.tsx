@@ -208,7 +208,7 @@ export function CaseDocuments({
             type="button"
             onClick={confirmRemove}
             disabled={removePending}
-            className="h-12 rounded-lg bg-destructive px-6 text-[17px] font-semibold text-white"
+            className="h-12 rounded-lg bg-destructive px-6 text-[17px] font-semibold text-destructive-foreground"
           >
             {t("removeConfirm")}
           </button>

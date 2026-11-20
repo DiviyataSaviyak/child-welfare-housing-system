@@ -5,6 +5,19 @@
 /* A short window, such as a laptop at 125 or 150 % display scaling: the sign-in page tightens up. */
 @custom-variant short (@media (max-height: 760px));
 
+/*
+ * Dark mode: the officer's choice (the sun and moon button) or, until they choose, the computer's setting.
+ * A script in the root layout puts `dark` on <html> before the page draws. On screen only: a printed
+ * page stays light.
+ */
+@custom-variant dark {
+  @media screen {
+    &:where(.dark, .dark *) {
+      @slot;
+    }
+  }
+}
+
 /* Colours and type follow the clickable prototype (UI-4, UI-7). */
 @theme inline {
   --color-background: var(--background);
@@ -33,6 +46,25 @@
   --color-notice: var(--notice);
   --color-notice-foreground: var(--notice-foreground);
   --color-gold: var(--gold);
+  --color-soft-foreground: var(--soft-foreground);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-amber: var(--amber);
+  --color-amber-foreground: var(--amber-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-violet: var(--violet);
+  --color-violet-foreground: var(--violet-foreground);
+  --color-grey: var(--grey);
+  --color-grey-foreground: var(--grey-foreground);
+  --color-rose: var(--rose);
+  --color-warning: var(--warning);
+  --color-warning-border: var(--warning-border);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-caution: var(--caution);
+  --color-caution-border: var(--caution-border);
+  --color-caution-foreground: var(--caution-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -66,6 +98,78 @@
   --notice-foreground: #7a4105;
   /* The gold of the panel's accents. */
   --gold: #e0a42b;
+  /* Body text a step softer than the foreground. */
+  --soft-foreground: #3f4843;
+  --destructive-foreground: #ffffff;
+  /* The status chips and boxes (UI-6): each pair meets WCAG AA contrast, in light and in dark. */
+  --info: #e4edf8;
+  --info-foreground: #1e4e8c;
+  --amber: #fbebd3;
+  --amber-foreground: #8a4a06;
+  --success: #e3efeb;
+  --success-foreground: #0e5a4b;
+  --violet: #ede7f6;
+  --violet-foreground: #4b3a7a;
+  --grey: #ececec;
+  --grey-foreground: #4a4a4a;
+  --rose: #fde7e4;
+  --warning: #fff4e0;
+  --warning-border: #e8b45a;
+  --warning-foreground: #6b3a04;
+  --caution: #fff8e8;
+  --caution-border: #e5c27a;
+  --caution-foreground: #5c4300;
+  color-scheme: light;
+}
+
+/* The same colours in dark mode: a deep green-grey page, cards a step lighter, and a light green as the main colour. */
+@media screen {
+  :root.dark {
+    --background: #101713;
+    --foreground: #e4eae6;
+    --card: #19211d;
+    --card-foreground: #e4eae6;
+    --popover: #1e2823;
+    --popover-foreground: #e4eae6;
+    --primary: #4cb894;
+    --primary-foreground: #06201a;
+    --secondary: #242e29;
+    --secondary-foreground: #e4eae6;
+    --muted: #242e29;
+    --muted-foreground: #a7b1ab;
+    --accent: #1c302a;
+    --accent-foreground: #8fd8bd;
+    --destructive: #f07a6c;
+    --destructive-foreground: #2a0703;
+    --border: #2f3a34;
+    --input: #6d7771;
+    --ring: #4f9e88;
+    --header: #0c3f33;
+    --header-foreground: #ffffff;
+    --header-muted: #b9d3c9;
+    --notice: #3a2b12;
+    --notice-foreground: #f2c88c;
+    --gold: #dca33a;
+    --soft-foreground: #bec7c1;
+    --info: #172b42;
+    --info-foreground: #a3c6f2;
+    --amber: #3a2b12;
+    --amber-foreground: #f2c27e;
+    --success: #173a30;
+    --success-foreground: #8fd8bd;
+    --violet: #2a2442;
+    --violet-foreground: #c9bcf2;
+    --grey: #2b302d;
+    --grey-foreground: #bcc2be;
+    --rose: #3e201c;
+    --warning: #33260f;
+    --warning-border: #8a6420;
+    --warning-foreground: #f3cd8b;
+    --caution: #2d2810;
+    --caution-border: #7a682b;
+    --caution-foreground: #ecd593;
+    color-scheme: dark;
+  }
 }
 
 @layer base {
@@ -119,4 +223,24 @@
 }
 .auth-card [data-slot="input"][aria-invalid="true"]:focus-visible {
   box-shadow: 0 0 0 4px rgb(180 35 24 / 0.14);
+}
+@media screen {
+  .dark .auth-card [data-slot="input"] {
+    border-color: #38443d;
+    background-color: #141b17;
+  }
+  .dark .auth-card [data-slot="input"]::placeholder {
+    color: #7d8781;
+  }
+  .dark .auth-card [data-slot="input"]:hover {
+    border-color: #4c5952;
+  }
+  .dark .auth-card [data-slot="input"]:focus-visible {
+    border-color: var(--primary);
+    background-color: #101713;
+    box-shadow: 0 0 0 4px rgb(76 184 148 / 0.2);
+  }
+  .dark .auth-card [data-slot="input"][aria-invalid="true"] {
+    border-color: var(--destructive);
+  }
 }

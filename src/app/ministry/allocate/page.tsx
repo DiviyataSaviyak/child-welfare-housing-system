@@ -100,7 +100,7 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
       <div className="flex items-start gap-6">
         <div className="flex w-[400px] shrink-0 flex-col gap-4.5">
           <section aria-labelledby="waiting-title" className="flex flex-col gap-2.5">
-            <h2 id="waiting-title" className="text-[17px] font-bold text-[#3F4843]">
+            <h2 id="waiting-title" className="text-[17px] font-bold text-soft-foreground">
               {t("letters.waitingTitle")}
             </h2>
             {districts.length === 0 ? (
@@ -129,7 +129,7 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
                           {t("letters.districtOffices", { offices: d.offices.map((o) => o.name).join(", ") })}
                         </span>
                         {d.oldest && (
-                          <span className="text-sm text-[#3F4843]">
+                          <span className="text-sm text-soft-foreground">
                             {t("letters.oldest", { days: daysBetween(d.oldest, now) })}
                           </span>
                         )}
@@ -168,7 +168,7 @@ export default async function MinistryAllocatePage({ searchParams }: { searchPar
                         amount: formatRupees(letter.count * RELEASE_AMOUNT, locale),
                       })}
                     </span>
-                    <span className="text-sm text-[#3F4843]">
+                    <span className="text-sm text-soft-foreground">
                       {t("letters.recordedUntil", { date: formatDate(letter.validUntil) })}
                     </span>
                   </li>

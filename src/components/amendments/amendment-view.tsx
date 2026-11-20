@@ -9,9 +9,9 @@ import { caseName } from "../cases/page-header";
 
 /** The amendment's own status colours, as the case statuses' (UI-6): waiting, approved, rejected. */
 const STYLE: Record<AmendmentStatus, string> = {
-  WAITING: "bg-[#FBEBD3] text-[#8A4A06]",
+  WAITING: "bg-amber text-amber-foreground",
   APPROVED: "bg-primary text-primary-foreground",
-  REJECTED: "bg-[#ECECEC] text-[#4A4A4A]",
+  REJECTED: "bg-grey text-grey-foreground",
 };
 
 export async function AmendmentStatusChip({ status }: { status: AmendmentStatus }) {

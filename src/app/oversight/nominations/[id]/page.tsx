@@ -90,7 +90,7 @@ export default async function NominationPage({ params }: { params: Promise<{ id:
         )}
         {acts && (
           <>
-            <p className="text-[15px] text-[#3F4843]">{t("nominate.intro", { office: existing.officeName })}</p>
+            <p className="text-[15px] text-soft-foreground">{t("nominate.intro", { office: existing.officeName })}</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <ReasonAction
                 key={`send-back-${view.version}`}

@@ -227,7 +227,7 @@ function ReplacementBox({ id, title, children }: { id: string; title: string; ch
   return (
     <section
       aria-labelledby={id}
-      className="flex items-start gap-3 rounded-xl border border-[#A9CBBF] bg-accent px-5 py-4 text-accent-foreground"
+      className="flex items-start gap-3 rounded-xl border border-[#A9CBBF] dark:border-[#2f5446] bg-accent px-5 py-4 text-accent-foreground"
     >
       <ArrowRightLeft aria-hidden="true" className="mt-0.5 size-5.5 shrink-0" />
       <div className="flex flex-col gap-1">

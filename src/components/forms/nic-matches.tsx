@@ -22,7 +22,7 @@ export function NicMatches({ matches }: { matches: NicMatch[] }) {
     <div
       role="status"
       data-testid="nic-matches"
-      className="flex flex-col gap-1.5 rounded-lg border border-[#E8B45A] bg-[#FFF4E0] px-4 py-3.5 text-[15px] text-[#6B3A04]"
+      className="flex flex-col gap-1.5 rounded-lg border border-warning-border bg-warning px-4 py-3.5 text-[15px] text-warning-foreground"
     >
       <p className="font-semibold">{t("title")}</p>
       <ul className="list-disc ps-5">

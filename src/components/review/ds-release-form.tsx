@@ -121,7 +121,7 @@ export function DsReleaseForm({
         <legend className="sr-only">{t("district.casesLabel")}</legend>
         <div className="overflow-hidden rounded-lg border">
           <div className="flex flex-wrap items-center justify-between gap-3 bg-muted px-3.5 py-2">
-            <span className="text-[15px] font-bold text-[#3F4843]">
+            <span className="text-[15px] font-bold text-soft-foreground">
               {t("letters.office", { office: officeName, count: cases.length })}
             </span>
             <TickAll
@@ -149,8 +149,8 @@ export function DsReleaseForm({
                 <span className={`flex min-w-0 flex-col ${ticks ? "" : "text-muted-foreground"}`}>
                   <span className="font-bold">{c.name}</span>
                   <span className="text-sm text-muted-foreground">{c.detail}</span>
-                  <span className="text-sm text-[#3F4843]">{c.letter}</span>
-                  {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                  <span className="text-sm text-soft-foreground">{c.letter}</span>
+                  {c.residence && <span className="text-sm text-soft-foreground">{c.residence}</span>}
                   {c.amendmentWaiting && <AmendmentFlag text={t("letters.amendmentFlag")} />}
                 </span>
                 <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>

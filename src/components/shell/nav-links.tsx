@@ -56,7 +56,7 @@ export function NavLinks({ label, items, place }: { label: string; items: NavLin
       })}
       <span
         data-testid="area-label"
-        className="ms-auto flex min-w-0 items-center gap-2 self-center ps-4 text-[15px] font-semibold text-[#0b6138]"
+        className="ms-auto flex min-w-0 items-center gap-2 self-center ps-4 text-[15px] font-semibold text-[#0b6138] dark:text-[#6fd0a4]"
       >
         <MapPin aria-hidden="true" className="size-4 shrink-0" />
         <span className="truncate">{place}</span>
@@ -74,7 +74,7 @@ function WaitingBadge({ live, words }: { live: LiveCount; words: CountWords }) {
     <>
       <span
         aria-hidden="true"
-        className="flex h-6.5 min-w-6.5 items-center justify-center rounded-full bg-destructive px-2 text-sm font-bold text-white"
+        className="flex h-6.5 min-w-6.5 items-center justify-center rounded-full bg-destructive px-2 text-sm font-bold text-destructive-foreground"
       >
         {count}
       </span>

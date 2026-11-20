@@ -56,7 +56,7 @@ export default async function AmendCasePage({ params }: { params: Promise<{ id: 
           <span className="text-muted-foreground">{details.applicationNumber}</span>
           <StatusChip status={details.status} />
         </p>
-        <p className="text-[15px] text-[#3F4843]">{t("amend.intro")}</p>
+        <p className="text-[15px] text-soft-foreground">{t("amend.intro")}</p>
       </section>
       <CaseForm
         // The amendment's id is chosen now, so sending this form twice makes one amendment (ERR-8).

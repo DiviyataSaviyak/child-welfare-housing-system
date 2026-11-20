@@ -15,6 +15,9 @@
       "en": "English"
     }
   },
+  "theme": {
+    "dark": "Dark mode"
+  },
   "areas": {
     "ds": "Divisional Secretariat",
     "dsOffice": "{office} Divisional Secretariat",

@@ -8,7 +8,7 @@ export function AmendmentFlag({ text }: { text: string }) {
   return (
     <span
       data-testid="amendment-flag"
-      className="mt-0.5 inline-flex items-center gap-1.5 self-start rounded-md border border-[#E8B45A] bg-[#FFF4E0] px-2 py-0.5 text-sm font-semibold text-[#6B3A04]"
+      className="mt-0.5 inline-flex items-center gap-1.5 self-start rounded-md border border-warning-border bg-warning px-2 py-0.5 text-sm font-semibold text-warning-foreground"
     >
       <FilePen aria-hidden="true" className="size-4 shrink-0" />
       {text}

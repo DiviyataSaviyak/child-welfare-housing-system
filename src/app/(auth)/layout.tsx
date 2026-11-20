@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { Mark } from "@/components/brand/lockup";
 import { MinistryBar } from "@/components/brand/ministry-bar";
 import { LanguagePicker } from "@/components/language-picker";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 /** The number in the footer. It is the design's sample number: put the Ministry's own here before release. */
 const SUPPORT_PHONE = "011-1234567";
@@ -20,12 +21,12 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <MinistryBar />
-      <div className="relative isolate flex flex-1 flex-col bg-[#fafae9] bg-[linear-gradient(180deg,#e9f0d7_0%,#f7f8e5_12%,#fafae9_45%,#f6f8e6_78%,#d6e5b8_100%)] lg:flex-row">
+      <div className="relative isolate flex flex-1 flex-col bg-[#fafae9] bg-[linear-gradient(180deg,#e9f0d7_0%,#f7f8e5_12%,#fafae9_45%,#f6f8e6_78%,#d6e5b8_100%)] lg:flex-row dark:bg-[#111813] dark:bg-[linear-gradient(180deg,#15201a_0%,#121a15_12%,#111813_45%,#121a15_78%,#16251b_100%)]">
         <aside className="relative isolate shrink-0 overflow-hidden bg-header bg-[linear-gradient(175deg,#0c5b49_0%,#17734f_45%,#2f8a4d_100%)] text-header-foreground lg:flex lg:w-[51.5%] lg:flex-col lg:bg-none lg:bg-transparent">
           {/* A wide screen: the picture fills the panel, keeping its curved right edge and the children at the foot. */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 -z-10 hidden bg-[url(/sign-in-panel.webp)] bg-cover bg-[position:right_bottom] bg-no-repeat lg:block"
+            className="absolute inset-0 -z-10 hidden bg-[url(/sign-in-panel.webp)] bg-cover bg-[position:right_bottom] bg-no-repeat lg:block dark:brightness-[0.8]"
           />
           <div
             aria-hidden="true"
@@ -82,21 +83,25 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
             aria-hidden="true"
             width={272}
             height={1300}
-            className="pointer-events-none absolute right-0 bottom-0 -z-10 hidden h-[86%] w-auto lg:block"
+            className="pointer-events-none absolute right-0 bottom-0 -z-10 hidden h-[86%] w-auto lg:block dark:opacity-[0.15]"
           />
-          <div className="auth-card w-full max-w-[500px] animate-in rounded-[24px] border border-black/[0.04] bg-card px-6 pt-5 pb-6 shadow-[0_1px_2px_rgb(28_36_32/0.04),0_12px_32px_-10px_rgb(28_36_32/0.16),0_36px_70px_-34px_rgb(14_90_75/0.3)] duration-500 fade-in slide-in-from-bottom-3 motion-reduce:animate-none sm:px-9 short:lg:pt-3 short:lg:pb-4">
-            <div className="mb-4 flex justify-center short:mb-2">
+          <div className="auth-card w-full max-w-[500px] animate-in rounded-[24px] border border-black/[0.04] dark:border-white/[0.07] bg-card px-6 pt-5 pb-6 shadow-[0_1px_2px_rgb(28_36_32/0.04),0_12px_32px_-10px_rgb(28_36_32/0.16),0_36px_70px_-34px_rgb(14_90_75/0.3)] duration-500 fade-in slide-in-from-bottom-3 motion-reduce:animate-none sm:px-9 short:lg:pt-3 short:lg:pb-4">
+            <div className="mb-4 flex flex-wrap items-center justify-center gap-2.5 short:mb-2">
               <LanguagePicker tone="page" />
+              <ThemeToggle tone="page" />
             </div>
             {children}
           </div>
         </main>
       </div>
 
-      <footer className="shrink-0 bg-[#07503f] text-[15px] text-white/95">
+      <footer className="shrink-0 bg-[#07503f] text-[15px] text-white/95 dark:bg-[#0a3a2f]">
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-8 sm:py-[18px] lg:px-11 short:py-2">
           <p className="flex items-center gap-3">
-            <ShieldCheck aria-hidden="true" className="size-7 shrink-0 fill-white stroke-[#07503f]" />
+            <ShieldCheck
+              aria-hidden="true"
+              className="size-7 shrink-0 fill-white stroke-[#07503f] dark:stroke-[#0a3a2f]"
+            />
             <span>{t("rights", { year: String(new Date().getFullYear()) })}</span>
           </p>
           <p className="flex items-center gap-3 sm:border-l-2 sm:border-white/85 sm:pl-8">

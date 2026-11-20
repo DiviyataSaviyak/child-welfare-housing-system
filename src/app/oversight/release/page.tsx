@@ -42,7 +42,7 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
 
       <div className="flex items-start gap-6">
         <section aria-labelledby="waiting-title" className="flex min-w-0 flex-1 flex-col gap-2.5">
-          <h2 id="waiting-title" className="text-[17px] font-bold text-[#3F4843]">
+          <h2 id="waiting-title" className="text-[17px] font-bold text-soft-foreground">
             {t("district.waitingTitle")}
           </h2>
           {offices.length === 0 ? (
@@ -62,7 +62,7 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
                         amount: formatRupees(office.count * RELEASE_AMOUNT, locale),
                       })}
                     </span>
-                    <span className="text-sm text-[#3F4843]">
+                    <span className="text-sm text-soft-foreground">
                       {t("district.letter", { number: office.letterNumber, date: formatDate(office.letterDate) })}
                     </span>
                   </Link>
@@ -92,7 +92,7 @@ export default async function DistrictReleasePage({ searchParams }: { searchPara
                   >
                     {t("district.recordedName", { office: release.officeName, reference: release.referenceNumber })}
                   </Link>
-                  <span className="text-sm text-[#3F4843]">
+                  <span className="text-sm text-soft-foreground">
                     {t("district.recordedLetter", { number: release.letterNumber })}
                   </span>
                   <span className="text-sm text-muted-foreground">

@@ -53,7 +53,7 @@ export default async function DistrictReleaseFormPage({
         title={t("district.formTitle", { office: office.name })}
         subtitle={t("district.formIntro", { office: office.name })}
       />
-      <p className="text-[17px] font-semibold text-[#3F4843]" data-testid="release-letter">
+      <p className="text-[17px] font-semibold text-soft-foreground" data-testid="release-letter">
         {letterLine}
       </p>
       <section

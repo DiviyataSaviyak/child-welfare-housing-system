@@ -137,7 +137,7 @@ export function LetterForm({
         {groups.map((group) => (
           <div key={group.office} className="overflow-hidden rounded-lg border">
             <div className="flex flex-wrap items-center justify-between gap-3 bg-muted px-3.5 py-2">
-              <span className="text-[15px] font-bold text-[#3F4843]">
+              <span className="text-[15px] font-bold text-soft-foreground">
                 {t("letters.office", { office: group.office, count: group.cases.length })}
               </span>
               <TickAll
@@ -161,7 +161,7 @@ export function LetterForm({
                     <span className={`flex min-w-0 flex-col ${ticks ? "" : "text-muted-foreground"}`}>
                       <span className="font-bold">{c.name}</span>
                       <span className="text-sm text-muted-foreground">{c.detail}</span>
-                      {c.residence && <span className="text-sm text-[#3F4843]">{c.residence}</span>}
+                      {c.residence && <span className="text-sm text-soft-foreground">{c.residence}</span>}
                       {c.amendmentWaiting && <AmendmentFlag text={t("letters.amendmentFlag")} />}
                     </span>
                     <span className={`font-semibold ${ticks ? "" : "text-muted-foreground"}`}>
@@ -169,7 +169,7 @@ export function LetterForm({
                     </span>
                   </label>
                   {c.duplicates.length > 0 && (
-                    <details className="mr-3.5 mb-2.5 ml-[54px] rounded-md border border-[#E8B45A] bg-[#FFF4E0] px-3 py-1.5 text-[#6B3A04]">
+                    <details className="mr-3.5 mb-2.5 ml-[54px] rounded-md border border-warning-border bg-warning px-3 py-1.5 text-warning-foreground">
                       <summary className="cursor-pointer text-sm font-semibold">
                         <TriangleAlert aria-hidden="true" className="mr-1.5 inline size-4 align-[-3px]" />
                         {t("letters.duplicateFlag", { count: c.duplicates.length })}

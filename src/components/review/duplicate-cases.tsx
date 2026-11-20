@@ -17,7 +17,7 @@ export async function DuplicateCases({ matches }: { matches: DuplicateCase[] }) 
   return (
     <section
       aria-labelledby="duplicates-title"
-      className="flex items-start gap-3 rounded-lg border border-[#E8B45A] bg-[#FFF4E0] px-4 py-3.5 text-[#6B3A04]"
+      className="flex items-start gap-3 rounded-lg border border-warning-border bg-warning px-4 py-3.5 text-warning-foreground"
     >
       <TriangleAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
       <div className="flex flex-col gap-1.5">

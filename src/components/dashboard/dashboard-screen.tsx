@@ -176,7 +176,7 @@ export async function DashboardScreen({
           <dl aria-label={t("tiles.label")} className="grid grid-cols-3 gap-4">
             {counts.map((tile, index) => (
               <div key={tile.label} className="flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4">
-                <dt className="font-semibold text-[#3F4843]">{tile.label}</dt>
+                <dt className="font-semibold text-soft-foreground">{tile.label}</dt>
                 <dd className="text-[26px] leading-tight font-bold tabular-nums">{formatNumber(tile.value)}</dd>
                 {index === 0 && <dd className="text-sm text-muted-foreground">{t("tiles.casesNote")}</dd>}
               </div>
@@ -186,7 +186,7 @@ export async function DashboardScreen({
           <dl aria-label={t("tiles.money")} className="grid grid-cols-3 gap-4">
             {AMOUNTS.map((amount) => (
               <div key={amount} className="flex flex-col gap-1 rounded-xl border bg-card px-4.5 py-4">
-                <dt className="font-semibold text-[#3F4843]">{t(`tiles.${amount}`)}</dt>
+                <dt className="font-semibold text-soft-foreground">{t(`tiles.${amount}`)}</dt>
                 <dd className="text-[26px] leading-tight font-bold tabular-nums">
                   {formatNumber(data.totals[amount])}
                 </dd>
@@ -346,7 +346,7 @@ export async function DashboardScreen({
                             </span>
                           </Link>
                         </td>
-                        <td className="py-2 text-right text-lg font-bold text-[#8A4A06] tabular-nums">
+                        <td className="py-2 text-right text-lg font-bold text-amber-foreground tabular-nums">
                           {formatNumber(c.days)}
                         </td>
                       </tr>

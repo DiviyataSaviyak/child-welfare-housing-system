@@ -363,7 +363,7 @@ export async function CaseHistory({ entries }: { entries: HistoryEntry[] }) {
                 <span className="flex flex-col">
                   <span className="text-base">{sentence}</span>
                   {lines.map((line, index) => (
-                    <span key={index} className="text-[15px] break-words whitespace-pre-line text-[#3F4843]">
+                    <span key={index} className="text-[15px] break-words whitespace-pre-line text-soft-foreground">
                       {line}
                     </span>
                   ))}

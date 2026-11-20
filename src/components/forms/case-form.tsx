@@ -490,7 +490,7 @@ export function CaseForm({
         className="flex min-w-0 flex-1 flex-col gap-5"
       >
         {intro && (
-          <p className="rounded-lg bg-[#E4EDF8] px-4 py-3 text-[15px] text-[#1E4E8C]">{t("form.changeIntro")}</p>
+          <p className="rounded-lg bg-info px-4 py-3 text-[15px] text-info-foreground">{t("form.changeIntro")}</p>
         )}
 
         <Part number={1} id="part-category" title={t("form.partCategory")}>
@@ -583,7 +583,7 @@ export function CaseForm({
                   </div>
                 )}
                 {landPlace && (
-                  <p data-testid="land-place" className="text-[15px] text-[#3F4843]">
+                  <p data-testid="land-place" className="text-[15px] text-soft-foreground">
                     {placeText(landPlace)}
                   </p>
                 )}
@@ -591,14 +591,14 @@ export function CaseForm({
                   <p
                     data-testid="money-back"
                     role="status"
-                    className="rounded-lg border border-[#E5C27A] bg-[#FFF8E8] px-4 py-3 text-[15px] text-[#5C4300]"
+                    className="rounded-lg border border-caution-border bg-caution px-4 py-3 text-[15px] text-caution-foreground"
                   >
                     {moneyBack}
                   </p>
                 )}
               </>
             ) : (
-              <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
+              <p className="rounded-lg bg-muted px-4 py-3 text-[15px] text-soft-foreground">
                 {build.dsOfficeId === null
                   ? t("form.built.fixedSame")
                   : t("form.built.fixed", { district: build.districtName, office: build.officeName })}
@@ -645,13 +645,13 @@ export function CaseForm({
                 />
               </div>
               {district && (
-                <p data-testid="residence-province" className="text-[15px] text-[#3F4843]">
+                <p data-testid="residence-province" className="text-[15px] text-soft-foreground">
                   {t("form.province", { province: district.provinceName })}
                 </p>
               )}
             </div>
           ) : (
-            <p data-testid="residence-place" className="rounded-lg bg-muted px-4 py-3 text-[15px] text-[#3F4843]">
+            <p data-testid="residence-place" className="rounded-lg bg-muted px-4 py-3 text-[15px] text-soft-foreground">
               {t(office.kind === "own" ? "form.officeAuto" : "form.officeFixed", {
                 province: office.provinceName,
                 district: office.districtName,
@@ -917,7 +917,7 @@ export function CaseForm({
             id="case-errors"
             role="alert"
             tabIndex={-1}
-            className="flex flex-col gap-1.5 rounded-lg border-2 border-destructive bg-destructive/5 px-5 py-4 text-[#8F1B12]"
+            className="flex flex-col gap-1.5 rounded-lg border-2 border-destructive bg-destructive/5 px-5 py-4 text-[#8F1B12] dark:text-[#f59b90]"
           >
             <p className="text-[17px] font-bold">{t("form.errors.summary")}</p>
             <ul className="flex flex-col gap-1 text-[15px]">
@@ -984,14 +984,14 @@ export function CaseForm({
           ))}
         </ol>
         <hr className="border-border" />
-        <p className="text-[15px] text-[#3F4843]">{t("form.help")}</p>
+        <p className="text-[15px] text-soft-foreground">{t("form.help")}</p>
       </aside>
 
       <Modal open={confirming} onClose={() => setConfirming(false)} labelledBy="confirm-title">
         <h2 id="confirm-title" className="text-[23px] font-bold">
           {amend ? t("amend.confirmTitle") : t("form.confirm.title")}
         </h2>
-        <p className="text-[#3F4843]">{amend ? t("amend.confirmText") : t("form.confirm.text")}</p>
+        <p className="text-soft-foreground">{amend ? t("amend.confirmText") : t("form.confirm.text")}</p>
         <dl className="flex max-h-[55vh] flex-col overflow-y-auto rounded-lg border">
           {[
             // AMD-1: the summary shows both beneficiaries: the existing one, then the new one's details.
@@ -1071,7 +1071,7 @@ export function CaseForm({
           ))}
         </dl>
         {matches.length > 0 && <NicMatches matches={matches} />}
-        <p className="text-[15px] text-[#3F4843]">{amend ? t("amend.confirmAfter") : t("form.confirm.after")}</p>
+        <p className="text-[15px] text-soft-foreground">{amend ? t("amend.confirmAfter") : t("form.confirm.after")}</p>
         <div className="flex justify-end gap-3">
           <button
             type="button"

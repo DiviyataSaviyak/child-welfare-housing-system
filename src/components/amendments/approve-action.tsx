@@ -152,7 +152,7 @@ export function ApproveAction({
             type="button"
             onClick={send}
             disabled={pending}
-            className="h-12 rounded-lg bg-primary px-6 text-[17px] font-bold text-white disabled:opacity-60"
+            className="h-12 rounded-lg bg-primary px-6 text-[17px] font-bold text-primary-foreground disabled:opacity-60"
           >
             {pending ? texts.working : texts.confirm}
           </button>

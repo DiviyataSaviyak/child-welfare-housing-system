@@ -11,13 +11,13 @@ import type { Audience } from "./case-view";
 
 /** Installment status colours from the prototype; each pair meets WCAG AA contrast (UI-6). */
 const DOT: Record<InstallmentStatus, string> = {
-  NOT_STARTED: "border-[#B9B4A8] bg-card text-[#4F5752]",
-  PROCESSING: "border-[#C07A12] bg-[#FFF4E0] text-[#8A4A06]",
+  NOT_STARTED: "border-[#B9B4A8] dark:border-[#4a544e] bg-card text-muted-foreground",
+  PROCESSING: "border-[#C07A12] dark:border-[#d39a3c] bg-warning text-amber-foreground",
   RELEASED: "border-primary bg-primary text-primary-foreground",
 };
 const STATUS_TEXT: Record<InstallmentStatus, string> = {
-  NOT_STARTED: "text-[#4F5752]",
-  PROCESSING: "text-[#8A4A06]",
+  NOT_STARTED: "text-muted-foreground",
+  PROCESSING: "text-amber-foreground",
   RELEASED: "text-primary",
 };
 
@@ -101,7 +101,7 @@ export async function MoneySection({
         {t("money.title")}
       </h2>
       {waiting ? (
-        <p className="rounded-lg bg-background px-4 py-3 text-[#3F4843]">
+        <p className="rounded-lg bg-background px-4 py-3 text-soft-foreground">
           {t(audience === "ds" ? "money.allocatedDs" : "money.allocated", {
             amount: formatRupees(release.amount, locale),
             district: letter.districtName,
@@ -113,13 +113,13 @@ export async function MoneySection({
             <div key={tile.label} className="flex flex-col gap-0.5 rounded-lg bg-background px-4 py-3">
               <dt className="text-[15px] text-muted-foreground">{tile.label}</dt>
               <dd className="text-[22px] font-bold">{formatRupees(tile.amount, locale)}</dd>
-              <dd className="text-sm text-[#3F4843]">{tile.detail}</dd>
+              <dd className="text-sm text-soft-foreground">{tile.detail}</dd>
             </div>
           ))}
         </dl>
       )}
 
-      <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
+      <div className="flex items-center gap-3 rounded-lg border px-3.5 py-2.5 text-[15px] text-soft-foreground">
         <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
         <p className="flex-1">
           {audience === "ministry" ? (
@@ -151,7 +151,7 @@ export async function MoneySection({
       </div>
 
       {dsRelease && (
-        <div className="flex flex-col gap-1.5 rounded-lg border px-3.5 py-2.5 text-[15px] text-[#3F4843]">
+        <div className="flex flex-col gap-1.5 rounded-lg border px-3.5 py-2.5 text-[15px] text-soft-foreground">
           <div className="flex items-center gap-3">
             <FileText aria-hidden="true" className="size-5.5 shrink-0 text-muted-foreground" />
             <p className="flex-1">
@@ -243,7 +243,7 @@ export async function MoneySection({
         <p className="rounded-lg bg-background px-4 py-3 font-semibold text-primary">{t("money.allStarted")}</p>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-[#3F4843]">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-soft-foreground">
         <div className="flex flex-col gap-0.5">
           {letter.note && <p className="whitespace-pre-line">{t("money.note", { note: letter.note })}</p>}
           <p>{t("money.recordedBy", { name: release.byName, date: formatDate(release.at) })}</p>
@@ -266,7 +266,7 @@ export async function ReturnNote({ returned }: { returned: AllocationReturnDetai
     <section
       aria-labelledby="returned-title"
       data-testid="allocation-returned"
-      className="flex flex-col gap-1.5 rounded-xl border border-[#E5C27A] bg-[#FFF8E8] px-6 py-4.5 text-[15px] text-[#5C4300]"
+      className="flex flex-col gap-1.5 rounded-xl border border-caution-border bg-caution px-6 py-4.5 text-[15px] text-caution-foreground"
     >
       <h2 id="returned-title" className="text-lg font-bold">
         {t("returned.title")}

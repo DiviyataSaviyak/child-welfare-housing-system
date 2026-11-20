@@ -23,8 +23,8 @@ export function LanguagePicker({ tone }: { tone: "header" | "page" }) {
       className={cn(
         "flex shrink-0 items-center p-0.5",
         tone === "header"
-          ? "h-[45px] rounded-full bg-[#f8f9f6] p-1 shadow-[0_2px_8px_rgb(20_60_40/0.10)] ring-1 ring-black/[0.04] ring-inset"
-          : "rounded-full bg-[#f1f1f0] p-1 ring-1 ring-black/[0.08] ring-inset",
+          ? "h-[45px] rounded-full bg-[#f8f9f6] p-1 shadow-[0_2px_8px_rgb(20_60_40/0.10)] ring-1 ring-black/[0.04] ring-inset dark:bg-white/[0.06] dark:shadow-none dark:ring-white/10"
+          : "rounded-full bg-[#f0eee8] p-1 ring-1 ring-[#e2e0d8] ring-inset dark:bg-white/[0.06] dark:ring-white/10",
       )}
     >
       {LOCALES.map((locale) => {
@@ -44,10 +44,10 @@ export function LanguagePicker({ tone }: { tone: "header" | "page" }) {
               tone === "header"
                 ? on
                   ? "h-[37px] rounded-full bg-[#107846] px-[18px] text-[16px] font-semibold text-white shadow-[0_1px_3px_rgb(6_79_56/0.35)]"
-                  : "h-[37px] rounded-full px-[18px] text-[16px] font-medium text-[#1f2e3a] hover:bg-white hover:text-[#107846]"
+                  : "h-[37px] rounded-full px-[18px] text-[16px] font-medium text-[#1f2e3a] hover:bg-white hover:text-[#107846] dark:text-[#d3dbd6] dark:hover:bg-white/10 dark:hover:text-white"
                 : on
-                  ? "h-9 rounded-full bg-[#064f38] px-5 text-[16px] font-semibold text-white shadow-[0_1px_3px_rgb(6_79_56/0.35)]"
-                  : "h-9 rounded-full px-4 text-[16px] text-[#2b2f2d] hover:bg-card",
+                  ? "h-9 rounded-full bg-white px-5 text-[16px] font-bold text-[#0f5c4a] shadow-[0_1px_3px_rgb(28_36_32/0.12)] ring-1 ring-[#c2cbc3] ring-inset dark:bg-[#2b3731] dark:text-[#8fd8bd] dark:shadow-none dark:ring-white/15"
+                  : "h-9 rounded-full px-4 text-[16px] text-[#3f423f] hover:bg-white/70 hover:text-[#0f5c4a] dark:text-[#c5ccc8] dark:hover:bg-white/10 dark:hover:text-[#8fd8bd]",
             )}
           >
             {t(`names.${locale}`)}

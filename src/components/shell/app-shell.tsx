@@ -1,6 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { ProfileDialog } from "@/app/_profile/profile-dialog";
 import { LanguagePicker } from "@/components/language-picker";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { getContext } from "@/server/context";
 import { db } from "@/server/db";
 import { getProfile } from "@/server/users/queries";
@@ -45,24 +46,24 @@ export async function AppShell({
   return (
     <div className="flex min-h-screen flex-col">
       {/* Sizes and colours follow the header mockup (1672 px wide, 122 px tall), whose picture it uses. */}
-      <header className="sticky top-0 z-30 shrink-0 overflow-hidden bg-white bg-[linear-gradient(90deg,#ffffff_0%,#ffffff_28%,#f6faf3_42%,#e9f3e5_62%,#edf6e9_78%,#f3f8ee_100%)] pb-[3px] text-[#1f2e3a]">
+      <header className="sticky top-0 z-30 shrink-0 overflow-hidden bg-white bg-[linear-gradient(90deg,#ffffff_0%,#ffffff_28%,#f6faf3_42%,#e9f3e5_62%,#edf6e9_78%,#f3f8ee_100%)] pb-[3px] text-[#1f2e3a] dark:bg-[#121a16] dark:bg-[linear-gradient(90deg,#121a16_0%,#121a16_28%,#14201a_42%,#17271f_62%,#16251d_78%,#14211a_100%)] dark:text-foreground">
         <div className="relative flex h-[119px] items-center ps-[59px] pe-[11px]">
           <div className="flex min-w-0 shrink-0 items-center">
             {/* The emblem is decorative here: the names beside it say whose it is. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/emblem-of-sri-lanka.svg" alt="" width={600} height={851} className="h-[90px] w-auto shrink-0" />
-            <span aria-hidden="true" className="ms-[29px] h-[80px] w-[1.5px] shrink-0 bg-[#114b3a]" />
+            <span aria-hidden="true" className="ms-[29px] h-[80px] w-[1.5px] shrink-0 bg-[#114b3a] dark:bg-[#3f7d67]" />
             <span className="ms-[27px] flex min-w-0 flex-col">
-              <span className="text-[30px] leading-[42px] font-bold whitespace-nowrap text-[#0b6138]">
+              <span className="text-[30px] leading-[42px] font-bold whitespace-nowrap text-[#0b6138] dark:text-[#7ad6ad]">
                 {t("app.name")}
               </span>
-              <span className="text-[16px] leading-[25px] font-semibold whitespace-nowrap text-[#123f30]">
+              <span className="text-[16px] leading-[25px] font-semibold whitespace-nowrap text-[#123f30] dark:text-[#d0e2d9]">
                 {t("app.ministry")}
               </span>
               {locale !== "en" && (
                 <span
                   lang="en"
-                  className="text-[16px] leading-[23px] font-semibold whitespace-nowrap text-[#1b2733] [font-family:var(--font-latin),sans-serif]"
+                  className="text-[16px] leading-[23px] font-semibold whitespace-nowrap text-[#1b2733] dark:text-[#b4c0ba] [font-family:var(--font-latin),sans-serif]"
                 >
                   {englishMinistry}
                 </span>
@@ -73,16 +74,19 @@ export async function AppShell({
               space is short only the children show (centred on them: the picture is 592 px, they stand
               at 225 px), and where it is shorter still, nothing. */}
           <div aria-hidden="true" className="@container hidden min-w-0 flex-1 self-stretch lg:block">
-            <div className="mx-auto hidden h-full max-w-[592px] bg-[url(/header-scene.webp)] bg-[length:auto_100%] bg-[position:calc(50%+71px)_bottom] bg-no-repeat [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_88%,transparent)] @min-[170px]:block @min-[540px]:bg-bottom" />
+            <div className="mx-auto hidden h-full max-w-[592px] bg-[url(/header-scene.webp)] bg-[length:auto_100%] bg-[position:calc(50%+71px)_bottom] bg-no-repeat dark:opacity-70 dark:mix-blend-lighten dark:[filter:invert(1)_hue-rotate(180deg)] [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_88%,transparent)] @min-[170px]:block @min-[540px]:bg-bottom" />
           </div>
           <div className="ms-auto flex shrink-0 items-center">
             <LanguagePicker tone="header" />
+            <span className="ms-3">
+              <ThemeToggle tone="header" />
+            </span>
             {bell && (
-              <span className="ms-5">
+              <span className="ms-1">
                 <Bell href={bell.href} unread={bell.unread} />
               </span>
             )}
-            <span aria-hidden="true" className="ms-[7px] h-[26px] w-px bg-black/10" />
+            <span aria-hidden="true" className="ms-[7px] h-[26px] w-px bg-black/10 dark:bg-white/15" />
             <span className="ms-[10px]">
               {profile ? (
                 <ProfileDialog userName={userName} profile={profile} />

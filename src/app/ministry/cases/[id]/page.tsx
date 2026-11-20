@@ -149,7 +149,7 @@ export default async function HoCasePage({
           <p className="text-lg">
             {t("created.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
-          <p className="text-[#3F4843]">{t("created.textMinistry")}</p>
+          <p className="text-soft-foreground">{t("created.textMinistry")}</p>
         </section>
       )}
       {notice === "changed" && <FormNotice message={t("notices.changed")} />}

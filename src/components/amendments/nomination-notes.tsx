@@ -29,7 +29,7 @@ export async function NominationNotes({
       <section
         aria-labelledby="nomination-title"
         data-testid="nomination-waiting"
-        className="flex max-w-4xl items-start gap-3 rounded-xl border border-[#E8B45A] bg-[#FFF4E0] px-5 py-4 text-[#6B3A04]"
+        className="flex max-w-4xl items-start gap-3 rounded-xl border border-warning-border bg-warning px-5 py-4 text-warning-foreground"
       >
         <UserSearch aria-hidden="true" className="mt-0.5 size-5.5 shrink-0" />
         <div className="flex flex-col gap-1">
@@ -70,7 +70,7 @@ export async function NominationNotes({
           })}
         </h2>
         <p className="whitespace-pre-line">{t("amend.reasonLine", { reason: nomination.sentBackReason ?? "" })}</p>
-        {ownOffice && <p className="text-[15px] text-[#3F4843]">{t("nominate.again")}</p>}
+        {ownOffice && <p className="text-[15px] text-soft-foreground">{t("nominate.again")}</p>}
       </div>
     </section>
   );

@@ -144,7 +144,9 @@ export default async function DsCasePage({
     if (item.number !== next?.number) {
       const previous = t(`installment.name.${(item.number - 1) as 1 | 2 | 3}`);
       return (
-        <span className="text-[15px] text-[#4F5752]">{tp("installments.waitFor", { installment: previous })}</span>
+        <span className="text-[15px] text-muted-foreground">
+          {tp("installments.waitFor", { installment: previous })}
+        </span>
       );
     }
     const shared = { caseId: details.id, version: details.version, number: item.number, installmentName: name };
@@ -231,7 +233,7 @@ export default async function DsCasePage({
           <p className="text-lg">
             {t("created.number")} <strong data-testid="case-number">{details.applicationNumber}</strong>
           </p>
-          <p className="text-[#3F4843]">{t("created.text")}</p>
+          <p className="text-soft-foreground">{t("created.text")}</p>
           <Link href="/ds/cases/new" className="self-start font-semibold text-primary underline">
             {t("created.addAnother")}
           </Link>

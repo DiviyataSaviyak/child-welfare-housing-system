@@ -3,7 +3,7 @@ import { LOCALES } from "@/i18n/locales";
 import { cn } from "@/lib/utils";
 
 const NAME_SIZE = {
-  si: "text-[15px] font-bold text-[#0b3d2e] sm:text-[19px] lg:text-[23px] short:text-[17px] short:lg:text-[19px]",
+  si: "text-[15px] font-bold text-[#0b3d2e] dark:text-[#d0e2d9] sm:text-[19px] lg:text-[23px] short:text-[17px] short:lg:text-[19px]",
   ta: "text-[12px] font-semibold sm:text-[15px] lg:text-[17px] short:text-[13px] short:lg:text-[14px]",
   en: "text-[13px] font-semibold sm:text-[17px] lg:text-[19px] short:text-[15px] short:lg:text-[16px]",
 } as const;
@@ -24,7 +24,7 @@ export async function MinistryBar() {
   );
 
   return (
-    <header className="relative z-10 shrink-0 overflow-hidden border-b border-black/[0.07] bg-white shadow-[0_1px_3px_rgb(28_36_32/0.06)]">
+    <header className="relative z-10 shrink-0 overflow-hidden border-b border-black/[0.07] bg-white shadow-[0_1px_3px_rgb(28_36_32/0.06)] dark:border-white/[0.08] dark:bg-[#121a16]">
       <svg
         aria-hidden="true"
         viewBox="0 0 560 64"
@@ -44,15 +44,18 @@ export async function MinistryBar() {
           height={851}
           className="h-[56px] w-auto shrink-0 sm:h-[76px] lg:h-[92px] short:h-[56px] short:lg:h-[62px]"
         />
-        <span aria-hidden="true" className="hidden w-px self-stretch bg-black/15 sm:mx-3 sm:block lg:mx-5" />
-        <div className="flex min-w-0 flex-col gap-0.5 text-[#1c2420] lg:shrink-0">
+        <span
+          aria-hidden="true"
+          className="hidden w-px self-stretch bg-black/15 dark:bg-white/20 sm:mx-3 sm:block lg:mx-5"
+        />
+        <div className="flex min-w-0 flex-col gap-0.5 text-[#1c2420] lg:shrink-0 dark:text-[#e4eae6]">
           {names.map(({ locale, name }) => (
             <p key={locale} lang={locale} className={cn("leading-snug text-balance", NAME_SIZE[locale])}>
               {name}
             </p>
           ))}
         </div>
-        <p className="relative ml-auto hidden max-w-[34rem] min-w-0 -translate-y-2 pr-[3%] pl-6 text-right text-[17px] font-semibold text-balance text-[#0b4c3f] italic xl:block 2xl:text-[19px]">
+        <p className="relative ml-auto hidden max-w-[34rem] min-w-0 -translate-y-2 pr-[3%] pl-6 text-right text-[17px] font-semibold text-balance text-[#0b4c3f] italic dark:text-[#8fd8bd] xl:block 2xl:text-[19px]">
           “{t("tagline")}”
         </p>
       </div>

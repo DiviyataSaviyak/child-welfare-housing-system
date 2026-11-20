@@ -81,7 +81,7 @@ export function CorrectRelease({
             errors={checkErrors ?? state.errors}
             limits={limits}
           />
-          <p className="text-[15px] text-[#3F4843]">{t("correct.text")}</p>
+          <p className="text-[15px] text-soft-foreground">{t("correct.text")}</p>
           {checkErrors === null && state.error && (
             <FormError id="correct-release-error" message={t(`errors.${state.error}`)} />
           )}
