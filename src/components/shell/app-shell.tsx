@@ -45,83 +45,106 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Sizes and colours follow the header mockup (1672 px wide, 122 px tall), whose picture it uses. */}
-      <header className="sticky top-0 z-30 shrink-0 overflow-hidden bg-white bg-[linear-gradient(90deg,#ffffff_0%,#ffffff_28%,#f6faf3_42%,#e9f3e5_62%,#edf6e9_78%,#f3f8ee_100%)] pb-[3px] text-[#1f2e3a] dark:bg-[#121a16] dark:bg-[linear-gradient(90deg,#121a16_0%,#121a16_28%,#14201a_42%,#17271f_62%,#16251d_78%,#14211a_100%)] dark:text-foreground">
-        <div className="relative flex h-[119px] items-center ps-[59px] pe-[11px]">
-          <div className="flex min-w-0 shrink-0 items-center">
+      {/* Sizes and colours follow the header mockup (1672 px wide, 130 px tall), whose picture it uses. */}
+      <header className="sticky top-0 z-30 shrink-0 overflow-hidden bg-[#f7f9fc] text-[#1f2e3a] dark:bg-[#121a16] dark:bg-[linear-gradient(90deg,#121a16_0%,#121a16_28%,#14201a_42%,#17271f_62%,#16251d_78%,#14211a_100%)] dark:text-foreground">
+        <div className="relative flex h-[130px] items-center ps-[47px] pe-[11px]">
+          <div className="relative z-10 flex min-w-0 shrink-0 items-center">
             {/* The emblem is decorative here: the names beside it say whose it is. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/emblem-of-sri-lanka.svg" alt="" width={600} height={851} className="h-[90px] w-auto shrink-0" />
-            <span aria-hidden="true" className="ms-[29px] h-[80px] w-[1.5px] shrink-0 bg-[#114b3a] dark:bg-[#3f7d67]" />
-            <span className="ms-[27px] flex min-w-0 flex-col">
-              <span className="text-[30px] leading-[42px] font-bold whitespace-nowrap text-[#0b6138] dark:text-[#7ad6ad]">
+            <img
+              src="/emblem-of-sri-lanka.svg"
+              alt=""
+              width={600}
+              height={851}
+              className="h-[90px] w-auto shrink-0 2xl:h-[98px]"
+            />
+            <span
+              aria-hidden="true"
+              className="ms-[29px] h-[80px] w-[1.5px] shrink-0 2xl:ms-[40px] 2xl:h-[90px] bg-[#114b3a] dark:bg-[#3f7d67]"
+            />
+            <span className="ms-[27px] flex min-w-0 flex-col 2xl:ms-[31px]">
+              <span className="text-[30px] leading-[42px] font-bold 2xl:text-[34px] 2xl:leading-[46px] whitespace-nowrap text-[#0b6138] dark:text-[#7ad6ad]">
                 {t("app.name")}
               </span>
-              <span className="text-[16px] leading-[25px] font-semibold whitespace-nowrap text-[#123f30] dark:text-[#d0e2d9]">
+              <span className="text-[16px] leading-[25px] font-semibold 2xl:text-[18px] 2xl:leading-[28px] whitespace-nowrap text-[#123f30] dark:text-[#d0e2d9]">
                 {t("app.ministry")}
               </span>
               {locale !== "en" && (
                 <span
                   lang="en"
-                  className="text-[16px] leading-[23px] font-semibold whitespace-nowrap text-[#1b2733] dark:text-[#b4c0ba] [font-family:var(--font-latin),sans-serif]"
+                  className="text-[16px] leading-[23px] font-medium 2xl:text-[17px] 2xl:leading-[25px] whitespace-nowrap text-[#1b2733] dark:text-[#b4c0ba] [font-family:var(--font-latin),sans-serif]"
                 >
                   {englishMinistry}
                 </span>
               )}
             </span>
           </div>
-          {/* The children and the house, from the mockup, between the names and the buttons. Where the
-              space is short only the children show (centred on them: the picture is 592 px, they stand
-              at 225 px), and where it is shorter still, nothing. */}
-          <div aria-hidden="true" className="@container hidden min-w-0 flex-1 self-stretch lg:block">
-            <div className="mx-auto hidden h-full max-w-[592px] bg-[url(/header-scene.webp)] bg-[length:auto_100%] bg-[position:calc(50%+71px)_bottom] bg-no-repeat dark:opacity-70 dark:mix-blend-lighten dark:[filter:invert(1)_hue-rotate(180deg)] [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_88%,transparent)] @min-[170px]:block @min-[540px]:bg-bottom" />
+          {/* The mother, the children and the house, cut from the mockup at its own size (585 × 130 px).
+              The names take the mockup's larger sizes only on wide screens, where they leave room for it.
+              It ends just before the panel's curve and fades in just after the names; where the space is
+              short its left part goes, and where it is shorter still, all of it. */}
+          <div aria-hidden="true" className="@container relative hidden min-w-0 flex-1 self-stretch lg:block">
+            <div className="absolute inset-y-0 end-[30px] hidden w-[585px] max-w-[calc(100%-30px)] bg-[url(/header-scene.webp)] bg-[length:auto_100%] bg-right-bottom bg-no-repeat [mask-image:linear-gradient(90deg,transparent,#000_16%,#000_96%,transparent)] dark:opacity-55 dark:[filter:brightness(0.8)_saturate(0.8)] @min-[150px]:block" />
           </div>
-          <div className="ms-auto flex shrink-0 items-center">
-            <LanguagePicker tone="header" />
-            <span className="ms-3">
-              <ThemeToggle tone="header" />
-            </span>
-            {bell && (
-              <span className="ms-1">
-                <Bell href={bell.href} unread={bell.unread} />
-              </span>
-            )}
-            <span aria-hidden="true" className="ms-[7px] h-[26px] w-px bg-black/10 dark:bg-white/15" />
-            <span className="ms-[10px]">
-              {profile ? (
-                <ProfileDialog userName={userName} profile={profile} />
-              ) : (
-                <span
-                  className="shrink-0 text-base whitespace-nowrap"
-                  aria-label={`${t("shell.signedInAs")} ${userName}`}
+          <div className="relative ms-auto flex shrink-0 items-center self-stretch">
+            {/* The light panel behind the buttons: the mockup's curved edge over the picture, and the
+                green hill at its bottom right. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 start-[-84px] end-[-11px] flex">
+              <svg viewBox="0 0 100 130" preserveAspectRatio="none" className="h-full w-[100px] shrink-0">
+                <defs>
+                  <linearGradient id="header-panel" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0" className="[stop-color:#eef5fb] dark:[stop-color:#141d18]" stopOpacity="0.94" />
+                    <stop offset="1" className="[stop-color:#f2f7f5] dark:[stop-color:#141d18]" stopOpacity="0.94" />
+                  </linearGradient>
+                </defs>
+                <path d="M0 0 C40 30 45 105 100 130 V0 Z" fill="url(#header-panel)" />
+                <path
+                  d="M0 0 C40 30 45 105 100 130"
+                  fill="none"
+                  className="stroke-white dark:stroke-white/10"
+                  strokeWidth="2"
+                />
+              </svg>
+              <span className="relative -ms-px flex-1 bg-[linear-gradient(180deg,#eef5fbf0,#f2f7f5f0)] dark:bg-none dark:bg-[#141d18]/95">
+                <svg
+                  viewBox="0 0 260 40"
+                  preserveAspectRatio="none"
+                  className="absolute end-0 bottom-0 h-[40px] w-[260px] dark:opacity-25"
                 >
-                  {userName}
+                  <path d="M0 40 C90 39 170 30 260 6 V40 Z" fill="#cdeae1" />
+                  <path d="M60 40 C140 38 205 28 260 14 V40 Z" fill="#b2ddd0" />
+                </svg>
+              </span>
+            </div>
+            <div className="relative flex items-center">
+              <LanguagePicker tone="header" />
+              <span aria-hidden="true" className="ms-[18px] h-[30px] w-[1.5px] bg-[#1f3a33]/70 dark:bg-white/20" />
+              <span className="ms-3">
+                <ThemeToggle tone="header" />
+              </span>
+              {bell && (
+                <span className="ms-1">
+                  <Bell href={bell.href} unread={bell.unread} />
                 </span>
               )}
-            </span>
-            <span className="ms-3">
-              <SignOutButton />
-            </span>
+              <span className="ms-[10px]">
+                {profile ? (
+                  <ProfileDialog userName={userName} profile={profile} />
+                ) : (
+                  <span
+                    className="shrink-0 text-base whitespace-nowrap"
+                    aria-label={`${t("shell.signedInAs")} ${userName}`}
+                  >
+                    {userName}
+                  </span>
+                )}
+              </span>
+              <span className="ms-3">
+                <SignOutButton />
+              </span>
+            </div>
           </div>
         </div>
-        {/* The green and gold sweep at the right, over the green line along the bottom. */}
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 360 35"
-          preserveAspectRatio="none"
-          className="pointer-events-none absolute right-0 bottom-[3px] hidden h-[35px] w-[360px] lg:block"
-        >
-          <defs>
-            <linearGradient id="header-gold" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0" stopColor="#f7c62c" />
-              <stop offset="0.55" stopColor="#fecd34" />
-              <stop offset="1" stopColor="#c99c2c" />
-            </linearGradient>
-          </defs>
-          <path d="M0 33 C150 31 270 20 360 0 V17 C270 28 150 33 0 34 Z" fill="#0a6b44" />
-          <path d="M0 34 C150 33 270 28 360 17 V35 H0 Z" fill="url(#header-gold)" />
-        </svg>
-        <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[3px] bg-[#0a6b44]" />
       </header>
       <NavLinks
         label={t("nav.label")}
@@ -129,6 +152,7 @@ export async function AppShell({
         items={nav.map((entry) => ({
           href: entry.href,
           label: t(`nav.${entry.labelKey}`),
+          icon: entry.labelKey,
           exact: entry.exact,
           alsoActive: entry.alsoActive,
           count: entry.count,
